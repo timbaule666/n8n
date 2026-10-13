@@ -1,0 +1,69 @@
+#!/usr/bin/env node
+'use strict';
+// Strukturprüfung der erzeugten Workflows (ohne n8n-Instanz).
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const { ROOT, VERSIONEN } = require('./lib/n8n');
+
+function pruefeWorkflow(json, alleNamen) {
+	const fehler = [];
+	const namen = new Set();
+	for (const n of json.nodes) {
+		if (namen.has(n.name)) fehler.push(`Node-Name doppelt: ${n.name}`);
+		namen.add(n.name);
+		if (VERSIONEN[n.type] !== n.typeVersion) fehler.push(`${n.name}: Version ${n.typeVersion} für ${n.type} nicht geprüft`);
+		if (/^(Code|Postgres|If|Switch|Execute Workflow)\d*$/.test(n.name)) fehler.push(`${n.name}: Node-Name nicht sprechend`);
+		if (n.credentials) fehler.push(`${n.name}: enthält Credentials (sollen beim Import zugewiesen werden)`);
+		if (n.type === 'n8n-nodes-base.code') {
+			try {
+				new vm.Script(`(async function () {\n${n.parameters.jsCode}\n})`, { filename: n.name });
+			} catch (e) {
+				fehler.push(`${n.name}: Syntaxfehler im Code: ${e.message}`);
+			}
+		}
+		if (n.type === 'n8n-nodes-base.postgres') {
+			if (/--/.test(n.parameters.query)) fehler.push(`${n.name}: SQL enthält Kommentar (pg-promise-Risiko)`);
+			if (/\{\{/.test(n.parameters.query)) fehler.push(`${n.name}: SQL enthält Ausdruck {{ }} (Injection-Risiko)`);
+			const params = [...n.parameters.query.matchAll(/\$(\d+)/g)].map((m) => Number(m[1]));
+			const max = params.length ? Math.max(...params) : 0;
+			const anzahl = (n.parameters.options.queryReplacement.match(/^=\{\{\s*\[([\s\S]*)\]\s*\}\}$/) || [, ''])[1];
+			if (!anzahl && max > 0) fehler.push(`${n.name}: Parameter müssen als Array-Ausdruck übergeben werden`);
+		}
+		if (n.type === 'n8n-nodes-base.executeWorkflow') {
+			const ref = n.parameters.workflowId.cachedResultName;
+			if (!alleNamen.has(ref)) fehler.push(`${n.name}: ruft unbekannten Workflow "${ref}" auf`);
+		}
+	}
+	for (const [von, c] of Object.entries(json.connections)) {
+		if (!namen.has(von)) fehler.push(`Verbindung von unbekanntem Node ${von}`);
+		for (const ausgang of c.main) for (const z of ausgang) if (!namen.has(z.node)) fehler.push(`Verbindung zu unbekanntem Node ${z.node}`);
+	}
+	const verbunden = new Set(Object.keys(json.connections));
+	for (const c of Object.values(json.connections)) for (const a of c.main) for (const z of a) verbunden.add(z.node);
+	for (const n of json.nodes) {
+		if (n.type !== 'n8n-nodes-base.stickyNote' && !verbunden.has(n.name)) fehler.push(`${n.name}: nicht verbunden`);
+	}
+	if (!json.nodes.some((n) => n.type === 'n8n-nodes-base.stickyNote')) fehler.push('Sticky Note mit Zweck fehlt');
+	return fehler;
+}
+
+function pruefeAlle() {
+	const dir = path.join(ROOT, 'workflows');
+	const dateien = fs.readdirSync(dir).filter((d) => d.endsWith('.json'));
+	const wfs = dateien.map((d) => [d, JSON.parse(fs.readFileSync(path.join(dir, d), 'utf8'))]);
+	const alleNamen = new Set(wfs.map(([, w]) => w.name));
+	return wfs.map(([d, w]) => ({ datei: d, fehler: pruefeWorkflow(w, alleNamen) }));
+}
+
+if (require.main === module) {
+	let ok = true;
+	for (const r of pruefeAlle()) {
+		console.log(`${r.fehler.length ? 'FEHLER' : 'ok    '} ${r.datei}`);
+		for (const f of r.fehler) console.log(`       - ${f}`);
+		if (r.fehler.length) ok = false;
+	}
+	process.exit(ok ? 0 : 1);
+}
+
+module.exports = { pruefeWorkflow, pruefeAlle };

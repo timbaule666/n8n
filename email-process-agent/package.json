@@ -1,0 +1,18 @@
+{
+  "name": "email-process-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Config-Driven Email Process Agent für n8n (TIM Agent Systems)",
+  "scripts": {
+    "test": "node --test",
+    "build": "node tools/build-workflows.js",
+    "check": "node tools/build-workflows.js && node tools/validate-workflows.js && node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "luxon": "3.7.2",
+    "pg-promise": "^11.9.1"
+  }
+}
