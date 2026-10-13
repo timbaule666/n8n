@@ -2,9 +2,11 @@
 'use strict';
 // Spielt workflows/*.json über die n8n Public API ein und verknüpft sie:
 // - Execute-Workflow-Nodes bekommen die echte ID des Ziel-Workflows (Zuordnung über den Namen)
-// - Jeder Workflow außer EPA-05 bekommt EPA-05 als Error Workflow
+// - Jeder Workflow außer EPA-05 bekommt EPA-05 als Error Workflow (sobald EPA-05 veröffentlicht ist)
+// - Alle Workflows werden veröffentlicht, soweit ihre Credentials zugewiesen sind
 // - Bestehende Workflows (gleicher Name) werden aktualisiert; bereits zugewiesene Credentials und
-//   eingetragene Teams-IDs bleiben erhalten
+//   eingetragene Teams-IDs bleiben erhalten; neue Nodes erhalten das Credential, das in den EPA-Workflows
+//   für diesen Node-Typ bereits (eindeutig) genutzt wird
 // Credentials werden nie angelegt und nie aus dem Repo gesetzt.
 //
 // Aufruf:  N8N_URL=https://timbaule.app.n8n.cloud N8N_API_KEY=... node tools/deploy.js [--dry-run]
@@ -27,7 +29,15 @@ async function api(basis, schluessel, methode, pfad, body) {
 		body: body ? JSON.stringify(body) : undefined,
 	});
 	const text = await res.text();
-	if (!res.ok) throw new Error(`${methode} ${pfad} -> ${res.status}: ${text.slice(0, 500)}`);
+	if (!res.ok) {
+		const err = new Error(`${methode} ${pfad} -> ${res.status}: ${text.slice(0, 500)}`);
+		try {
+			err.meldung = JSON.parse(text).message;
+		} catch {
+			err.meldung = text.slice(0, 500);
+		}
+		throw err;
+	}
 	return text ? JSON.parse(text) : {};
 }
 
@@ -53,12 +63,29 @@ function ladeLokal() {
 }
 
 /** Setzt Referenzen und übernimmt Credentials/IDs aus der bestehenden Fassung. */
-function verknuepfen(wf, ids, bestehend) {
+/**
+ * Sammelt die in den EPA-Workflows genutzten Credentials je Node-Typ. Eindeutig = genau ein Credential
+ * pro Typ; nur dann wird es neuen Nodes desselben Typs automatisch zugewiesen.
+ */
+function eindeutigeCredentials(workflows) {
+	const jeTyp = {};
+	for (const wf of workflows) {
+		for (const n of wf?.nodes || []) {
+			if (!n.credentials) continue;
+			const s = (jeTyp[n.type] = jeTyp[n.type] || new Map());
+			s.set(JSON.stringify(n.credentials), n.credentials);
+		}
+	}
+	return Object.fromEntries(Object.entries(jeTyp).filter(([, m]) => m.size === 1).map(([t, m]) => [t, [...m.values()][0]]));
+}
+
+function verknuepfen(wf, ids, bestehend, { errorWorkflowSetzen = true, credentialsJeTyp = {} } = {}) {
 	const alt = new Map((bestehend?.nodes || []).map((n) => [n.name, n]));
 	const nodes = wf.nodes.map((n) => {
 		const kopie = JSON.parse(JSON.stringify(n));
 		const vorher = alt.get(n.name);
 		if (vorher?.credentials) kopie.credentials = vorher.credentials;
+		else if (credentialsJeTyp[n.type]) kopie.credentials = credentialsJeTyp[n.type];
 		if (vorher && vorher.type === n.type) {
 			for (const p of BEHALTEN_WENN_GESETZT) {
 				if (p in kopie.parameters && istPlatzhalter(kopie.parameters[p]) && !istPlatzhalter(vorher.parameters?.[p])) {
@@ -74,7 +101,7 @@ function verknuepfen(wf, ids, bestehend) {
 		return kopie;
 	});
 	const settings = { ...wf.settings };
-	if (wf.name !== ERROR_WORKFLOW) settings.errorWorkflow = ids[ERROR_WORKFLOW];
+	if (wf.name !== ERROR_WORKFLOW && errorWorkflowSetzen) settings.errorWorkflow = ids[ERROR_WORKFLOW];
 	return { name: wf.name, nodes, connections: wf.connections, settings };
 }
 
@@ -100,17 +127,45 @@ async function deploy({ basis, schluessel, trocken = false, log = console.log })
 		log(`angelegt: ${wf.name} (${angelegt.id})`);
 	}
 
-	// 2. Inhalte schreiben und verknüpfen
-	for (const wf of lokal) {
-		const bestehend = trocken && String(ids[wf.name]).startsWith('NEU:') ? null : await api(basis, schluessel, 'GET', `/workflows/${ids[wf.name]}`);
-		const body = verknuepfen(wf, ids, bestehend);
+	// 2. EPA-05 zuerst schreiben und veröffentlichen: n8n 2.x akzeptiert als Error Workflow nur
+	//    veröffentlichte Workflows, und veröffentlichen geht erst mit zugewiesenen Credentials.
+	const reihenfolge = [...lokal].sort((a, b) => (a.name === ERROR_WORKFLOW ? -1 : b.name === ERROR_WORKFLOW ? 1 : 0));
+	let errorWorkflowVeroeffentlicht = false;
+	const offen = [];
+	const bestehende = {};
+	for (const wf of reihenfolge) {
+		if (!String(ids[wf.name]).startsWith('NEU:')) bestehende[wf.name] = await api(basis, schluessel, 'GET', `/workflows/${ids[wf.name]}`);
+	}
+	const credentialsJeTyp = eindeutigeCredentials(Object.values(bestehende));
+	for (const wf of reihenfolge) {
+		const body = verknuepfen(wf, ids, bestehende[wf.name] || null, { errorWorkflowSetzen: errorWorkflowVeroeffentlicht, credentialsJeTyp });
 		if (trocken) {
-			log(`[dry-run] würde aktualisieren: ${wf.name} (${body.nodes.length} Nodes)`);
+			log(`[dry-run] würde aktualisieren und veröffentlichen: ${wf.name} (${body.nodes.length} Nodes)`);
 			continue;
 		}
-		await api(basis, schluessel, 'PUT', `/workflows/${ids[wf.name]}`, body);
-		const ohneCredentials = body.nodes.filter((n) => ['n8n-nodes-base.postgres', 'n8n-nodes-base.microsoftTeams'].includes(n.type) && !n.credentials).map((n) => n.name);
-		log(`aktualisiert: ${wf.name} (${ids[wf.name]})${ohneCredentials.length ? ` – Credential fehlt noch in: ${ohneCredentials.join(', ')}` : ''}`);
+		try {
+			await api(basis, schluessel, 'PUT', `/workflows/${ids[wf.name]}`, body);
+		} catch (e) {
+			offen.push(`${wf.name}: nicht aktualisiert – ${String(e.meldung || e.message).replace(/\s*\n\s*/g, ' ')}`);
+			log(`FEHLER beim Aktualisieren: ${wf.name}`);
+			continue;
+		}
+		let status = 'aktualisiert und veröffentlicht';
+		try {
+			await api(basis, schluessel, 'POST', `/workflows/${ids[wf.name]}/activate`);
+			if (wf.name === ERROR_WORKFLOW) errorWorkflowVeroeffentlicht = true;
+		} catch (e) {
+			status = 'aktualisiert, NICHT veröffentlicht';
+			offen.push(`${wf.name}: ${String(e.meldung || e.message).replace(/\s*\n\s*/g, ' ')}`);
+		}
+		log(`${status}: ${wf.name} (${ids[wf.name]})`);
+	}
+	if (!trocken && !errorWorkflowVeroeffentlicht) {
+		log(`\nHinweis: "${ERROR_WORKFLOW}" ist nicht veröffentlicht, daher wurde er noch nirgends als Error Workflow eingetragen.`);
+	}
+	if (offen.length) {
+		log('\nNoch offen (Credentials in n8n zuweisen, Platzhalter ersetzen, dann Deploy erneut ausführen):');
+		for (const o of offen) log(`  - ${o}`);
 	}
 	return ids;
 }
@@ -128,4 +183,4 @@ if (require.main === module) {
 	});
 }
 
-module.exports = { deploy, verknuepfen };
+module.exports = { deploy, verknuepfen, eindeutigeCredentials };

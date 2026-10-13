@@ -4,8 +4,8 @@
 |---|---|
 | Projekt | Config-Driven Email Process Agent (EPA) für TIM Agent Systems |
 | Meilenstein | **M0 – Klärung und Plan** (es wird noch nichts gebaut) |
-| Stand | 2026-10-13, Entwurf v0.2 (F1 und F3 beantwortet) |
-| Status | wartet auf Antworten zu den offenen Fragen (Abschnitt 1) und auf "Go" |
+| Stand | 2026-10-13, v0.3: F1, F3, F4, F5, F6 beantwortet; M1 umgesetzt (siehe M1-Bericht.md) |
+| Status | M0 abgeschlossen; offene Fragen F7–F12 mit Default-Annahmen |
 
 Legende: **[Entscheidung]** = von mir vorgeschlagen, durch "Go" bestätigt; **[Frage]** = brauche ich von dir; **[zu verifizieren]** = Annahme, die ich vor dem Bau gegen Doku bzw. die laufende n8n-Instanz prüfe.
 
@@ -17,12 +17,12 @@ Zu jeder Frage steht mein Vorschlag. Wenn du einem Vorschlag zustimmst, reicht "
 
 | # | Frage | Mein Vorschlag / Default |
 |---|---|---|
-| F1 | n8n Cloud oder self-hosted, welche Version? Ist die Instanz aktiv? (Im Repo liegt eine Übergabe für `timbaule.app.n8n.cloud`, dort war der Testzeitraum abgelaufen.) | **Beantwortet:** n8n Cloud, `https://timbaule.app.n8n.cloud`. Offen: Version (Einstellungen → Über n8n) und ob der Tarif aktiv ist. |
+| F1 | n8n Cloud oder self-hosted, welche Version? Ist die Instanz aktiv? (Im Repo liegt eine Übergabe für `timbaule.app.n8n.cloud`, dort war der Testzeitraum abgelaufen.) | **Beantwortet:** n8n Cloud, `https://timbaule.app.n8n.cloud`, Version 2.43.4. |
 | F2 | n8n-MCP-Server: In dieser Sitzung ist der n8n-MCP-Server vorhanden, aber **nicht autorisiert**. | In den claude.ai-Connector-Einstellungen autorisieren. Sonst liefere ich JSON-Dateien und eine Import-Anleitung. |
 | F3 | Welcher LLM-Anbieter darf genutzt werden (EU-Region, AVV/DPA)? Welche Keys gibt es? Ein OpenAI-Credential existiert bereits. | **Beantwortet: OpenAI.** Das vorhandene n8n-Credential `OpenAI account` wird genutzt. Für DSGVO empfohlen: ein eigenes OpenAI-Projekt mit EU-Datenresidenz und Zero-Data-Retention, sofern für deinen Account verfügbar, plus abgeschlossene AVV (DPA) mit OpenAI [zu verifizieren: Voraussetzungen im OpenAI-Dashboard]. Modellnamen (kleines Modell für Klassifizierung, stärkeres für Extraktion) stehen in der Config; die verfügbaren Modelle prüfe ich beim Bau in der Instanz. Der Anbieter bleibt hinter `SW LLM aufrufen` austauschbar. |
-| F4 | Microsoft: Gibt es Testpostfach, Teams-Kanal und SharePoint-Site? Wer kann Admin-Consent erteilen? Ist das Postfach ein Shared Mailbox oder ein Benutzerpostfach? | Shared Mailbox `anfragen-test@…`, eigene SharePoint-Site „EPA-Test“, Teams-Kanal „EPA-Freigaben“. Eine eigene Entra-App-Registrierung, Zugriff auf genau ein Postfach begrenzt (siehe 7.2). |
-| F5 | Freigabe in Teams: Gibt es einen Bot oder Power-Automate-Premium-Lizenzen? | Siehe Abschnitt 6, Variante **B** (stabil, ohne Bot). Variante C nur, wenn Power Automate Premium vorhanden ist. |
-| F6 | Datenspeicher: Bleibt Excel dauerhaft, oder planen wir Postgres ein? | **Postgres von Anfang an empfohlen** (Begründung 4.7). Wenn Excel gewünscht ist, baue ich Excel mit Repository-Sub-Workflows und dokumentiere die Restrisiken. |
+| F4 | Microsoft: Gibt es Testpostfach, Teams-Kanal und SharePoint-Site? Wer kann Admin-Consent erteilen? Ist das Postfach ein Shared Mailbox oder ein Benutzerpostfach? | **Beantwortet:** vorhanden. Nodes werden ohne Credentials gebaut; Zuweisung erfolgt in n8n. |
+| F5 | Freigabe in Teams: Gibt es einen Bot oder Power-Automate-Premium-Lizenzen? | **Beantwortet:** Variante **B**. |
+| F6 | Datenspeicher: Bleibt Excel dauerhaft, oder planen wir Postgres ein? | **Beantwortet: Postgres.** |
 | F7 | Erster Referenz-Anwendungsfall? | Transportanfrage (Felder siehe 4.8). Bitte Felder, Pflicht/optional und Textbausteine bestätigen. |
 | F8 | Du oder Sie? Gibt es einen KI-Hinweistext? | „Sie“. Entwurf: „Diese Nachricht wurde KI-gestützt vorbereitet und von einem Mitarbeiter geprüft und freigegeben.“ **Muss juristisch geprüft werden.** |
 | F9 | Geschäftszeiten, Feiertage (welches Bundesland?), Fristen | Mo–Fr 08:00–17:00 Europe/Berlin, Feiertage NRW, Antwortfrist 48 Geschäftsstunden, `Max_Runden` = 3, 2 Erinnerungen im Abstand von 24 Geschäftsstunden, Freigabe-Erinnerung nach 4 h. |

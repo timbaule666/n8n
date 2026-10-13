@@ -28,6 +28,10 @@ const FEHLERCODES = Object.freeze({
 	UNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },
 });
 
+// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:
+// der Vorgang wird NICHT auf "Eskaliert / Manuell" gesetzt (sonst würde ein Parallellauf gestört).
+const OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);
+
 const EPA_MUSTER = /^\[EPA:(\d{3}):([A-Z_]+):([^\]]*)\]\s*([\s\S]*)$/;
 
 function formatEpaFehler(code, vorgangsId, meldung) {
@@ -120,6 +124,7 @@ function klassifiziereFehler(fehler) {
 		fehlercode: code,
 		klasse: def.klasse,
 		retrybar: def.retrybar,
+		eskalieren: !OHNE_ESKALATION.includes(code),
 		vorgangsId,
 		meldung: bereinigeMeldung(meldung),
 	};
@@ -145,6 +150,7 @@ function ausErrorTrigger(json) {
 		fehlercode: k.fehlercode,
 		klasse: k.klasse,
 		retrybar: k.retrybar,
+		eskalieren: k.eskalieren && Boolean(k.vorgangsId),
 		workflow_id: workflow.id || null,
 		workflow_name: workflow.name || null,
 		node,
@@ -176,6 +182,7 @@ function alarmHtml(eintrag) {
 
 module.exports = {
 	FEHLERCODES,
+	OHNE_ESKALATION,
 	formatEpaFehler,
 	epaFehler,
 	parseEpaFehler,

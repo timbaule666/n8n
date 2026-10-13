@@ -6,7 +6,7 @@ module.exports = function () {
 
 	wf.notiz('Notiz Zweck', [-80, -400], [
 		'## EPA-05 Error-Handler',
-		'**Zweck:** Fängt Abstürze aller EPA-Workflows. Bestimmt Fehlerklasse und Statuscode (src/fehlerklassen.js), schreibt epa_fehler_log (nur IDs, Codes, bereinigte technische Meldung, keine Mail-Inhalte), sichert betroffene Vorgänge auf "Eskaliert / Manuell" und alarmiert den Entwickler-Kanal in Teams.',
+		'**Zweck:** Fängt Abstürze aller EPA-Workflows. Bestimmt Fehlerklasse und Statuscode (src/fehlerklassen.js), schreibt epa_fehler_log (nur IDs, Codes, bereinigte technische Meldung, keine Mail-Inhalte), sichert betroffene Vorgänge auf "Eskaliert / Manuell" (nicht bei Versionskonflikt, Sperre, Duplikat) und alarmiert den Entwickler-Kanal in Teams.',
 		'**Trigger:** Error Trigger. In **jedem** EPA-Workflow unter Settings -> Error workflow eintragen (macht tools/deploy.js automatisch).',
 		'**Eingaben:** execution/workflow-Daten des fehlgeschlagenen Laufs.',
 		'**Ausgabe:** Teams-Nachricht; epa_fehler_log.alarmiert_am wird gesetzt. Bleibt alarmiert_am leer, meldet der Watchdog (M6) den Fehler erneut.',
@@ -24,9 +24,9 @@ return [{ json: eintrag }];
 	const protokollieren = wf.postgres('Fehler protokollieren', [440, 0], 'fehler_protokollieren', '[ $json ]',
 		{ retryOnFail: false, onError: 'continueRegularOutput', alwaysOutputData: true });
 
-	const betroffen = wf.node('Vorgang betroffen?', 'n8n-nodes-base.if', [660, 0], {
+	const betroffen = wf.node('Vorgang sichern nötig?', 'n8n-nodes-base.if', [660, 0], {
 		conditions: bedingungen([
-			bedingung("={{ $('Fehler klassifizieren').first().json.vorgangs_id }}", { type: 'string', operation: 'notEmpty', singleValue: true }),
+			bedingung("={{ $('Fehler klassifizieren').first().json.eskalieren }}", { type: 'boolean', operation: 'true', singleValue: true }),
 		]),
 		options: { looseTypeValidation: true },
 	});
@@ -46,12 +46,18 @@ return [{ json: eintrag }];
 		['nur_wenn_erlaubt', 'boolean', '={{ true }}'],
 	], { onError: 'continueRegularOutput', alwaysOutputData: true });
 
-	const vorbereiten = wf.code('Alarm vorbereiten', [1320, 0], ['fehlerklassen'], `
+	const eskalationVermerken = wf.postgres('Eskalation vermerken', [1320, -120], 'fehler_eskalation_vermerken',
+		"[ $('Fehler protokollieren').first().json.fehler_id ?? null, $json.ok === true ]",
+		{ onError: 'continueRegularOutput', alwaysOutputData: true });
+
+	const vorbereiten = wf.code('Alarm vorbereiten', [1540, 0], ['fehlerklassen'], `
 const e = $('Fehler klassifizieren').first().json;
 const protokoll = $('Fehler protokollieren').first().json;
 let eskaliert = false;
 let hinweis = '';
-if ($('Vorgang sichern').isExecuted) {
+if (e.vorgangs_id && !e.eskalieren) {
+	hinweis = 'Vorgang bewusst nicht eskaliert (Konflikt mit parallel laufender Verarbeitung).';
+} else if ($('Vorgang sichern').isExecuted) {
 	const s = $('Vorgang sichern').first().json;
 	eskaliert = s.ok === true;
 	if (s.error) hinweis = 'Vorgang konnte NICHT gesichert werden, bitte manuell prüfen.';
@@ -65,7 +71,7 @@ if (!fehlerId) html += '<br><b>Achtung:</b> Eintrag im Fehlerlog fehlgeschlagen 
 return [{ json: { fehler_id: fehlerId, eskaliert, alarm_html: html } }];
 `);
 
-	const teams = wf.node('Entwickler-Kanal alarmieren', 'n8n-nodes-base.microsoftTeams', [1540, 0], {
+	const teams = wf.node('Entwickler-Kanal alarmieren', 'n8n-nodes-base.microsoftTeams', [1760, 0], {
 		resource: 'channelMessage',
 		operation: 'create',
 		teamId: { __rl: true, mode: 'id', value: '<TEAM_ID_ENTWICKLER>' },
@@ -75,20 +81,20 @@ return [{ json: { fehler_id: fehlerId, eskaliert, alarm_html: html } }];
 		options: {},
 	}, Workflow.retry());
 
-	const kennzeichnen = wf.node('Fehler-ID vorhanden?', 'n8n-nodes-base.if', [1760, 0], {
+	const kennzeichnen = wf.node('Fehler-ID vorhanden?', 'n8n-nodes-base.if', [1980, 0], {
 		conditions: bedingungen([
 			bedingung("={{ $('Alarm vorbereiten').first().json.fehler_id }}", { type: 'number', operation: 'exists', singleValue: true }),
 		]),
 		options: { looseTypeValidation: true },
 	});
 
-	const vermerken = wf.postgres('Alarm vermerken', [1980, -80], 'fehler_alarm_vermerken',
-		"[ $('Alarm vorbereiten').first().json.fehler_id, $('Alarm vorbereiten').first().json.eskaliert ]");
+	const vermerken = wf.postgres('Alarm vermerken', [2200, -80], 'fehler_alarm_vermerken',
+		"[ $('Alarm vorbereiten').first().json.fehler_id ]");
 
 	wf.kette(trigger, klassifizieren, protokollieren, betroffen);
 	wf.verbinde(betroffen, mandant, 0);
 	wf.verbinde(mandant, sichern);
-	wf.verbinde(sichern, vorbereiten);
+	wf.kette(sichern, eskalationVermerken, vorbereiten);
 	wf.verbinde(betroffen, vorbereiten, 1);
 	wf.kette(vorbereiten, teams, kennzeichnen);
 	wf.verbinde(kennzeichnen, vermerken, 0);

@@ -28,27 +28,37 @@ Gilt für n8n 2.43.4 (Cloud, `https://timbaule.app.n8n.cloud`) und PostgreSQL �
    N8N_URL=https://timbaule.app.n8n.cloud N8N_API_KEY=<key> node tools/deploy.js --dry-run
    N8N_URL=https://timbaule.app.n8n.cloud N8N_API_KEY=<key> node tools/deploy.js
    ```
-   Das Skript legt die 5 Workflows an bzw. aktualisiert sie anhand des Namens. Es setzt die Sub-Workflow-Verknüpfungen und trägt EPA-05 als Error Workflow ein. Bereits zugewiesene Credentials bleiben bei späteren Deploys erhalten.
+   Das Skript legt die 5 Workflows an bzw. aktualisiert sie anhand des Namens, setzt die Sub-Workflow-Verknüpfungen und veröffentlicht die Workflows.
+   - **Erster Lauf:** Die Workflows werden angelegt, aber noch **nicht veröffentlicht**, weil Credentials fehlen. n8n 2.x veröffentlicht nur Workflows ohne Konfigurationsprobleme und akzeptiert als Error Workflow nur einen veröffentlichten Workflow. Das Skript listet auf, was fehlt.
+   - Dann Credentials zuweisen (Abschnitt 3) und das Skript **erneut ausführen**. Jetzt wird EPA-05 veröffentlicht und überall als Error Workflow eingetragen.
+   - Bei späteren Updates bleiben zugewiesene Credentials und eingetragene Teams-IDs erhalten. Neue Postgres-Nodes erhalten automatisch das bereits genutzte Postgres-Credential, sofern in den EPA-Workflows genau eines verwendet wird.
 
 **Variante B: manueller Import**
 1. Jede Datei aus `workflows/` über *Import from File* importieren.
 2. In `EPA-05 Error-Handler`, Node „Vorgang sichern“: Workflow „EPA SW Status setzen“ auswählen.
-3. In jedem Workflow außer EPA-05: *Settings → Error workflow* = „EPA-05 Error-Handler“.
+3. Credentials zuweisen (Abschnitt 3) und alle Workflows veröffentlichen (EPA-05 zuerst).
+4. In jedem Workflow außer EPA-05: *Settings → Error workflow* = „EPA-05 Error-Handler“.
 
 ## 3. Credentials zuweisen (keine Secrets im Repo)
 | Credential (Vorschlag) | Typ | Nodes |
 |---|---|---|
-| `EPA – Postgres` | Postgres (SSL an) | alle Postgres-Nodes (11 Stück) |
+| `EPA – Postgres` | Postgres (SSL an) | alle Postgres-Nodes (14 Stück) |
 | `EPA – Teams (Dienstkonto)` | Microsoft Teams OAuth2 | EPA-05 „Entwickler-Kanal alarmieren“ |
 
 Hinweis Teams: Kanalnachrichten gehen nur mit delegiertem OAuth2 (Benutzerkontext). Die App-only-Variante (Service Principal) unterstützt das Senden in Kanäle nicht (so geprüft im Quellcode des Teams-Nodes in n8n 2.43). Dafür ein Dienstkonto nutzen, das Mitglied der EPA-Kanäle ist.
 
-In EPA-05 im Node „Entwickler-Kanal alarmieren“ die Team- und Kanal-ID eintragen. Beide stehen im Teams-Link zum Kanal (`groupId=…` bzw. `19:…@thread.tacv2`).
+In EPA-05 im Node „Entwickler-Kanal alarmieren“ das Team und den Kanal auswählen oder die IDs eintragen. Die Team-ID ist eine **GUID** (`groupId=…` im Teams-Link), die Kanal-ID hat die Form `19:…@thread.tacv2`. n8n lehnt andere Formate beim Veröffentlichen ab.
 
 ## 4. Abnahmetest in der Instanz (5 Minuten)
 1. `EPA SW Config laden` manuell mit `{"kunde_id": "beispiel-transport"}` ausführen. Erwartet: `config` mit 10 Feldern. Stehen noch Platzhalter in der Config, wird 424 erwartet.
 2. In psql einen Testvorgang anlegen: `SELECT epa_naechste_vorgangs_id();` reicht als Kontrolle. Einen echten Vorgang legt `EPA SW Vorgang verwalten` mit `aktion=anlegen` an.
 3. `EPA SW Status setzen` mit dem Vorgang und `neuer_status = "Abgeschlossen"`, `ausloeser = "System"` aufrufen. Erwartet: Fehler 409 UNZULAESSIGER_STATUSWECHSEL, Eintrag in `epa_fehler_log`, Teams-Nachricht im Entwickler-Kanal, Vorgang steht auf „Eskaliert / Manuell“.
 
-## 5. Datenschutz-Einstellungen in n8n
+## 5. Automatischer End-to-End-Test (nur gegen eine Test-Datenbank)
+```bash
+N8N_URL=… N8N_API_KEY=… EPA_E2E_PG='postgres://user:pass@host:port/epa_test' node tools/e2e-test.js
+```
+Das Skript legt vorübergehend Test-Workflows „EPA-TEST …“ mit Webhook an, prüft 12 Szenarien inklusive Error-Handler und löscht die Test-Workflows danach wieder. Die EPA-Workflows müssen auf die **Test-Datenbank** zeigen. Nie gegen Produktivdaten ausführen.
+
+## 6. Datenschutz-Einstellungen in n8n
 In den Workflow-Settings bzw. global: Ausführungsdaten erfolgreicher Läufe nicht oder nur kurz speichern. Die Daten enthalten später Mail-Inhalte. [zu verifizieren: welche Pruning-Optionen der Cloud-Tarif bietet]

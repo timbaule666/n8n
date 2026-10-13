@@ -17,6 +17,7 @@ const VERSIONEN = Object.freeze({
 	'n8n-nodes-base.switch': 3.4,
 	'n8n-nodes-base.microsoftTeams': 2,
 	'n8n-nodes-base.stickyNote': 1,
+	'n8n-nodes-base.webhook': 2, // nur Test-Harness (tools/e2e-test.js)
 });
 
 function uuid(...teile) {

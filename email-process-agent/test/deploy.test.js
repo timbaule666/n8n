@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { verknuepfen } = require('../tools/deploy');
+const { verknuepfen, eindeutigeCredentials } = require('../tools/deploy');
 const h = require('./helpers/n8nNodes');
 const { pruefeAlle } = require('../tools/validate-workflows');
 
@@ -50,4 +50,15 @@ test('fehlender Ziel-Workflow bricht ab', () => {
 	const ids = { ...IDS };
 	delete ids['EPA SW Status setzen'];
 	assert.throws(() => verknuepfen(h.workflow('EPA-05_Error-Handler.json'), ids, null), /nicht gefunden/);
+});
+
+test('neue Nodes erhalten das eindeutig genutzte Credential ihres Typs', () => {
+	const pg = { postgres: { id: '7', name: 'EPA – Postgres' } };
+	const andere = { postgres: { id: '8', name: 'Andere DB' } };
+	assert.deepEqual(eindeutigeCredentials([{ nodes: [{ type: 'n8n-nodes-base.postgres', credentials: pg }, { type: 'n8n-nodes-base.postgres', credentials: pg }] }]), { 'n8n-nodes-base.postgres': pg });
+	assert.deepEqual(eindeutigeCredentials([{ nodes: [{ type: 'n8n-nodes-base.postgres', credentials: pg }] }, { nodes: [{ type: 'n8n-nodes-base.postgres', credentials: andere }] }]), {}, 'mehrdeutig -> nichts zuweisen');
+	const body = verknuepfen(h.workflow('EPA-05_Error-Handler.json'), IDS, { nodes: [] }, { credentialsJeTyp: { 'n8n-nodes-base.postgres': pg } });
+	const pgNodes = body.nodes.filter((n) => n.type === 'n8n-nodes-base.postgres');
+	assert.ok(pgNodes.length >= 4 && pgNodes.every((n) => n.credentials === pg));
+	assert.equal(body.nodes.find((n) => n.type === 'n8n-nodes-base.microsoftTeams').credentials, undefined);
 });

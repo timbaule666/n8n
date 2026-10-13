@@ -240,9 +240,14 @@ test('SQL-Integration', { skip: SKIP }, async (t) => {
 		assert.ok(p.fehler_id);
 		const [k] = await h.postgres(db, pgp, wfFehler, 'Mandant ermitteln', {}, { 'Fehler klassifizieren': eintrag });
 		assert.equal(k.kunde_id, 'beispiel-transport');
+		const [esk] = await h.postgres(db, pgp, wfFehler, 'Eskalation vermerken', { ok: true }, { 'Fehler protokollieren': { fehler_id: p.fehler_id } });
+		assert.equal(esk.eskaliert, true);
 		const [a] = await h.postgres(db, pgp, wfFehler, 'Alarm vermerken', {}, { 'Alarm vorbereiten': { fehler_id: p.fehler_id, eskaliert: true } });
 		assert.ok(a.alarmiert_am);
+		const leer = await h.postgres(db, pgp, wfFehler, 'Eskalation vermerken', { ok: true }, { 'Fehler protokollieren': {} });
+		assert.equal(leer.length, 0, 'ohne Fehler-ID wird nichts geändert');
 		const zeile = await db.one('SELECT * FROM epa_fehler_log WHERE id = $1', [p.fehler_id]);
+		assert.equal(eintrag.eskalieren, false, 'Versionskonflikt wird nicht eskaliert');
 		assert.equal(zeile.statuscode, 409);
 		assert.equal(zeile.vorgangs_id, vorgang.vorgangs_id);
 		assert.equal(zeile.eskaliert, true);

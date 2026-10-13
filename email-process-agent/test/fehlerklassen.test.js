@@ -110,3 +110,14 @@ test('alarmHtml escaped Inhalte', () => {
 	assert.ok(!h.includes('<script>'));
 	assert.ok(h.includes('a&amp;b'));
 });
+
+test('Eskalation nur, wenn ein Vorgang betroffen ist und kein Parallel-Konflikt vorliegt', () => {
+	const mit = (code, vid) => f.ausErrorTrigger({ execution: { error: { message: f.formatEpaFehler(code, vid, 'x') } } }).eskalieren;
+	assert.equal(mit('UNZULAESSIGER_STATUSWECHSEL', 'V-2026-0001'), true);
+	assert.equal(mit('EXTRAKTION_UNGUELTIG', 'V-2026-0001'), true);
+	assert.equal(mit('VERSIONSKONFLIKT', 'V-2026-0001'), false);
+	assert.equal(mit('GESPERRT', 'V-2026-0001'), false);
+	assert.equal(mit('DUPLIKAT', 'V-2026-0001'), false);
+	assert.equal(mit('UNZULAESSIGER_STATUSWECHSEL', null), false);
+	assert.equal(f.ausErrorTrigger({ execution: { error: { message: 'socket hang up' } } }).eskalieren, false);
+});

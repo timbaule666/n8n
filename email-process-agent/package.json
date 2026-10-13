@@ -4,9 +4,9 @@
   "private": true,
   "description": "Config-Driven Email Process Agent für n8n (TIM Agent Systems)",
   "scripts": {
-    "test": "node --test",
+    "test": "node --test 'test/**/*.test.js'",
     "build": "node tools/build-workflows.js",
-    "check": "node tools/build-workflows.js && node tools/validate-workflows.js && node --test"
+    "check": "node tools/build-workflows.js && node tools/validate-workflows.js && node --test 'test/**/*.test.js'"
   },
   "engines": {
     "node": ">=20"
