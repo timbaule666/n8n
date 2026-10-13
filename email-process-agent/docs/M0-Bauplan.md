@@ -4,7 +4,7 @@
 |---|---|
 | Projekt | Config-Driven Email Process Agent (EPA) für TIM Agent Systems |
 | Meilenstein | **M0 – Klärung und Plan** (es wird noch nichts gebaut) |
-| Stand | 2026-10-13, Entwurf v0.1 |
+| Stand | 2026-10-13, Entwurf v0.2 (F1 und F3 beantwortet) |
 | Status | wartet auf Antworten zu den offenen Fragen (Abschnitt 1) und auf "Go" |
 
 Legende: **[Entscheidung]** = von mir vorgeschlagen, durch "Go" bestätigt; **[Frage]** = brauche ich von dir; **[zu verifizieren]** = Annahme, die ich vor dem Bau gegen Doku bzw. die laufende n8n-Instanz prüfe.
@@ -17,9 +17,9 @@ Zu jeder Frage steht mein Vorschlag. Wenn du einem Vorschlag zustimmst, reicht "
 
 | # | Frage | Mein Vorschlag / Default |
 |---|---|---|
-| F1 | n8n Cloud oder self-hosted, welche Version? Ist die Instanz aktiv? (Im Repo liegt eine Übergabe für `timbaule.app.n8n.cloud`, dort war der Testzeitraum abgelaufen.) | Cloud-Instanz, aktuelle stabile Version ≥ 1.100. Ohne aktive Instanz kann ich nur importierbare JSON-Dateien liefern und nicht live testen. |
+| F1 | n8n Cloud oder self-hosted, welche Version? Ist die Instanz aktiv? (Im Repo liegt eine Übergabe für `timbaule.app.n8n.cloud`, dort war der Testzeitraum abgelaufen.) | **Beantwortet:** n8n Cloud, `https://timbaule.app.n8n.cloud`. Offen: Version (Einstellungen → Über n8n) und ob der Tarif aktiv ist. |
 | F2 | n8n-MCP-Server: In dieser Sitzung ist der n8n-MCP-Server vorhanden, aber **nicht autorisiert**. | In den claude.ai-Connector-Einstellungen autorisieren. Sonst liefere ich JSON-Dateien und eine Import-Anleitung. |
-| F3 | Welcher LLM-Anbieter darf genutzt werden (EU-Region, AVV/DPA)? Welche Keys gibt es? Ein OpenAI-Credential existiert bereits. | **Azure OpenAI mit EU-Data-Zone-Deployment** (Microsoft-Stack, AVV über den bestehenden Microsoft-Vertrag). Alternativen: OpenAI API mit EU-Datenresidenz [zu verifizieren: Vertragsvoraussetzungen], Mistral (EU), Claude über AWS Bedrock eu-central-1 oder Google Vertex europe-west. Der Anbieter steckt hinter dem Sub-Workflow `LLM aufrufen` und ist austauschbar. |
+| F3 | Welcher LLM-Anbieter darf genutzt werden (EU-Region, AVV/DPA)? Welche Keys gibt es? Ein OpenAI-Credential existiert bereits. | **Beantwortet: OpenAI.** Das vorhandene n8n-Credential `OpenAI account` wird genutzt. Für DSGVO empfohlen: ein eigenes OpenAI-Projekt mit EU-Datenresidenz und Zero-Data-Retention, sofern für deinen Account verfügbar, plus abgeschlossene AVV (DPA) mit OpenAI [zu verifizieren: Voraussetzungen im OpenAI-Dashboard]. Modellnamen (kleines Modell für Klassifizierung, stärkeres für Extraktion) stehen in der Config; die verfügbaren Modelle prüfe ich beim Bau in der Instanz. Der Anbieter bleibt hinter `SW LLM aufrufen` austauschbar. |
 | F4 | Microsoft: Gibt es Testpostfach, Teams-Kanal und SharePoint-Site? Wer kann Admin-Consent erteilen? Ist das Postfach ein Shared Mailbox oder ein Benutzerpostfach? | Shared Mailbox `anfragen-test@…`, eigene SharePoint-Site „EPA-Test“, Teams-Kanal „EPA-Freigaben“. Eine eigene Entra-App-Registrierung, Zugriff auf genau ein Postfach begrenzt (siehe 7.2). |
 | F5 | Freigabe in Teams: Gibt es einen Bot oder Power-Automate-Premium-Lizenzen? | Siehe Abschnitt 6, Variante **B** (stabil, ohne Bot). Variante C nur, wenn Power Automate Premium vorhanden ist. |
 | F6 | Datenspeicher: Bleibt Excel dauerhaft, oder planen wir Postgres ein? | **Postgres von Anfang an empfohlen** (Begründung 4.7). Wenn Excel gewünscht ist, baue ich Excel mit Repository-Sub-Workflows und dokumentiere die Restrisiken. |
@@ -352,7 +352,7 @@ Nach jedem Meilenstein folgt ein Kurzbericht (fertig, getestet, offen), und ich 
 | `EPA – Graph (Excel/SharePoint)` | Microsoft OAuth2 bzw. Excel OAuth2 | Speicher (nur bei Excel) |
 | `EPA – Postgres` | Postgres | Speicher (bei Postgres) |
 | `EPA – Teams` | Microsoft Teams OAuth2 | Karten und Benachrichtigungen |
-| `EPA – LLM` | Azure OpenAI / OpenAI / Mistral | Klassifizierung, Extraktion, Entwurf |
+| `OpenAI account` (vorhanden) | OpenAI API | Klassifizierung, Extraktion, Entwurf |
 | `EPA – OCR` (optional) | HTTP Header Auth | Azure AI Document Intelligence |
 | `EPA – Freigabe-Signatur` | n8n-Variable bzw. Credential | Pepper für das Token-Hashing |
 
