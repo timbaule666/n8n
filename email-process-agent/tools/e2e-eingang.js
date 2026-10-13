@@ -113,6 +113,7 @@ function postfachKopie(ids, mockPort, errorWorkflow) {
 	const raus = new Set(['Neue Mail im Posteingang', 'Postfach festlegen', 'Jede Mail einzeln verarbeiten']);
 	const nodes = quelle.nodes.filter((n) => !raus.has(n.name)).map((n) => {
 		const k = JSON.parse(JSON.stringify(n));
+		if (k.type === 'n8n-nodes-base.code') k.parameters.jsCode = k.parameters.jsCode.split('https://graph.microsoft.com/v1.0').join(`http://127.0.0.1:${mockPort}/graph/v1.0`);
 		if (k.type === 'n8n-nodes-base.httpRequest') {
 			k.parameters.url = k.parameters.url.split('https://graph.microsoft.com/v1.0').join(`http://127.0.0.1:${mockPort}/graph/v1.0`);
 			k.parameters.authentication = 'none';
@@ -247,6 +248,7 @@ async function main() {
 				const neu = (await tabelle('epa_fehler_log')).filter((z) => z.id > fehlerVorher && z.fehlercode === e.fehler.fehlercode);
 				check('Fehlerlog', `${e.fehler.statuscode} ${e.fehler.fehlercode}`, neu.length ? `${neu[0].statuscode} ${neu[0].fehlercode}` : `keiner (HTTP ${antwort.status})`);
 				const claim = (await tabelle('epa_verarbeitete_mails')).filter((c) => c.kunde_id === KUNDE && c.message_id === basisMail.internetMessageId);
+				check('Fehlerlog-Einträge (kein Doppelalarm)', 1, (await tabelle('epa_fehler_log')).filter((z) => z.id > fehlerVorher && z.node !== 'Teams-Nachricht senden').length);
 				check('Eingang freigegeben', 'fehler', claim.map((c) => c.status).join('/'));
 				check('Fehlerlog ohne Mailinhalt', 'ja', neu.every((z) => !String(z.meldung).includes(basisMail.subject)) ? 'ja' : 'nein');
 			}
@@ -260,6 +262,7 @@ async function main() {
 		const teamsFehler = (await tabelle('epa_fehler_log')).filter((z) => z.kunde_id === KUNDE && z.node === 'Teams-Nachricht senden');
 		console.log(`\nHinweis: ${teamsFehler.length} Teams-Meldungen konnten lokal nicht zugestellt werden (Dummy-Credential) und stehen als 502 im Fehlerlog.`);
 	} finally {
+		if (process.env.EPA_E2E_BEHALTEN) temp.length = 0;
 		for (const id of temp) await entfernen(id).catch((e) => console.error('Aufräumen:', e.message));
 		await mock.stoppen();
 	}

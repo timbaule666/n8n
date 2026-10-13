@@ -21,32 +21,32 @@ return [{ json: eintrag }];
 `);
 
 	// Fällt der Speicher aus, soll der Alarm trotzdem rausgehen.
-	const protokollieren = wf.tabelle('Fehler protokollieren', [440, 0], 'insert', 'epa_fehler_log', {},
+	const protokollieren = wf.tabelle('Fehler protokollieren', [1320, 0], 'insert', 'epa_fehler_log', {},
 		{ onError: 'continueRegularOutput', alwaysOutputData: true });
 
 	const K = "$('Fehler klassifizieren').first().json";
 	// Ein Eingang, dessen Verarbeitung abgebrochen ist, gilt nicht mehr als "in Arbeit": eine erneute Ausführung
 	// derselben Mail wird dann nicht als Duplikat verworfen (src/eingang.js dedupeEntscheiden).
-	const freigabeDaten = wf.code('Eingang-Freigabe vorbereiten', [440, 180], [], `
+	const freigabeDaten = wf.code('Eingang-Freigabe vorbereiten', [440, 0], [], `
 return [{ json: { status: 'fehler' } }];
 `);
-	const freigeben = wf.tabelle('Eingang freigeben', [660, 180], 'update', 'epa_verarbeitete_mails', {
+	const freigeben = wf.tabelle('Eingang freigeben', [660, 0], 'update', 'epa_verarbeitete_mails', {
 		match: 'anyCondition',
 		bedingungen: [
 			['execution_id', 'eq', `={{ ${K}.execution_id || '__keine__' }}`],
 			['aufrufer_execution_id', 'eq', `={{ ${K}.execution_id || '__keine__' }}`],
 		],
 	}, { onError: 'continueRegularOutput', alwaysOutputData: true });
-	const noetig = wf.node('Vorgang sichern nötig?', 'n8n-nodes-base.if', [880, 0], {
+	const noetig = wf.node('Vorgang sichern nötig?', 'n8n-nodes-base.if', [1540, 0], {
 		conditions: bedingungen([bedingung(`={{ ${K}.eskalieren }}`, { type: 'boolean', operation: 'true', singleValue: true })]),
 		options: { looseTypeValidation: true },
 	});
 
-	const mandant = wf.tabelle('Mandant ermitteln', [880, -140], 'get', 'epa_vorgaenge', {
+	const mandant = wf.tabelle('Mandant ermitteln', [1760, -140], 'get', 'epa_vorgaenge', {
 		bedingungen: [['vorgangs_id', 'eq', `={{ ${K}.vorgangs_id }}`]],
 	}, { onError: 'continueRegularOutput', alwaysOutputData: true });
 
-	const sichern = wf.aufruf('Vorgang sichern', [1100, -140], 'EPA SW Status setzen', [
+	const sichern = wf.aufruf('Vorgang sichern', [1980, -140], 'EPA SW Status setzen', [
 		['kunde_id', 'string', '={{ $json.kunde_id }}'],
 		['vorgangs_id', 'string', `={{ ${K}.vorgangs_id }}`],
 		['neuer_status', 'string', 'Eskaliert / Manuell'],
@@ -57,15 +57,15 @@ return [{ json: { status: 'fehler' } }];
 		['nur_wenn_erlaubt', 'boolean', '={{ true }}'],
 	], { onError: 'continueRegularOutput', alwaysOutputData: true });
 
-	const eskDaten = wf.code('Eskalation vorbereiten', [1320, -140], [], `
+	const eskDaten = wf.code('Eskalation vorbereiten', [2200, -140], [], `
 return [{ json: { eskaliert: $input.first().json.ok === true } }];
 `);
 	const P = "$('Fehler protokollieren').first().json";
-	const eskVermerken = wf.tabelle('Eskalation vermerken', [1540, -140], 'update', 'epa_fehler_log', {
+	const eskVermerken = wf.tabelle('Eskalation vermerken', [2420, -140], 'update', 'epa_fehler_log', {
 		bedingungen: [['id', 'eq', `={{ ${P}.id ?? -1 }}`]],
 	}, { onError: 'continueRegularOutput', alwaysOutputData: true });
 
-	const vorbereiten = wf.code('Alarm vorbereiten', [1760, 0], ['fehlerklassen'], `
+	const vorbereiten = wf.code('Alarm vorbereiten', [2640, 0], ['fehlerklassen'], `
 const e = ${K};
 const protokoll = ${P};
 let eskaliert = false;
@@ -86,7 +86,7 @@ if (!fehlerId) html += '<br><b>Achtung:</b> Eintrag im Fehlerlog fehlgeschlagen 
 return [{ json: { fehler_id: fehlerId, eskaliert, alarm_html: html } }];
 `);
 
-	const teams = wf.node('Entwickler-Kanal alarmieren', 'n8n-nodes-base.microsoftTeams', [1980, 0], {
+	const teams = wf.node('Entwickler-Kanal alarmieren', 'n8n-nodes-base.microsoftTeams', [2860, 0], {
 		resource: 'channelMessage',
 		operation: 'create',
 		teamId: { __rl: true, mode: 'id', value: '<TEAM_ID_ENTWICKLER>' },
@@ -97,18 +97,30 @@ return [{ json: { fehler_id: fehlerId, eskaliert, alarm_html: html } }];
 	}, Workflow.retry());
 
 	const A = "$('Alarm vorbereiten').first().json";
-	const vorhanden = wf.node('Fehler-ID vorhanden?', 'n8n-nodes-base.if', [2200, 0], {
+	const vorhanden = wf.node('Fehler-ID vorhanden?', 'n8n-nodes-base.if', [3080, 0], {
 		conditions: bedingungen([bedingung(`={{ ${A}.fehler_id }}`, { type: 'number', operation: 'exists', singleValue: true })]),
 		options: { looseTypeValidation: true },
 	});
-	const alarmDaten = wf.code('Alarmzeit vorbereiten', [2420, -80], [], `
+	const alarmDaten = wf.code('Alarmzeit vorbereiten', [3300, -80], [], `
 return [{ json: { alarmiert_am: new Date().toISOString() } }];
 `);
-	const alarmVermerken = wf.tabelle('Alarm vermerken', [2640, -80], 'update', 'epa_fehler_log', {
+	const alarmVermerken = wf.tabelle('Alarm vermerken', [3520, -80], 'update', 'epa_fehler_log', {
 		bedingungen: [['id', 'eq', `={{ ${A}.fehler_id }}`]],
 	});
 
-	wf.kette(trigger, klassifizieren, protokollieren, freigabeDaten, freigeben, noetig);
+	// Ein Fehler in einem Sub-Workflow löst EPA-05 zweimal aus: im Sub-Workflow selbst und im Aufrufer, dessen
+	// Execute-Workflow-Node den Fehler weiterreicht (erkennbar an error.executionId der Unter-Ausführung).
+	// Protokoll und Alarm nur für den ursprünglichen Fehler; den Eingang gibt auch der Aufrufer frei.
+	const eigener = wf.node('Ursprünglicher Fehler?', 'n8n-nodes-base.if', [880, 0], {
+		conditions: bedingungen([bedingung("={{ ($('Bei Workflow-Fehler').first().json.execution || {}).error?.executionId }}", { type: 'string', operation: 'empty', singleValue: true })]),
+		options: { looseTypeValidation: true },
+	});
+	wf.kette(trigger, klassifizieren, freigabeDaten, freigeben, eigener);
+	const uebernehmen = wf.code('Fehlereintrag übernehmen', [1100, 0], [], `
+return [{ json: $('Fehler klassifizieren').first().json }];
+`);
+	wf.verbinde(eigener, uebernehmen, 0);
+	wf.kette(uebernehmen, protokollieren, noetig);
 	wf.verbinde(noetig, mandant, 0);
 	wf.verbinde(noetig, vorbereiten, 1);
 	wf.kette(mandant, sichern, eskDaten, eskVermerken, vorbereiten);

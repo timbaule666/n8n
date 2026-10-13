@@ -164,6 +164,11 @@ return [{ json: { ordner_id: treffer[0].id } }];
 `);
 	const verschieben = graph(wf, 'In Archiv verschieben', [2860, 200], 'POST', `=${BASIS}/move`, { body: '={{ JSON.stringify({ destinationId: $json.ordner_id }) }}' });
 
+	const ergebnis = wf.code('Ergebnis melden', [3080, 300], [], `
+const r = $('Eingang verarbeiten').first().json;
+return [{ json: { ...r, verschoben: $('In Archiv verschieben').isExecuted } }];
+`);
+
 	wf.kette(trigger, festlegen, einzeln);
 	wf.kette(start, laden, liste, pruefen, zuLaden);
 	wf.verbinde(zuLaden, download, 0);
@@ -171,6 +176,7 @@ return [{ json: { ordner_id: treffer[0].id } }];
 	wf.kette(download, kodieren, pdf, zusammen);
 	wf.kette(zusammen, verarbeiten, archivieren);
 	wf.verbinde(archivieren, ordner, 0);
-	wf.kette(ordner, ordnerId, verschieben);
+	wf.verbinde(archivieren, ergebnis, 1);
+	wf.kette(ordner, ordnerId, verschieben, ergebnis);
 	return wf;
 };

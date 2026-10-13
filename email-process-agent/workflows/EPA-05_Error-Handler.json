@@ -65,7 +65,7 @@
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
       "position": [
-        440,
+        1320,
         0
       ],
       "onError": "continueRegularOutput",
@@ -83,7 +83,7 @@
       "typeVersion": 2,
       "position": [
         440,
-        180
+        0
       ]
     },
     {
@@ -124,7 +124,7 @@
       "typeVersion": 1.1,
       "position": [
         660,
-        180
+        0
       ],
       "onError": "continueRegularOutput",
       "alwaysOutputData": true
@@ -160,7 +160,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        880,
+        1540,
         0
       ]
     },
@@ -190,7 +190,7 @@
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
       "position": [
-        880,
+        1760,
         -140
       ],
       "retryOnFail": true,
@@ -315,7 +315,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        1100,
+        1980,
         -140
       ],
       "onError": "continueRegularOutput",
@@ -332,7 +332,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1320,
+        2200,
         -140
       ]
     },
@@ -368,7 +368,7 @@
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
       "position": [
-        1540,
+        2420,
         -140
       ],
       "onError": "continueRegularOutput",
@@ -385,7 +385,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1760,
+        2640,
         0
       ]
     },
@@ -414,7 +414,7 @@
       "type": "n8n-nodes-base.microsoftTeams",
       "typeVersion": 2,
       "position": [
-        1980,
+        2860,
         0
       ],
       "retryOnFail": true,
@@ -452,7 +452,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        2200,
+        3080,
         0
       ]
     },
@@ -467,7 +467,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2420,
+        3300,
         -80
       ]
     },
@@ -503,8 +503,58 @@
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
       "position": [
-        2640,
+        3520,
         -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ae8b5086-fd08-466a-ab8e-c85690552879",
+              "leftValue": "={{ ($('Bei Workflow-Fehler').first().json.execution || {}).error?.executionId }}",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "3ad84d3b-2848-4a2d-a653-a16527df5822",
+      "name": "Ursprünglicher Fehler?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: $('Fehler klassifizieren').first().json }];\n"
+      },
+      "id": "3f35faf8-4987-4d65-a8cd-8eeaddaeddd0",
+      "name": "Fehlereintrag übernehmen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
       ]
     }
   ],
@@ -521,17 +571,6 @@
       ]
     },
     "Fehler klassifizieren": {
-      "main": [
-        [
-          {
-            "node": "Fehler protokollieren",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fehler protokollieren": {
       "main": [
         [
           {
@@ -554,6 +593,39 @@
       ]
     },
     "Eingang freigeben": {
+      "main": [
+        [
+          {
+            "node": "Ursprünglicher Fehler?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ursprünglicher Fehler?": {
+      "main": [
+        [
+          {
+            "node": "Fehlereintrag übernehmen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fehlereintrag übernehmen": {
+      "main": [
+        [
+          {
+            "node": "Fehler protokollieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fehler protokollieren": {
       "main": [
         [
           {

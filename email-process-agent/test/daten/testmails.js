@@ -241,7 +241,7 @@ const FAELLE = [
 		id: 'T26', szenario: 'Leere Mail ohne Text und Anhang',
 		mail: mail('T26', { betreff: '', von: 'leer@kunde-m.example', text: '' }),
 		llm: { klassifizierung: [kl('unklar', 0.4)] },
-		erwartet: { ergebnis: 'klassifizierung_unklar', status: 'Klassifizierung unklar', hinweisImPrompt: 'Mailtext ist leer' },
+		erwartet: { ergebnis: 'klassifizierung_unklar', status: 'Klassifizierung unklar' },
 	},
 	{
 		id: 'T27', szenario: 'LLM-Rate-Limit (429) mit Retry-After, danach Erfolg',

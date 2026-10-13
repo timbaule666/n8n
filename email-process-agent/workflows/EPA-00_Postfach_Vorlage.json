@@ -484,6 +484,21 @@
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst r = $('Eingang verarbeiten').first().json;\nreturn [{ json: { ...r, verschoben: $('In Archiv verschieben').isExecuted } }];\n"
+      },
+      "id": "768a1567-640b-45aa-af17-0fad218b0099",
+      "name": "Ergebnis melden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3080,
+        300
+      ]
     }
   ],
   "connections": {
@@ -634,6 +649,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Ergebnis melden",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -653,6 +675,17 @@
         [
           {
             "node": "In Archiv verschieben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "In Archiv verschieben": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis melden",
             "type": "main",
             "index": 0
           }
