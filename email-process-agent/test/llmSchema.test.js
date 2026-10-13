@@ -79,7 +79,7 @@ test('Prompt-Aufbau: Datenblock nicht verlassbar, Platzhalter, Anhänge nur bei 
 	assert.equal(typeof k.messages[1].content, 'string');
 	assert.doesNotMatch(k.messages[1].content, /Inhalt Anhang/);
 	assert.match(k.messages[1].content, /- a\.pdf \(application\/pdf, Status: ok\)/);
-	assert.throws(() => llm.anfrageBauen('entwurf', PROMPT, { mail: MAIL }, PROFIL), /Unbekannte LLM-Aufgabe/);
+	assert.throws(() => llm.anfrageBauen('zusammenfassung', PROMPT, { mail: MAIL }, PROFIL), /Unbekannte LLM-Aufgabe/);
 });
 
 const SCHEMA = llm.klassifizierungSchema(['transport']);
@@ -125,4 +125,15 @@ test('Antwort auswerten: ungültiges JSON -> ein Korrekturversuch, danach 422', 
 	assert.ok(u.fehler.length > 0);
 	assert.equal(llm.antwortAuswerten(antwort(GUT, { choices: [{ message: { content: GUT }, finish_reason: 'length' }] }), { schema: SCHEMA, korrekturen: 0 }).aktion, 'korrigieren');
 	assert.equal(llm.antwortAuswerten(antwort(null, { choices: [{ message: { content: null, refusal: 'nein' }, finish_reason: 'stop' }] }), { schema: SCHEMA, korrekturen: 1 }).aktion, 'ungueltig');
+});
+
+test('Entwurf: Schema nur Hülle, Prompt ohne Mailinhalt', () => {
+	const s = llm.entwurfSchema();
+	assert.deepEqual(llm.validieren({ anrede: 'Guten Tag,', einleitung: 'x', schluss: 'y' }, s), []);
+	assert.deepEqual(llm.validieren({ anrede: 'a', einleitung: 'b', schluss: 'c', baustein: 'd' }, s), ['$.baustein: nicht erlaubt']);
+	const b = llm.anfrageBauen('entwurf', { system: 'Stil {{ANREDE_STIL}} {{SPRACHE}}', user_vorlage: '{{LUECKEN}}\nRunde {{RUNDE}}\n{{MAIL}}' },
+		{ anrede_stil: 'Sie', sprache: 'de', name: 'Eva', betreff: 'Anfrage', luecken: ['Telefon'], runde: 2 }, PROFIL);
+	assert.equal(b.messages[0].content, 'Stil Sie de');
+	assert.match(b.messages[1].content, /- Telefon\nRunde 2\n<mail_daten>\nName des Kunden: Eva\nBetreff: Anfrage\n<\/mail_daten>/);
+	assert.equal(b.response_format.json_schema.name, 'entwurf');
 });

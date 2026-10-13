@@ -18,7 +18,8 @@ const VERSIONEN = Object.freeze({
 	'n8n-nodes-base.microsoftTeams': 2,
 	'n8n-nodes-base.stickyNote': 1,
 	'n8n-nodes-base.dataTable': 1.1,
-	'n8n-nodes-base.webhook': 2, // nur Test-Harness (tools/e2e-test.js)
+	'n8n-nodes-base.webhook': 2,
+	'n8n-nodes-base.respondToWebhook': 1.5,
 	'n8n-nodes-base.httpRequest': 4.2,
 	'n8n-nodes-base.wait': 1.1,
 	'n8n-nodes-base.extractFromFile': 1.1,
@@ -155,7 +156,7 @@ class Workflow {
 	}
 
 	/** Aufruf eines Sub-Workflows. Die ID wird beim Deploy anhand des Namens gesetzt. */
-	aufruf(name, position, zielWorkflow, eingaben, extra = {}) {
+	aufruf(name, position, zielWorkflow, eingaben, extra = {}, modus = 'once') {
 		return this.node(
 			name,
 			'n8n-nodes-base.executeWorkflow',
@@ -179,7 +180,33 @@ class Workflow {
 					attemptToConvertTypes: false,
 					convertFieldsToString: false,
 				},
-				mode: 'once',
+				mode: modus,
+				options: { waitForSubWorkflow: true },
+			},
+			extra,
+		);
+	}
+
+	/**
+	 * Aufruf eines Workflows, dessen ID erst zur Laufzeit feststeht (z. B. Postfach-Workflow aus der Config).
+	 * Wird beim Deploy nicht umgeschrieben.
+	 */
+	aufrufDynamisch(name, position, idAusdruck, eingaben, extra = {}, modus = 'once') {
+		return this.node(
+			name,
+			'n8n-nodes-base.executeWorkflow',
+			position,
+			{
+				workflowId: { __rl: true, mode: 'id', value: idAusdruck },
+				workflowInputs: {
+					mappingMode: 'defineBelow',
+					value: Object.fromEntries(eingaben.map(([n, , ausdruck]) => [n, ausdruck])),
+					matchingColumns: [],
+					schema: eingaben.map(([n, t]) => ({ id: n, displayName: n, required: false, defaultMatch: false, display: true, canBeUsedToMatch: true, type: t, removed: false })),
+					attemptToConvertTypes: false,
+					convertFieldsToString: false,
+				},
+				mode: modus,
 				options: { waitForSubWorkflow: true },
 			},
 			extra,

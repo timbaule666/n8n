@@ -87,6 +87,33 @@ function eindeutigeCredentials(workflows) {
 	return Object.fromEntries(Object.entries(jeTyp).filter(([, m]) => m.size === 1).map(([t, m]) => [t, [...m.values()][0]]));
 }
 
+/**
+ * EPA-05 zuerst, danach Sub-Workflows vor ihren Aufrufern: n8n lehnt das Aktualisieren bzw. Veröffentlichen
+ * eines Workflows ab, der einen unveröffentlichten Sub-Workflow aufruft.
+ */
+function deployReihenfolge(workflows) {
+	const nachName = new Map(workflows.map((w) => [w.name, w]));
+	const ziele = (w) => w.nodes
+		.filter((n) => n.type === 'n8n-nodes-base.executeWorkflow' && n.parameters.workflowId && n.parameters.workflowId.cachedResultName)
+		.map((n) => n.parameters.workflowId.cachedResultName)
+		.filter((z) => nachName.has(z) && z !== w.name);
+	const fertig = new Set();
+	const out = [];
+	const besuchen = (w, pfad = new Set()) => {
+		if (fertig.has(w.name)) return;
+		if (pfad.has(w.name)) throw new Error(`Zyklische Workflow-Aufrufe: ${[...pfad, w.name].join(' -> ')}`);
+		pfad.add(w.name);
+		for (const z of ziele(w).sort()) besuchen(nachName.get(z), pfad);
+		pfad.delete(w.name);
+		fertig.add(w.name);
+		out.push(w);
+	};
+	const sortiert = [...workflows].sort((a, b) => a.name.localeCompare(b.name));
+	if (nachName.has(ERROR_WORKFLOW)) besuchen(nachName.get(ERROR_WORKFLOW));
+	for (const w of sortiert) besuchen(w);
+	return out;
+}
+
 function verknuepfen(wf, ids, bestehend, { errorWorkflowSetzen = true, credentialsJeTyp = {} } = {}) {
 	const alt = new Map((bestehend?.nodes || []).map((n) => [n.name, n]));
 	const nodes = wf.nodes.map((n) => {
@@ -101,7 +128,8 @@ function verknuepfen(wf, ids, bestehend, { errorWorkflowSetzen = true, credentia
 				}
 			}
 		}
-		const selbstaufruf = n.type === 'n8n-nodes-base.executeWorkflow' && n.parameters.workflowId.mode === 'id' && n.parameters.workflowId.value === '={{ $workflow.id }}';
+		// Selbstaufruf ($workflow.id) bzw. ID aus der Config: nicht umschreiben
+		const selbstaufruf = n.type === 'n8n-nodes-base.executeWorkflow' && n.parameters.workflowId.mode === 'id' && String(n.parameters.workflowId.value).startsWith('={{');
 		if (n.type === 'n8n-nodes-base.executeWorkflow' && !selbstaufruf) {
 			const ziel = n.parameters.workflowId.cachedResultName;
 			if (!ids[ziel]) throw new Error(`${wf.name}/${n.name}: Ziel-Workflow "${ziel}" nicht gefunden`);
@@ -138,7 +166,7 @@ async function deploy({ basis, schluessel, trocken = false, ordner = 'workflows'
 
 	// 2. EPA-05 zuerst schreiben und veröffentlichen: n8n 2.x akzeptiert als Error Workflow nur
 	//    veröffentlichte Workflows, und veröffentlichen geht erst mit zugewiesenen Credentials.
-	const reihenfolge = [...lokal].sort((a, b) => (a.name === ERROR_WORKFLOW ? -1 : b.name === ERROR_WORKFLOW ? 1 : 0));
+	const reihenfolge = deployReihenfolge(lokal);
 	let errorWorkflowVeroeffentlicht = false;
 	const offen = [];
 	const bestehende = {};
@@ -192,4 +220,4 @@ if (require.main === module) {
 	});
 }
 
-module.exports = { deploy, verknuepfen, eindeutigeCredentials, credSchluessel };
+module.exports = { deploy, verknuepfen, eindeutigeCredentials, credSchluessel, deployReihenfolge };

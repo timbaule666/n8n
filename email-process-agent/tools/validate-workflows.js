@@ -37,7 +37,7 @@ function pruefeWorkflow(json, alleNamen) {
 		}
 		if (n.type === 'n8n-nodes-base.executeWorkflow') {
 			const w = n.parameters.workflowId;
-			const selbst = w.mode === 'id' && w.value === '={{ $workflow.id }}';
+			const selbst = w.mode === 'id' && typeof w.value === 'string' && w.value.startsWith('={{');
 			if (!selbst && !alleNamen.has(w.cachedResultName)) fehler.push(`${n.name}: ruft unbekannten Workflow "${w.cachedResultName}" auf`);
 		}
 		if (n.type === 'n8n-nodes-base.httpRequest') {

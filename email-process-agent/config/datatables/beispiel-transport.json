@@ -32,7 +32,9 @@
    "anhang_limits": "{\"max_mb_je_anhang\": 10, \"max_mb_je_mail\": 25, \"typen\": [\"application/pdf\", \"image/jpeg\", \"image/png\", \"image/tiff\", \"application/vnd.openxmlformats-officedocument.wordprocessingml.document\"]}",
    "leerantwort_fristverlaengerung_stunden": 24,
    "freigabe_erinnerung_stunden": 4,
-   "freigabe_ablauf_stunden": 48
+   "freigabe_ablauf_stunden": 48,
+   "postfach_workflow_id": "<ID_DES_POSTFACH_WORKFLOWS>",
+   "freigabe_basis_url": ""
   }
  ],
  "epa_config_pflichtfelder": [

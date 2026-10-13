@@ -8,6 +8,11 @@ const MAIL_FELDER = [
 ].join(',');
 // Technische Obergrenze für das Herunterladen; die fachlichen Limits je Kunde prüft EPA-01 (anhang_limits).
 const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
+// Eigene Mail-Eigenschaft (Extended Property, PS_PUBLIC_STRINGS) zur Wiedererkennung gesendeter Rückfragen.
+const PROP_FREIGABE = 'String {00020329-0000-0000-C000-000000000046} Name EPA-Freigabe-ID';
+const AKTIONEN = ['eingang', 'entwurf_anlegen', 'entwurf_aktualisieren', 'entwurf_senden'];
+const E = "$('Bei Einzelaufruf').first().json";
+const P = `{{ encodeURIComponent(${E}.postfach) }}`;
 
 function graph(wf, name, pos, methode, url, extra = {}, optionen = {}) {
 	const p = {
@@ -17,6 +22,12 @@ function graph(wf, name, pos, methode, url, extra = {}, optionen = {}) {
 		nodeCredentialType: 'microsoftOutlookOAuth2Api',
 		options: optionen,
 	};
+	if (extra.query) {
+		// Query-Parameter über die Node-Option, damit OData-Filter korrekt kodiert werden
+		p.sendQuery = true;
+		p.specifyQuery = 'keypair';
+		p.queryParameters = { parameters: Object.entries(extra.query).map(([name, value]) => ({ name, value })) };
+	}
 	if (extra.body) {
 		p.sendBody = true;
 		p.specifyBody = 'json';
@@ -33,6 +44,7 @@ module.exports = function () {
 		'**Zweck:** Holt neue Mails aus dem Posteingang (Polling, Bauplan 5.1), lädt Header und Anhänge über Microsoft Graph, liest PDF-Text und bereitet Bilder für die KI auf und übergibt alles an "EPA-01 Eingang verarbeiten". Aussortierte Mails (Newsletter, Auto-Replies, Blockliste) werden danach in den Archivordner verschoben, nie gelöscht.',
 		'**Trigger:** Microsoft Outlook Trigger (jede Minute, nur Posteingang). Jede Mail wird als eigene Ausführung dieses Workflows verarbeitet (Aufruf von sich selbst), damit ein Fehler nur diese eine Mail betrifft.',
 		'**Einrichten:** 1) Workflow duplizieren und umbenennen (z. B. "EPA-00 Postfach anfragen@kunde.de"). 2) Im Node "Postfach festlegen" die Adresse eintragen (muss in epa_config_allgemein.postfach stehen). 3) Outlook-Credential (Microsoft Outlook OAuth2, bei Shared Mailbox mit "Use Shared Mailbox") im Trigger und in allen Graph-Nodes zuweisen. 4) Archivordner (Config: archivordner) als Ordner auf oberster Ebene im Postfach anlegen. 5) Veröffentlichen.',
+		'**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread, Betreff mit Vorgangs-ID, Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.',
 		'**Hinweis:** Der Trigger liefert nur die Message-ID; Header (In-Reply-To, References, Auto-Submitted, Authentication-Results) holt "Mail laden", weil der Trigger sie nicht ausgibt.',
 	].join('\n'), { breite: 900, hoehe: 380 });
 
@@ -56,9 +68,9 @@ return $input.all().filter((i) => i.json.id).map((i) => ({ json: { postfach: POS
 		workflowId: { __rl: true, mode: 'id', value: '={{ $workflow.id }}' },
 		workflowInputs: {
 			mappingMode: 'defineBelow',
-			value: { postfach: '={{ $json.postfach }}', graph_id: '={{ $json.graph_id }}' },
+			value: { aktion: 'eingang', postfach: '={{ $json.postfach }}', graph_id: '={{ $json.graph_id }}' },
 			matchingColumns: [],
-			schema: ['postfach', 'graph_id'].map((n) => ({ id: n, displayName: n, required: false, defaultMatch: false, display: true, canBeUsedToMatch: true, type: 'string', removed: false })),
+			schema: ['aktion', 'postfach', 'graph_id'].map((n) => ({ id: n, displayName: n, required: false, defaultMatch: false, display: true, canBeUsedToMatch: true, type: 'string', removed: false })),
 			attemptToConvertTypes: false,
 			convertFieldsToString: false,
 		},
@@ -66,14 +78,31 @@ return $input.all().filter((i) => i.json.id).map((i) => ({ json: { postfach: POS
 		options: { waitForSubWorkflow: true },
 	}, { onError: 'continueRegularOutput' });
 
-	// ---------------------------------------------------------------- Einzelne Mail
+	// ---------------------------------------------------------------- Einzelne Mail (aktion "eingang") und Postfach-Aktionen
 	const start = wf.trigger('Bei Einzelaufruf', [0, 300], [
+		['aktion', 'string'],
 		['postfach', 'string'],
 		['graph_id', 'string'],
+		['internet_message_id', 'string'],
+		['entwurf_id', 'string'],
+		['freigabe_id', 'string'],
+		['vorgangs_id', 'string'],
+		['html', 'string'],
 	]);
+	const aktion = wf.node('Aktion', 'n8n-nodes-base.switch', [220, 300], {
+		mode: 'rules',
+		rules: {
+			values: AKTIONEN.map((a) => ({
+				conditions: bedingungen([bedingung("={{ $json.aktion || 'eingang' }}", { type: 'string', operation: 'equals' }, a)]),
+				renameOutput: true,
+				outputKey: a,
+			})),
+		},
+		options: {},
+	});
 	const BASIS = `${GRAPH}/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.graph_id) }}`;
-	const laden = graph(wf, 'Mail laden', [220, 300], 'GET', `=${BASIS}?$select=${MAIL_FELDER}`);
-	const liste = graph(wf, 'Anhänge auflisten', [440, 300], 'GET', `=${BASIS}/attachments?$select=id,name,contentType,size,isInline&$top=100`);
+	const laden = graph(wf, 'Mail laden', [440, 300], 'GET', `=${BASIS}`, { query: { $select: MAIL_FELDER } });
+	const liste = graph(wf, 'Anhänge auflisten', [660, 300], 'GET', `=${BASIS}/attachments`, { query: { $select: 'id,name,contentType,size,isInline', $top: '100' } });
 
 	const pruefen = wf.code('Anhänge prüfen', [660, 300], [], `
 const MAX = ${MAX_DOWNLOAD_BYTES};
@@ -154,8 +183,8 @@ return [{ json: {
 		conditions: bedingungen([bedingung('={{ $json.archivieren }}', { type: 'boolean', operation: 'true', singleValue: true })]),
 		options: {},
 	});
-	const ordner = graph(wf, 'Archivordner suchen', [2420, 200], 'GET',
-		`=${GRAPH}/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/mailFolders?$filter=displayName eq '{{ String($json.archivordner).replace(/'/g, "''") }}'&$select=id,displayName`);
+	const ordner = graph(wf, 'Archivordner suchen', [2420, 200], 'GET', `=${GRAPH}/users/${P}/mailFolders`,
+		{ query: { $filter: "=displayName eq '{{ String($json.archivordner).replace(/'/g, \"''\") }}'", $select: 'id,displayName' } });
 	const ordnerId = wf.code('Ordner-ID ermitteln', [2640, 200], [], `
 const name = $('Eingang verarbeiten').first().json.archivordner;
 const treffer = ($input.first().json.value || []).filter((f) => f.displayName === name);
@@ -169,8 +198,91 @@ const r = $('Eingang verarbeiten').first().json;
 return [{ json: { ...r, verschoben: $('In Archiv verschieben').isExecuted } }];
 `);
 
+	// ---------------------------------------------------------------- Aktion: Antwortentwurf im Thread anlegen (Bauplan 5.4)
+	const suchen = graph(wf, 'Ursprungsmail suchen', [440, 700], 'GET', `=${GRAPH}/users/${P}/messages`, {
+		query: { $filter: `=internetMessageId eq '{{ String(${E}.internet_message_id).replace(/'/g, "''") }}'`, $select: 'id,subject', $top: '2' },
+	});
+	const ursprung = wf.code('Ursprung prüfen', [660, 700], [], `
+const e = $('Bei Einzelaufruf').first().json;
+const treffer = $input.first().json.value || [];
+if (!treffer.length) throw new Error(\`[EPA:404:NICHT_GEFUNDEN:\${e.vorgangs_id || '-'}] Ursprungsmail für den Antwortentwurf nicht im Postfach gefunden\`);
+return [{ json: { id: treffer[0].id } }];
+`);
+	const reply = graph(wf, 'Antwortentwurf anlegen', [880, 700], 'POST', `=${GRAPH}/users/${P}/messages/{{ encodeURIComponent($json.id) }}/createReply`, { body: '={}' });
+	const befuellen = graph(wf, 'Entwurf befüllen', [1100, 700], 'PATCH', `=${GRAPH}/users/${P}/messages/{{ encodeURIComponent($json.id) }}`, {
+		body: `={{ JSON.stringify({ subject: String($json.subject || '').includes('[' + ${E}.vorgangs_id + ']') ? $json.subject : ($json.subject || '') + ' [' + ${E}.vorgangs_id + ']', body: { contentType: 'HTML', content: ${E}.html }, singleValueExtendedProperties: [{ id: ${JSON.stringify(PROP_FREIGABE)}, value: ${E}.freigabe_id }] }) }}`,
+	});
+	const entwurfMelden = wf.code('Entwurf melden', [1320, 700], [], `
+const d = $input.first().json;
+const an = (d.toRecipients || []).map((r) => r.emailAddress && r.emailAddress.address).filter(Boolean);
+return [{ json: { entwurf_id: d.id, betreff: d.subject || '', empfaenger: an.join(', '), internet_message_id: d.internetMessageId || null } }];
+`);
+
+	// ---------------------------------------------------------------- Aktion: Entwurf aktualisieren (Freigabe mit Bearbeitung)
+	const aktualisieren = graph(wf, 'Entwurfstext ersetzen', [440, 900], 'PATCH', `=${GRAPH}/users/${P}/messages/{{ encodeURIComponent(${E}.entwurf_id) }}`, {
+		body: `={{ JSON.stringify({ body: { contentType: 'HTML', content: ${E}.html } }) }}`,
+	});
+	const aktualisiert = wf.code('Aktualisierung melden', [660, 900], [], `
+return [{ json: { aktualisiert: true, entwurf_id: $input.first().json.id } }];
+`);
+
+	// ---------------------------------------------------------------- Aktion: Entwurf senden, ohne Doppelversand (Bauplan 5.4, Punkt 3)
+	const pruefenEntwurf = graph(wf, 'Entwurf abrufen', [440, 1100], 'GET', `=${GRAPH}/users/${P}/messages/{{ encodeURIComponent(${E}.entwurf_id) }}`,
+		{ query: { $select: 'id,isDraft,internetMessageId' }, node: { retryOnFail: false } },
+		{ response: { response: { fullResponse: true, neverError: true, responseFormat: 'json' } } });
+	const entscheiden = wf.code('Versand entscheiden', [660, 1100], [], `
+const e = $('Bei Einzelaufruf').first().json;
+const r = $input.first().json;
+const status = Number(r.statusCode);
+if (status === 200 && r.body && r.body.isDraft === true) return [{ json: { weg: 'senden', internet_message_id: r.body.internetMessageId || null } }];
+if (status === 404 || (status === 200 && r.body && r.body.isDraft === false)) return [{ json: { weg: 'suchen', internet_message_id: null } }];
+throw new Error(\`[EPA:\${status === 401 ? '401:AUTH_FEHLER' : status === 403 ? '403:KEINE_BERECHTIGUNG' : '502:UPSTREAM_FEHLER'}:\${e.vorgangs_id || '-'}] Entwurf nicht abrufbar (HTTP \${status})\`);
+`);
+	const sendenFrage = wf.node('Entwurf vorhanden?', 'n8n-nodes-base.if', [880, 1100], {
+		conditions: bedingungen([bedingung('={{ $json.weg }}', { type: 'string', operation: 'equals' }, 'senden')]),
+		options: {},
+	});
+	// Kein automatischer Retry: Ein Timeout nach erfolgreichem Versand würde sonst als Fehler enden.
+	// Stattdessen wird bei jedem Fehler in "Gesendete Elemente" nachgesehen.
+	const senden = graph(wf, 'Entwurf senden', [1100, 1000], 'POST', `=${GRAPH}/users/${P}/messages/{{ encodeURIComponent(${E}.entwurf_id) }}/send`,
+		{ node: { retryOnFail: false, onError: 'continueRegularOutput', alwaysOutputData: true } });
+	const sendeErgebnis = wf.code('Sendeergebnis', [1320, 1000], [], `
+const r = $input.first().json || {};
+return [{ json: { bestaetigt: !r.error, internet_message_id: $('Versand entscheiden').first().json.internet_message_id } }];
+`);
+	const bestaetigt = wf.node('Versand bestätigt?', 'n8n-nodes-base.if', [1540, 1000], {
+		conditions: bedingungen([bedingung('={{ $json.bestaetigt }}', { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: {},
+	});
+	const gesendetMelden = wf.code('Gesendet melden', [1760, 900], [], `
+return [{ json: { gesendet: true, bereits: false, internet_message_id: $input.first().json.internet_message_id } }];
+`);
+	const gesendetSuchen = graph(wf, 'In Gesendet suchen', [1760, 1180], 'GET', `=${GRAPH}/users/${P}/mailFolders/sentitems/messages`, {
+		query: { $filter: `=singleValueExtendedProperties/Any(ep: ep/id eq '${PROP_FREIGABE}' and ep/value eq '{{ ${E}.freigabe_id }}')`, $select: 'id,internetMessageId' },
+	});
+	const gesendetPruefen = wf.code('Gesendet prüfen', [1980, 1180], [], `
+const e = $('Bei Einzelaufruf').first().json;
+const treffer = $input.first().json.value || [];
+if (!treffer.length) throw new Error(\`[EPA:502:UPSTREAM_FEHLER:\${e.vorgangs_id || '-'}] Rückfrage nicht gesendet: Entwurf fehlt bzw. Versand fehlgeschlagen und nicht in Gesendete Elemente\`);
+return [{ json: { gesendet: true, bereits: true, internet_message_id: treffer[0].internetMessageId || null } }];
+`);
+
 	wf.kette(trigger, festlegen, einzeln);
-	wf.kette(start, laden, liste, pruefen, zuLaden);
+	wf.kette(start, aktion);
+	wf.verbinde(aktion, laden, 0);
+	wf.verbinde(aktion, suchen, 1);
+	wf.verbinde(aktion, aktualisieren, 2);
+	wf.verbinde(aktion, pruefenEntwurf, 3);
+	wf.kette(suchen, ursprung, reply, befuellen, entwurfMelden);
+	wf.kette(aktualisieren, aktualisiert);
+	wf.kette(pruefenEntwurf, entscheiden, sendenFrage);
+	wf.verbinde(sendenFrage, senden, 0);
+	wf.verbinde(sendenFrage, gesendetSuchen, 1);
+	wf.kette(senden, sendeErgebnis, bestaetigt);
+	wf.verbinde(bestaetigt, gesendetMelden, 0);
+	wf.verbinde(bestaetigt, gesendetSuchen, 1);
+	wf.kette(gesendetSuchen, gesendetPruefen);
+	wf.kette(laden, liste, pruefen, zuLaden);
 	wf.verbinde(zuLaden, download, 0);
 	wf.verbinde(zuLaden, zusammen, 1);
 	wf.kette(download, kodieren, pdf, zusammen);

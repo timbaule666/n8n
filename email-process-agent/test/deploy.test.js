@@ -92,3 +92,11 @@ test('Credentials für HTTP-Nodes je Credential-Typ, Selbstaufruf bleibt unverä
 	assert.deepEqual(r.nodes[1].credentials, outlook);
 	assert.equal(r.nodes[2].parameters.workflowId.value, '={{ $workflow.id }}');
 });
+
+test('Deploy-Reihenfolge: EPA-05 zuerst, Sub-Workflows vor Aufrufern, Zyklus erkannt', () => {
+	const { deployReihenfolge } = require('../tools/deploy');
+	const wf = (name, ...ziele) => ({ name, nodes: ziele.map((z) => ({ type: 'n8n-nodes-base.executeWorkflow', parameters: { workflowId: { cachedResultName: z } } })) });
+	const namen = deployReihenfolge([wf('EPA-01', 'EPA-02', 'SW A'), wf('EPA-02', 'SW B'), wf('EPA-05 Error-Handler', 'SW A'), wf('SW A'), wf('SW B', 'SW A')]).map((w) => w.name);
+	assert.deepEqual(namen, ['SW A', 'EPA-05 Error-Handler', 'SW B', 'EPA-02', 'EPA-01']);
+	assert.throws(() => deployReihenfolge([wf('X', 'Y'), wf('Y', 'X')]), /Zyklisch/);
+});

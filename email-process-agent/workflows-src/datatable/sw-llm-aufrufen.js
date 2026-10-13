@@ -10,7 +10,7 @@ module.exports = function () {
 		'## EPA SW LLM aufrufen',
 		'**Zweck:** Einziger Zugang zum LLM (OpenAI Chat Completions, ohne Tools). Lädt den Prompt aus der Data Table epa_prompts (Version aus der Config), baut das Ausgabeschema dynamisch (src/llmSchema.js), ruft OpenAI mit Structured Output auf und prüft die Antwort mit eigenem Validator.',
 		'**Trigger:** Aufruf durch andere Workflows.',
-		'**Eingaben:** kunde_id, vorgangs_id, aufgabe (klassifizierung | extraktion), prompt_version, profil (modell, temperatur, timeout_ms, max_tokens, basis_url), kontext (mail, vorgangstypen, felder, hinweise, heute).',
+		'**Eingaben:** kunde_id, vorgangs_id, aufgabe (klassifizierung | extraktion | entwurf), prompt_version, profil (modell, temperatur, timeout_ms, max_tokens, basis_url), kontext (mail, vorgangstypen, felder, hinweise, heute), fehler_als_ergebnis (true: technische Fehler als { ok: false, technisch: true } statt Abbruch).',
 		'**Ausgabe:** { ok, ergebnis, code, fehler, modell, prompt_version, versuche, korrekturen, nutzung }. ok=false mit code EXTRAKTION_UNGUELTIG (422), wenn auch der Korrekturversuch ungültig war: der Aufrufer entscheidet fachlich.',
 		'**Retries:** 429/5xx/Timeout bis zu 3 Versuche mit Wartezeit (Retry-After bzw. 2 s, 4 s). 401/403/400 sofort Fehler. Danach Abbruch mit EPA-Fehler -> EPA-05.',
 		'**Einrichten:** Im Node "OpenAI aufrufen" das OpenAI-Credential zuweisen. Kein Mailinhalt landet in Logs; nur in den Ausführungsdaten von n8n (Aufbewahrung in den Instanz-Einstellungen begrenzen).',
@@ -23,6 +23,7 @@ module.exports = function () {
 		['prompt_version', 'string'],
 		['profil', 'object'],
 		['kontext', 'object'],
+		['fehler_als_ergebnis', 'boolean'],
 	]);
 
 	const eingabe = wf.code('Eingabe prüfen', [220, 0], ['fehlerklassen', 'llmSchema'], `
@@ -34,9 +35,9 @@ if (typeof e.prompt_version !== 'string' || !/^v\\d+$/.test(e.prompt_version)) t
 const p = e.profil || {};
 if (!p.modell || typeof p.temperatur !== 'number' || !Number.isInteger(p.timeout_ms) || !Number.isInteger(p.max_tokens) || !p.basis_url) throw fehler('LLM-Profil unvollständig');
 const k = e.kontext || {};
-if (!k.mail || typeof k.mail !== 'object') throw fehler('kontext.mail fehlt');
+if (e.aufgabe !== 'entwurf' && (!k.mail || typeof k.mail !== 'object')) throw fehler('kontext.mail fehlt');
 if (e.aufgabe === 'extraktion' && (!Array.isArray(k.felder) || k.felder.length === 0)) throw fehler('kontext.felder fehlt');
-return [{ json: { kunde_id: e.kunde_id, vorgangs_id: vid, aufgabe: e.aufgabe, prompt_version: e.prompt_version, profil: p, kontext: k } }];
+return [{ json: { kunde_id: e.kunde_id, vorgangs_id: vid, aufgabe: e.aufgabe, prompt_version: e.prompt_version, profil: p, kontext: k, fehler_als_ergebnis: e.fehler_als_ergebnis === true } }];
 `);
 
 	const prompt = wf.tabelle('Prompt laden', [440, 0], 'get', 'epa_prompts', {
@@ -140,6 +141,11 @@ return [{ json: {
 	const abbruch = wf.code('Fehler auslösen', [1760, 260], ['fehlerklassen'], `
 const z = $input.first().json;
 const e = $('Eingabe prüfen').first().json;
+// Aufrufer mit eigener Rückfallebene (z. B. Entwurf -> Standardvorlage) bekommen den Fehler als Ergebnis,
+// damit EPA-05 den Vorgang nicht eskaliert.
+if (e.fehler_als_ergebnis) {
+	return [{ json: { ok: false, ergebnis: null, code: z.code || 'UPSTREAM_FEHLER', fehler: [z.grund || 'LLM-Aufruf fehlgeschlagen'], technisch: true, modell: e.profil.modell, prompt_version: e.prompt_version, versuche: z.versuch, korrekturen: z.korrekturen, nutzung: z.nutzung } }];
+}
 throw fehlerklassen.epaFehler(z.code || 'UPSTREAM_FEHLER', e.vorgangs_id, \`\${e.aufgabe}: \${z.grund || 'LLM-Aufruf fehlgeschlagen'}\`);
 `);
 

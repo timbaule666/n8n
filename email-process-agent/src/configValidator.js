@@ -215,7 +215,15 @@ function validiereConfig(allgemein, pflichtfelder, optionen = {}) {
 		text(benachrichtigung.channel_id, 'benachrichtigung.channel_id', fehler);
 	}
 
+	// Postfach-Workflow (EPA-00-Kopie) für Entwürfe und Versand; Pflicht erst für Rückfragen (EPA-02 prüft).
+	const pwf = typeof a.postfach_workflow_id === 'string' ? a.postfach_workflow_id.trim() : '';
+	if (pwf && !/^[A-Za-z0-9]{8,32}$/.test(pwf) && !/^<.*>$/.test(pwf)) fehler.push(`postfach_workflow_id: "${pwf}" ist keine Workflow-ID`);
+	const fbu = typeof a.freigabe_basis_url === 'string' ? a.freigabe_basis_url.trim().replace(/\/+$/, '') : '';
+	if (fbu && !/^https:\/\/[A-Za-z0-9.-]+(:\d+)?(\/[\w./-]*)?$/.test(fbu)) fehler.push('freigabe_basis_url: muss eine https-URL sein');
+
 	const config = {
+		postfach_workflow_id: /^[A-Za-z0-9]{8,32}$/.test(pwf) ? pwf : null,
+		freigabe_basis_url: fbu || null,
 		kunde_id: kundeId,
 		postfach: postfach ? postfach.toLowerCase() : null,
 		anrede_stil: a.anrede_stil,

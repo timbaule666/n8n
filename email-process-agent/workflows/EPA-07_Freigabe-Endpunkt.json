@@ -1,0 +1,2113 @@
+{
+  "name": "EPA-07 Freigabe-Endpunkt",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## EPA-07 Freigabe-Endpunkt (Phase C3/C4)\n**Zweck:** Seite hinter dem persönlichen Freigabe-Link. GET zeigt Empfänger, Betreff, fehlende Angaben und den bearbeitbaren Text; POST nimmt \"Freigeben und senden\" (optional mit geändertem Text) oder \"Ablehnen\" (mit Grund) entgegen.\n**Sicherheit:** Token einmalig (nur Hash gespeichert), Ablaufzeit, Freigeber muss noch in der Config stehen. Die Freigabe wird atomar übernommen (bedingtes Update auf status = offen): ein Doppelklick oder zweiter Freigeber bekommt \"bereits bearbeitet\". Signatur und KI-Hinweis sind nicht änderbar.\n**Versand (C4):** über den Postfach-Workflow des Kunden (postfach_workflow_id): vorher prüfen, ob der Entwurf noch existiert, sonst in Gesendete Elemente suchen → kein Doppelversand. Erst nach bestätigtem Versand: Status \"Warten auf Kunde\", Rundenzähler +1, Antwortfrist (Geschäftszeiten), Audit mit Freigeber und \"bearbeitet\".\n**Fehler:** Versand fehlgeschlagen → Freigabe \"fehler\", Seite informiert, danach Fehler an EPA-05 (Vorgang wird gesichert, Alarm).\n**Trigger:** Webhook GET/POST /webhook/epa-freigabe. Muss veröffentlicht sein. Keine Credentials nötig.",
+        "width": 920,
+        "height": 400,
+        "color": 7
+      },
+      "id": "6e96de98-fa53-4752-ada4-3adcc0e42c6a",
+      "name": "Notiz Zweck",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -120,
+        -640
+      ]
+    },
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "httpMethod": [
+          "GET",
+          "POST"
+        ],
+        "path": "epa-freigabe",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "3b9d1832-e0c7-48a5-a4bc-a8462bde945b",
+      "name": "Freigabe-Link",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "f0b8fce0-df93-4a12-a309-e34b44a3c197"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/freigabe.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst freigabe = (() => {\nconst module = { exports: {} };\n// Freigabe Variante B (Bauplan 6): einmaliges, ablaufendes Token je Freigeber. Gespeichert wird nur der\n// SHA-256-Hash. Der Endpunkt EPA-07 zeigt ein Formular (Vorschau, Text bearbeitbar, Senden/Ablehnen) und\n// verbraucht die Freigabe atomar (bedingtes Update auf status = 'offen').\n\nconst TOKEN_MUSTER = /^[A-Za-z0-9_-]{43}$/; // 32 Byte base64url\nconst AKTIONEN = ['senden', 'ablehnen'];\n\n/** @param {object} c Node-Modul \"crypto\" (im Code-Node per require('crypto')) */\nfunction tokenErzeugen(c) {\n\tconst token = c.randomBytes(32).toString('base64url');\n\treturn { token, hash: tokenHash(c, token) };\n}\n\nfunction tokenHash(c, token) {\n\treturn c.createHash('sha256').update(String(token), 'utf8').digest('hex');\n}\n\nfunction freigabeIdErzeugen(c) {\n\treturn 'F-' + c.randomUUID();\n}\n\nfunction istGueltigesToken(t) {\n\treturn typeof t === 'string' && TOKEN_MUSTER.test(t);\n}\n\n/** Basis-URL der Instanz aus $execution.resumeUrl (…/webhook-waiting/<id>) bzw. einem Override. */\nfunction basisUrl(resumeUrl, override) {\n\tif (override) return String(override).replace(/\\/+$/, '');\n\tconst m = String(resumeUrl || '').match(/^(https?:\\/\\/[^/]+(?:\\/[^/]+)*?)\\/webhook-waiting\\//);\n\tif (!m) throw new Error('Basis-URL der Instanz nicht ermittelbar');\n\treturn m[1];\n}\n\nfunction link(basis, token) {\n\treturn `${basis}/webhook/epa-freigabe?t=${encodeURIComponent(token)}`;\n}\n\n/**\n * Prüft Token und Freigabe vor Anzeige bzw. Entscheidung.\n * @returns {{ ok: true } | { ok: false, status: number, code: string, meldung: string }}\n */\nfunction freigabePruefen({ token, freigabe, freigeberErlaubt, jetzt }) {\n\tconst nein = (status, code, meldung) => ({ ok: false, status, code, meldung });\n\tif (!token || token.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Dieser Freigabe-Link ist ungültig.');\n\tif (!freigabe || freigabe.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Die Freigabe existiert nicht mehr.');\n\tif (freigabe.status !== 'offen') {\n\t\tconst wer = freigabe.entscheider ? ` von ${freigabe.entscheider}` : '';\n\t\tconst was = { in_versand: 'wird gerade versendet', gesendet: 'wurde bereits freigegeben und gesendet', abgelehnt: 'wurde bereits abgelehnt', abgelaufen: 'ist abgelaufen', ersetzt: 'wurde durch eine neuere Freigabe ersetzt', fehler: 'ist beim Versand fehlgeschlagen' }[freigabe.status] || `hat den Status \"${freigabe.status}\"`;\n\t\treturn nein(freigabe.status === 'abgelaufen' ? 410 : 409, freigabe.status === 'abgelaufen' ? 'FREIGABE_ABGELAUFEN' : 'DUPLIKAT', `Diese Rückfrage ${was}${freigabe.status === 'gesendet' || freigabe.status === 'abgelehnt' ? wer : ''}.`);\n\t}\n\tif (token.verbraucht_am) return nein(409, 'DUPLIKAT', 'Dieser Link wurde bereits verwendet.');\n\tif (new Date(freigabe.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Ein neuer Link wird automatisch verschickt.');\n\tif (!freigeberErlaubt) return nein(403, 'KEINE_BERECHTIGUNG', 'Sie sind für diesen Kunden nicht (mehr) als Freigeber eingetragen.');\n\treturn { ok: true };\n}\n\n/** Formulardaten aus EPA-07 (POST, application/x-www-form-urlencoded). */\nfunction formularLesen(body) {\n\tconst b = body && typeof body === 'object' ? body : {};\n\tconst aktion = String(b.aktion || '');\n\tif (!AKTIONEN.includes(aktion)) return { ok: false, meldung: 'Unbekannte Aktion.' };\n\tif (!istGueltigesToken(b.t)) return { ok: false, meldung: 'Ungültiger Link.' };\n\tconst grund = String(b.grund || '').trim().slice(0, 500);\n\tif (aktion === 'ablehnen' && !grund) return { ok: false, meldung: 'Bitte einen Grund für die Ablehnung angeben.' };\n\treturn { ok: true, aktion, token: b.t, text: typeof b.text === 'string' ? b.text : '', grund };\n}\n\nfunction istBearbeitet(original, neu) {\n\tconst n = (s) => String(s ?? '').replace(/\\r\\n?/g, '\\n').replace(/[ \\t]+/g, ' ').replace(/\\s+$/gm, '').trim();\n\treturn n(original) !== n(neu);\n}\n\n// ---------------------------------------------------------------- HTML\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nconst STIL = `body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;margin:0;background:#f4f5f7;color:#1d2433}\nmain{max-width:760px;margin:0 auto;padding:16px}\n.karte{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}\nh1{font-size:1.3rem;margin:0 0 12px}dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0}\ndt{color:#5b6475}dd{margin:0;overflow-wrap:anywhere}textarea{width:100%;box-sizing:border-box;min-height:260px;font:inherit;padding:8px}\npre{white-space:pre-wrap;font:inherit;color:#5b6475;margin:8px 0 0}.knoepfe{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}\nbutton{font:inherit;padding:10px 16px;border-radius:6px;border:0;cursor:pointer}.senden{background:#1f6f43;color:#fff}.ablehnen{background:#a3222b;color:#fff}\ninput[type=text]{width:100%;box-sizing:border-box;font:inherit;padding:8px}.hinweis{color:#5b6475;font-size:.9rem}\n.ok{border-left:4px solid #1f6f43}.fehler{border-left:4px solid #a3222b}`;\n\nfunction seite(titel, inhalt) {\n\treturn `<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><title>${esc(titel)}</title><style>${STIL}</style></head><body><main>${inhalt}</main></body></html>`;\n}\n\nfunction seiteFormular({ token, freigabe, vorgang, fehlende, text, abschluss }) {\n\tconst luecken = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}${f.grund ? ` <span class=\"hinweis\">(${esc(f.grund)})</span>` : ''}</li>`).join('');\n\treturn seite(`Rückfrage ${vorgang.vorgangs_id}`, `\n<div class=\"karte\"><h1>Rückfrage freigeben – ${esc(vorgang.vorgangs_id)}</h1>\n<dl><dt>An</dt><dd>${esc(freigabe.empfaenger)}</dd><dt>Betreff</dt><dd>${esc(freigabe.betreff)}</dd>\n<dt>Runde</dt><dd>${esc(Number(vorgang.rundenzaehler || 0) + 1)}</dd><dt>Gültig bis</dt><dd>${esc(new Date(freigabe.ablauf).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }))}</dd></dl>\n<p>Fehlende Angaben:</p><ul>${luecken}</ul>${freigabe.fallback ? '<p class=\"hinweis\">Hinweis: Die KI-Formulierung hat die Prüfung nicht bestanden, es wird die Standardvorlage verwendet.</p>' : ''}</div>\n<form class=\"karte\" method=\"post\" onsubmit=\"for(const b of this.querySelectorAll('button'))b.disabled=true\">\n<input type=\"hidden\" name=\"t\" value=\"${esc(token)}\">\n<label for=\"text\"><b>Text der Mail</b> (bearbeitbar)</label>\n<textarea id=\"text\" name=\"text\">${esc(text)}</textarea>\n<pre>${esc(abschluss)}</pre>\n<p class=\"hinweis\">Signatur und KI-Hinweis werden immer automatisch angehängt.</p>\n<label for=\"grund\">Grund (nur bei Ablehnung)</label><input type=\"text\" id=\"grund\" name=\"grund\" maxlength=\"500\">\n<div class=\"knoepfe\"><button class=\"senden\" name=\"aktion\" value=\"senden\">Freigeben und senden</button>\n<button class=\"ablehnen\" name=\"aktion\" value=\"ablehnen\">Ablehnen (manuell bearbeiten)</button></div>\n<p class=\"hinweis\">Der Link ist nur einmal verwendbar. Nichts wird ohne Ihren Klick versendet.</p></form>`);\n}\n\nfunction seiteMeldung(titel, text, art = 'ok') {\n\treturn seite(titel, `<div class=\"karte ${art === 'ok' ? 'ok' : 'fehler'}\"><h1>${esc(titel)}</h1><p>${esc(text)}</p></div>`);\n}\n\n/** Teams-Nachricht an den Freigeber (1:1-Chat). */\nfunction nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art }) {\n\tconst liste = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}</li>`).join('');\n\tconst titel = art === 'erinnerung' ? 'Erinnerung an den Kunden freigeben' : 'Rückfrage an den Kunden freigeben';\n\treturn `<b>${esc(titel)}: ${esc(vorgang.vorgangs_id)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>Fehlende Angaben:<ul>${liste}</ul>` +\n\t\t`<a href=\"${esc(url)}\">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Persönlicher Link, einmal verwendbar, gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;\n}\n\nmodule.exports = {\n\tTOKEN_MUSTER, AKTIONEN, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,\n\tfreigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber,\n};\nreturn module.exports;\n})();\n// ===== Ende src/freigabe.js =====\n\n// ----- Node-Logik -----\nconst crypto = require('crypto');\nconst j = $input.first().json;\nconst body = j.body && typeof j.body === 'object' ? j.body : {};\nconst post = Object.prototype.hasOwnProperty.call(body, 'aktion');\nconst token = String(post ? body.t || '' : (j.query || {}).t || '');\nconst gueltig = freigabe.istGueltigesToken(token);\nreturn [{ json: {\n\tmethode: post ? 'POST' : 'GET',\n\ttoken,\n\tgueltig,\n\thash: gueltig ? freigabe.tokenHash(crypto, token) : '__ungueltig__',\n\tformular: post ? freigabe.formularLesen(body) : null,\n} }];\n"
+      },
+      "id": "1cf6563f-3f70-4cea-a11b-34a23c43ab73",
+      "name": "Anfrage lesen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigabe_tokens"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "token_hash",
+              "condition": "eq",
+              "keyValue": "={{ $json.hash }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "id": "06a3134c-0f9a-4444-a937-ce405d429a3d",
+      "name": "Token lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigaben"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "freigabe_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.freigabe_id || '__keine__' }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "id": "d9900aa4-2fd3-43e0-abdd-3f52925bdfd0",
+      "name": "Freigabe lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_config_allgemein"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.kunde_id || '__kein_kunde__' }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "id": "b2971441-4ae1-4030-af02-a1cfda243a05",
+      "name": "Kunde lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_vorgaenge"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "vorgangs_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Freigabe lesen').first().json.vorgangs_id || '__keine__' }}"
+            },
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Freigabe lesen').first().json.kunde_id || '__kein_kunde__' }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "id": "f861ec0a-3b05-42cd-a1a6-1f994d098417",
+      "name": "Vorgang lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1100,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/freigabe.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst freigabe = (() => {\nconst module = { exports: {} };\n// Freigabe Variante B (Bauplan 6): einmaliges, ablaufendes Token je Freigeber. Gespeichert wird nur der\n// SHA-256-Hash. Der Endpunkt EPA-07 zeigt ein Formular (Vorschau, Text bearbeitbar, Senden/Ablehnen) und\n// verbraucht die Freigabe atomar (bedingtes Update auf status = 'offen').\n\nconst TOKEN_MUSTER = /^[A-Za-z0-9_-]{43}$/; // 32 Byte base64url\nconst AKTIONEN = ['senden', 'ablehnen'];\n\n/** @param {object} c Node-Modul \"crypto\" (im Code-Node per require('crypto')) */\nfunction tokenErzeugen(c) {\n\tconst token = c.randomBytes(32).toString('base64url');\n\treturn { token, hash: tokenHash(c, token) };\n}\n\nfunction tokenHash(c, token) {\n\treturn c.createHash('sha256').update(String(token), 'utf8').digest('hex');\n}\n\nfunction freigabeIdErzeugen(c) {\n\treturn 'F-' + c.randomUUID();\n}\n\nfunction istGueltigesToken(t) {\n\treturn typeof t === 'string' && TOKEN_MUSTER.test(t);\n}\n\n/** Basis-URL der Instanz aus $execution.resumeUrl (…/webhook-waiting/<id>) bzw. einem Override. */\nfunction basisUrl(resumeUrl, override) {\n\tif (override) return String(override).replace(/\\/+$/, '');\n\tconst m = String(resumeUrl || '').match(/^(https?:\\/\\/[^/]+(?:\\/[^/]+)*?)\\/webhook-waiting\\//);\n\tif (!m) throw new Error('Basis-URL der Instanz nicht ermittelbar');\n\treturn m[1];\n}\n\nfunction link(basis, token) {\n\treturn `${basis}/webhook/epa-freigabe?t=${encodeURIComponent(token)}`;\n}\n\n/**\n * Prüft Token und Freigabe vor Anzeige bzw. Entscheidung.\n * @returns {{ ok: true } | { ok: false, status: number, code: string, meldung: string }}\n */\nfunction freigabePruefen({ token, freigabe, freigeberErlaubt, jetzt }) {\n\tconst nein = (status, code, meldung) => ({ ok: false, status, code, meldung });\n\tif (!token || token.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Dieser Freigabe-Link ist ungültig.');\n\tif (!freigabe || freigabe.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Die Freigabe existiert nicht mehr.');\n\tif (freigabe.status !== 'offen') {\n\t\tconst wer = freigabe.entscheider ? ` von ${freigabe.entscheider}` : '';\n\t\tconst was = { in_versand: 'wird gerade versendet', gesendet: 'wurde bereits freigegeben und gesendet', abgelehnt: 'wurde bereits abgelehnt', abgelaufen: 'ist abgelaufen', ersetzt: 'wurde durch eine neuere Freigabe ersetzt', fehler: 'ist beim Versand fehlgeschlagen' }[freigabe.status] || `hat den Status \"${freigabe.status}\"`;\n\t\treturn nein(freigabe.status === 'abgelaufen' ? 410 : 409, freigabe.status === 'abgelaufen' ? 'FREIGABE_ABGELAUFEN' : 'DUPLIKAT', `Diese Rückfrage ${was}${freigabe.status === 'gesendet' || freigabe.status === 'abgelehnt' ? wer : ''}.`);\n\t}\n\tif (token.verbraucht_am) return nein(409, 'DUPLIKAT', 'Dieser Link wurde bereits verwendet.');\n\tif (new Date(freigabe.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Ein neuer Link wird automatisch verschickt.');\n\tif (!freigeberErlaubt) return nein(403, 'KEINE_BERECHTIGUNG', 'Sie sind für diesen Kunden nicht (mehr) als Freigeber eingetragen.');\n\treturn { ok: true };\n}\n\n/** Formulardaten aus EPA-07 (POST, application/x-www-form-urlencoded). */\nfunction formularLesen(body) {\n\tconst b = body && typeof body === 'object' ? body : {};\n\tconst aktion = String(b.aktion || '');\n\tif (!AKTIONEN.includes(aktion)) return { ok: false, meldung: 'Unbekannte Aktion.' };\n\tif (!istGueltigesToken(b.t)) return { ok: false, meldung: 'Ungültiger Link.' };\n\tconst grund = String(b.grund || '').trim().slice(0, 500);\n\tif (aktion === 'ablehnen' && !grund) return { ok: false, meldung: 'Bitte einen Grund für die Ablehnung angeben.' };\n\treturn { ok: true, aktion, token: b.t, text: typeof b.text === 'string' ? b.text : '', grund };\n}\n\nfunction istBearbeitet(original, neu) {\n\tconst n = (s) => String(s ?? '').replace(/\\r\\n?/g, '\\n').replace(/[ \\t]+/g, ' ').replace(/\\s+$/gm, '').trim();\n\treturn n(original) !== n(neu);\n}\n\n// ---------------------------------------------------------------- HTML\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nconst STIL = `body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;margin:0;background:#f4f5f7;color:#1d2433}\nmain{max-width:760px;margin:0 auto;padding:16px}\n.karte{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}\nh1{font-size:1.3rem;margin:0 0 12px}dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0}\ndt{color:#5b6475}dd{margin:0;overflow-wrap:anywhere}textarea{width:100%;box-sizing:border-box;min-height:260px;font:inherit;padding:8px}\npre{white-space:pre-wrap;font:inherit;color:#5b6475;margin:8px 0 0}.knoepfe{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}\nbutton{font:inherit;padding:10px 16px;border-radius:6px;border:0;cursor:pointer}.senden{background:#1f6f43;color:#fff}.ablehnen{background:#a3222b;color:#fff}\ninput[type=text]{width:100%;box-sizing:border-box;font:inherit;padding:8px}.hinweis{color:#5b6475;font-size:.9rem}\n.ok{border-left:4px solid #1f6f43}.fehler{border-left:4px solid #a3222b}`;\n\nfunction seite(titel, inhalt) {\n\treturn `<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><title>${esc(titel)}</title><style>${STIL}</style></head><body><main>${inhalt}</main></body></html>`;\n}\n\nfunction seiteFormular({ token, freigabe, vorgang, fehlende, text, abschluss }) {\n\tconst luecken = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}${f.grund ? ` <span class=\"hinweis\">(${esc(f.grund)})</span>` : ''}</li>`).join('');\n\treturn seite(`Rückfrage ${vorgang.vorgangs_id}`, `\n<div class=\"karte\"><h1>Rückfrage freigeben – ${esc(vorgang.vorgangs_id)}</h1>\n<dl><dt>An</dt><dd>${esc(freigabe.empfaenger)}</dd><dt>Betreff</dt><dd>${esc(freigabe.betreff)}</dd>\n<dt>Runde</dt><dd>${esc(Number(vorgang.rundenzaehler || 0) + 1)}</dd><dt>Gültig bis</dt><dd>${esc(new Date(freigabe.ablauf).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }))}</dd></dl>\n<p>Fehlende Angaben:</p><ul>${luecken}</ul>${freigabe.fallback ? '<p class=\"hinweis\">Hinweis: Die KI-Formulierung hat die Prüfung nicht bestanden, es wird die Standardvorlage verwendet.</p>' : ''}</div>\n<form class=\"karte\" method=\"post\" onsubmit=\"for(const b of this.querySelectorAll('button'))b.disabled=true\">\n<input type=\"hidden\" name=\"t\" value=\"${esc(token)}\">\n<label for=\"text\"><b>Text der Mail</b> (bearbeitbar)</label>\n<textarea id=\"text\" name=\"text\">${esc(text)}</textarea>\n<pre>${esc(abschluss)}</pre>\n<p class=\"hinweis\">Signatur und KI-Hinweis werden immer automatisch angehängt.</p>\n<label for=\"grund\">Grund (nur bei Ablehnung)</label><input type=\"text\" id=\"grund\" name=\"grund\" maxlength=\"500\">\n<div class=\"knoepfe\"><button class=\"senden\" name=\"aktion\" value=\"senden\">Freigeben und senden</button>\n<button class=\"ablehnen\" name=\"aktion\" value=\"ablehnen\">Ablehnen (manuell bearbeiten)</button></div>\n<p class=\"hinweis\">Der Link ist nur einmal verwendbar. Nichts wird ohne Ihren Klick versendet.</p></form>`);\n}\n\nfunction seiteMeldung(titel, text, art = 'ok') {\n\treturn seite(titel, `<div class=\"karte ${art === 'ok' ? 'ok' : 'fehler'}\"><h1>${esc(titel)}</h1><p>${esc(text)}</p></div>`);\n}\n\n/** Teams-Nachricht an den Freigeber (1:1-Chat). */\nfunction nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art }) {\n\tconst liste = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}</li>`).join('');\n\tconst titel = art === 'erinnerung' ? 'Erinnerung an den Kunden freigeben' : 'Rückfrage an den Kunden freigeben';\n\treturn `<b>${esc(titel)}: ${esc(vorgang.vorgangs_id)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>Fehlende Angaben:<ul>${liste}</ul>` +\n\t\t`<a href=\"${esc(url)}\">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Persönlicher Link, einmal verwendbar, gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;\n}\n\nmodule.exports = {\n\tTOKEN_MUSTER, AKTIONEN, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,\n\tfreigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber,\n};\nreturn module.exports;\n})();\n// ===== Ende src/freigabe.js =====\n// ===== eingebettet aus src/entwurf.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst entwurf = (() => {\nconst module = { exports: {} };\n// Rückfrage-Entwurf (Masterprompt C1, C2; Bauplan 5.5).\n// Das LLM liefert nur die Hülle (Anrede, Einleitung, Schluss) als getrennte Felder. Die festen Textbausteine,\n// die Signatur und der KI-Hinweis werden hier deterministisch eingesetzt. Damit stehen die Bausteine\n// konstruktionsbedingt wortgleich in der Mail. Die Hülle wird geprüft; bei Verstoß gilt das Template-Gerüst (Fallback).\n\nconst MAX = Object.freeze({ anrede: 80, einleitung: 400, schluss: 300, gesamt: 600 });\n\n// Zusage- und Fakten-Wörter, die in der Hülle nichts verloren haben (Wortanfänge, klein).\nconst VERBOTEN = Object.freeze([\n\t'garantier', 'zusag', 'zusich', 'verbindlich', 'kostenlos', 'gratis', 'preis', 'rabatt', 'euro', 'versprech',\n\t'spätestens', 'innerhalb von', 'bis zum', 'sofort', 'umgehend', 'bestätigen wir', 'guarantee', 'free of charge', 'price', 'discount',\n]);\n\nfunction normalisiereLeerraum(s) {\n\treturn String(s ?? '').replace(/\\s+/g, ' ').trim();\n}\n\n/** Anzeigename des Kunden für die Anrede: nur Buchstaben, Leerzeichen, Bindestrich, Punkt; sonst leer. */\nfunction sichererName(name) {\n\tconst n = normalisiereLeerraum(name).replace(/^[\"']|[\"']$/g, '');\n\tif (!n || n.length > 60 || n.includes('@')) return '';\n\treturn /^[\\p{L}][\\p{L} .'-]*$/u.test(n) ? n : '';\n}\n\n/** Feste Bausteine der fehlenden Felder in Config-Reihenfolge. Fehlender Baustein = Konfigurationsfehler. */\nfunction bausteine(fehlende, felder) {\n\tconst nachName = new Map((felder || []).map((f) => [f.feldname, f]));\n\tconst fehlendeNamen = new Set((fehlende || []).map((f) => f.feldname));\n\tconst out = [];\n\tfor (const f of felder || []) {\n\t\tif (!fehlendeNamen.has(f.feldname)) continue;\n\t\tconst b = normalisiereLeerraum(f.resolution_textbaustein);\n\t\tif (!b) throw new Error(`Textbaustein für Feld \"${f.feldname}\" fehlt`);\n\t\tout.push({ feldname: f.feldname, anzeigename: f.anzeigename, text: b });\n\t}\n\tfor (const n of fehlendeNamen) if (!nachName.has(n)) throw new Error(`Feld \"${n}\" ist in der Config unbekannt`);\n\treturn out;\n}\n\n/** Template-Gerüst ohne LLM (Fallback). */\nfunction vorlage({ anrede_stil: stil, sprache }, name) {\n\tconst n = sichererName(name);\n\tif (sprache === 'en') {\n\t\treturn {\n\t\t\tanrede: n ? `Dear ${n},` : 'Hello,',\n\t\t\teinleitung: 'Thank you for your request. To process it, we still need the following information:',\n\t\t\tschluss: 'Thank you in advance for your reply.',\n\t\t};\n\t}\n\tif (stil === 'Du') {\n\t\treturn {\n\t\t\tanrede: n ? `Hallo ${n},` : 'Hallo,',\n\t\t\teinleitung: 'vielen Dank für deine Anfrage. Damit wir sie bearbeiten können, brauchen wir noch folgende Angaben:',\n\t\t\tschluss: 'Vielen Dank für deine Rückmeldung.',\n\t\t};\n\t}\n\treturn {\n\t\tanrede: n ? `Guten Tag ${n},` : 'Guten Tag,',\n\t\teinleitung: 'vielen Dank für Ihre Anfrage. Damit wir sie bearbeiten können, benötigen wir noch folgende Angaben:',\n\t\tschluss: 'Vielen Dank für Ihre Rückmeldung.',\n\t};\n}\n\n/**\n * Prüft die vom LLM gelieferte Hülle. Gibt eine Liste von Verstößen zurück (leer = in Ordnung).\n * Name des Kunden darf in der Anrede stehen, sonst keine Ziffern, Beträge, URLs, Adressen, Zusagen.\n */\nfunction huellePruefen(huelle, { anrede_stil: stil } = {}) {\n\tconst fehler = [];\n\tif (!huelle || typeof huelle !== 'object') return ['keine Hülle'];\n\tlet gesamt = 0;\n\tfor (const teil of ['anrede', 'einleitung', 'schluss']) {\n\t\tconst t = normalisiereLeerraum(huelle[teil]);\n\t\tgesamt += t.length;\n\t\tif (!t) fehler.push(`${teil}: leer`);\n\t\tif (t.length > MAX[teil]) fehler.push(`${teil}: zu lang`);\n\t\tif (/\\d/.test(t)) fehler.push(`${teil}: enthält Ziffern`);\n\t\tif (/[€$£]|\\b(eur|usd|chf)\\b/i.test(t)) fehler.push(`${teil}: enthält Währung`);\n\t\tif (/(https?:\\/\\/|www\\.|\\b[a-z0-9-]+\\.(de|com|net|org|eu|io)\\b)/i.test(t)) fehler.push(`${teil}: enthält Link`);\n\t\tif (/@/.test(t)) fehler.push(`${teil}: enthält E-Mail-Adresse`);\n\t\tif (/[{}[\\]<>]/.test(t)) fehler.push(`${teil}: enthält Platzhalter oder Markup`);\n\t\tconst klein = t.toLowerCase();\n\t\tfor (const w of VERBOTEN) if (klein.includes(w)) fehler.push(`${teil}: verbotenes Wort \"${w}\"`);\n\t\tif (stil === 'Sie' && /\\b(du|dich|dir|dein|deine|deinen|deinem|deiner|euch|euer)\\b/i.test(t)) fehler.push(`${teil}: duzt statt siezt`);\n\t\tif (stil === 'Sie' && /(^|[.!?]\\s+|\\s)ihr\\b/.test(t)) fehler.push(`${teil}: duzt statt siezt`);\n\t}\n\tif (gesamt > MAX.gesamt) fehler.push('Hülle insgesamt zu lang');\n\treturn [...new Set(fehler)];\n}\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\n/** Editierbarer Teil als Text (für Vorschau und Bearbeiten-Formular). */\nfunction bearbeitbarerText(huelle, bs) {\n\treturn [normalisiereLeerraum(huelle.anrede), '', normalisiereLeerraum(huelle.einleitung), '', ...bs.map((b) => `- ${b.text}`), '', normalisiereLeerraum(huelle.schluss)].join('\\n');\n}\n\n/** Fester Abschluss: Signatur und KI-Hinweis (nie vom LLM, nie im Formular änderbar). */\nfunction abschlussText(config) {\n\treturn [String(config.signatur || '').trim(), '', '--', String(config.ki_hinweistext || '').trim()].join('\\n');\n}\n\n/** Text (bearbeitbarer Teil) -> HTML-Mail mit festem Abschluss. Text wird vollständig escaped. */\nfunction zuHtml(text, config) {\n\tconst absatz = (t) => esc(t).replace(/\\r\\n?/g, '\\n').replace(/\\n/g, '<br>');\n\treturn `<div style=\"font-family:Arial,sans-serif;font-size:11pt\">${absatz(text)}<br><br>${absatz(String(config.signatur || '').trim())}<br><br><span style=\"color:#666;font-size:9pt\">${esc(String(config.ki_hinweistext || '').trim())}</span></div>`;\n}\n\n/**\n * Setzt den Entwurf zusammen.\n * @param {object|null} llmHuelle { anrede, einleitung, schluss } oder null (LLM fehlgeschlagen)\n * @returns {{ text, html, abschluss, bausteine, fallback, pruefung }}\n */\nfunction entwurfBauen(llmHuelle, { config, felder, fehlende, name }) {\n\tconst bs = bausteine(fehlende, felder);\n\tif (!bs.length) throw new Error('Keine fehlenden Felder: keine Rückfrage nötig');\n\tconst pruefung = llmHuelle ? huellePruefen(llmHuelle, config) : ['LLM-Entwurf nicht verfügbar'];\n\tconst fallback = pruefung.length > 0;\n\tconst huelle = fallback ? vorlage(config, name) : llmHuelle;\n\tconst text = bearbeitbarerText(huelle, bs);\n\treturn { text, html: zuHtml(text, config), abschluss: abschlussText(config), bausteine: bs, fallback, pruefung };\n}\n\n/**\n * Prüft einen vom Mitarbeiter bearbeiteten Text. Er darf frei formulieren; abgelehnt werden nur leere oder\n * übermäßig lange Texte. Fehlende Bausteine werden als Hinweis gemeldet (der Mitarbeiter verantwortet die Änderung).\n */\nfunction bearbeitungPruefen(text, bs) {\n\tconst t = String(text ?? '').replace(/\\r\\n?/g, '\\n').trim();\n\tif (!t) return { ok: false, grund: 'Der Text ist leer.' };\n\tif (t.length > 5000) return { ok: false, grund: 'Der Text ist zu lang (max. 5000 Zeichen).' };\n\tconst norm = normalisiereLeerraum(t);\n\tconst fehlend = (bs || []).filter((b) => !norm.includes(b.text)).map((b) => b.anzeigename);\n\treturn { ok: true, text: t, bausteine_entfernt: fehlend };\n}\n\nmodule.exports = { MAX, VERBOTEN, sichererName, bausteine, vorlage, huellePruefen, bearbeitbarerText, abschlussText, zuHtml, entwurfBauen, bearbeitungPruefen, esc };\nreturn module.exports;\n})();\n// ===== Ende src/entwurf.js =====\n// ===== eingebettet aus src/datenTabellen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst datenTabellen = (() => {\nconst module = { exports: {} };\n// Hilfsfunktionen für den Speicher-Adapter \"n8n Data Tables\".\n// Data Tables kennen nur string/number/boolean/date. JSON-Felder werden als Text gespeichert und hier\n// beim Lesen geparst bzw. beim Schreiben serialisiert. Der Data-Table-Node übernimmt im Modus\n// \"autoMapInputData\" genau die Felder des Eingabe-Items; deshalb erzeugen diese Funktionen nur\n// gültige Spalten (unbekannte Spalten würden den Node abbrechen lassen).\n\nconst SPALTEN = {\n\tepa_vorgaenge: [\n\t\t'vorgangs_id', 'kunde_id', 'vorgangstyp', 'status', 'conversation_id', 'erste_message_id', 'letzte_message_id',\n\t\t'bekannte_message_ids', 'absender_adresse', 'absender_name', 'betreff', 'betreff_normalisiert', 'extrahierte_daten',\n\t\t'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist', 'erinnerungen_gesendet', 'bearbeiter',\n\t\t'freigabe_id_aktuell', 'spoofing_hinweis', 'version', 'lock_bis', 'lock_durch', 'loeschen_ab',\n\t],\n\tepa_audit_log: ['kunde_id', 'vorgangs_id', 'typ', 'alt', 'neu', 'ausloeser', 'details', 'referenz'],\n};\n\nconst JSON_SPALTEN = {\n\tepa_vorgaenge: { bekannte_message_ids: [], extrahierte_daten: {}, fehlende_felder: [], konflikte: [] },\n\tepa_audit_log: { details: {} },\n};\n\nconst OFFEN_AUSGESCHLOSSEN = ['Abgeschlossen', 'Ignoriert'];\n\nfunction parseJsonSpalte(wert, standard) {\n\tif (wert === null || wert === undefined || wert === '') return Array.isArray(standard) ? [] : { ...standard };\n\tif (typeof wert === 'object') return wert;\n\ttry {\n\t\treturn JSON.parse(wert);\n\t} catch {\n\t\treturn Array.isArray(standard) ? [] : { ...standard };\n\t}\n}\n\n/** Item eines Data-Table-Lesezugriffs -> Objekt (oder null, wenn leer, z. B. bei alwaysOutputData). */\nfunction zeileLesen(row, tabelle) {\n\tif (!row || row.id === undefined || row.id === null) return null;\n\tconst out = { ...row };\n\tfor (const [spalte, standard] of Object.entries(JSON_SPALTEN[tabelle] || {})) out[spalte] = parseJsonSpalte(row[spalte], standard);\n\treturn out;\n}\n\n/** Objekt -> schreibbare Zeile (nur bekannte Spalten, JSON als Text, undefined entfernt). */\nfunction zeileSchreiben(obj, tabelle) {\n\tconst erlaubt = SPALTEN[tabelle];\n\tif (!erlaubt) throw new Error(`Unbekannte Tabelle ${tabelle}`);\n\tconst json = JSON_SPALTEN[tabelle] || {};\n\tconst out = {};\n\tfor (const [k, v] of Object.entries(obj || {})) {\n\t\tif (!erlaubt.includes(k)) throw new Error(`Spalte \"${k}\" gibt es in ${tabelle} nicht`);\n\t\tif (v === undefined) continue;\n\t\tout[k] = k in json && v !== null && typeof v !== 'string' ? JSON.stringify(v) : v;\n\t}\n\treturn out;\n}\n\n/** Kollisionsfreie Vorgangs-ID aus der fortlaufenden Zeilen-ID der Data Table. */\nfunction vorgangsIdAusZeile(zeilenId, jahr) {\n\tconst n = Number(zeilenId);\n\tif (!Number.isInteger(n) || n < 1) throw new Error(`Ungültige Zeilen-ID ${zeilenId}`);\n\treturn `V-${jahr}-${String(n).padStart(4, '0')}`;\n}\n\n/** Neuer Vorgang (Status \"Neu\") aus den erlaubten Anlage-Feldern. */\nfunction neuerVorgang(kundeId, daten, { aufbewahrungTage, jetzt, platzhalterId }) {\n\tconst d = daten || {};\n\tconst loeschen = new Date(new Date(jetzt).getTime() + Number(aufbewahrungTage) * 86400000).toISOString();\n\treturn zeileSchreiben({\n\t\tvorgangs_id: platzhalterId,\n\t\tkunde_id: kundeId,\n\t\tvorgangstyp: d.vorgangstyp ?? null,\n\t\tstatus: 'Neu',\n\t\tconversation_id: d.conversation_id ?? null,\n\t\terste_message_id: d.erste_message_id ?? null,\n\t\tletzte_message_id: d.erste_message_id ?? null,\n\t\tbekannte_message_ids: d.erste_message_id ? [d.erste_message_id] : [],\n\t\tabsender_adresse: d.absender_adresse ? String(d.absender_adresse).toLowerCase() : null,\n\t\tabsender_name: d.absender_name ?? null,\n\t\tbetreff: d.betreff ?? null,\n\t\tbetreff_normalisiert: d.betreff_normalisiert ?? null,\n\t\textrahierte_daten: {},\n\t\tfehlende_felder: [],\n\t\tkonflikte: [],\n\t\trundenzaehler: 0,\n\t\terinnerungen_gesendet: 0,\n\t\tspoofing_hinweis: d.spoofing_hinweis ?? null,\n\t\tversion: 1,\n\t\tloeschen_ab: loeschen,\n\t}, 'epa_vorgaenge');\n}\n\nconst AENDERBAR = ['vorgangstyp', 'conversation_id', 'letzte_message_id', 'neue_message_ids', 'absender_name', 'betreff',\n\t'betreff_normalisiert', 'extrahierte_daten', 'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist',\n\t'erinnerungen_gesendet', 'bearbeiter', 'freigabe_id_aktuell', 'spoofing_hinweis'];\n\n/**\n * Teil-Update eines Vorgangs. Gibt nur geänderte Spalten + neue Version zurück.\n * neue_message_ids werden an bekannte_message_ids angehängt (ohne Duplikate).\n */\nfunction aktualisierungBerechnen(vorgang, daten) {\n\tconst patch = {};\n\tfor (const [k, v] of Object.entries(daten || {})) {\n\t\tif (!AENDERBAR.includes(k)) throw new Error(`Feld \"${k}\" ist nicht änderbar`);\n\t\tif (k === 'neue_message_ids') {\n\t\t\tconst alle = [...(vorgang.bekannte_message_ids || []), ...(v || [])];\n\t\t\tpatch.bekannte_message_ids = [...new Set(alle)];\n\t\t} else {\n\t\t\tpatch[k] = v;\n\t\t}\n\t}\n\tpatch.version = Number(vorgang.version) + 1;\n\treturn zeileSchreiben(patch, 'epa_vorgaenge');\n}\n\n/** Filtert offene Vorgänge eines Kunden nach Zuordnungskriterien (wie die SQL-Variante). */\nfunction kandidatenFiltern(zeilen, kriterien) {\n\tconst k = kriterien || {};\n\tconst ids = new Set(k.message_ids || []);\n\tconst vids = new Set(k.vorgangs_ids || []);\n\tconst absender = k.absender_adresse ? String(k.absender_adresse).toLowerCase() : null;\n\treturn (zeilen || [])\n\t\t.map((z) => zeileLesen(z, 'epa_vorgaenge'))\n\t\t.filter((v) => v && !OFFEN_AUSGESCHLOSSEN.includes(v.status))\n\t\t.filter((v) =>\n\t\t\t(v.bekannte_message_ids || []).some((m) => ids.has(m)) ||\n\t\t\t(k.conversation_id && v.conversation_id === k.conversation_id) ||\n\t\t\t(absender && String(v.absender_adresse || '').toLowerCase() === absender) ||\n\t\t\t(k.betreff_normalisiert && v.betreff_normalisiert === k.betreff_normalisiert) ||\n\t\t\tvids.has(v.vorgangs_id))\n\t\t.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))\n\t\t.slice(0, 20)\n\t\t.map((v) => ({\n\t\t\tvorgangs_id: v.vorgangs_id, status: v.status, conversation_id: v.conversation_id,\n\t\t\tbekannte_message_ids: v.bekannte_message_ids, absender_adresse: v.absender_adresse,\n\t\t\tbetreff_normalisiert: v.betreff_normalisiert, version: v.version, geaendert_am: v.updatedAt,\n\t\t}));\n}\n\n/**\n * Entscheidet über eine Sperre. Ergebnis enthält die Werte für ein bedingtes Update\n * (Compare-and-Set auf lock_durch): Nur wenn lock_durch noch den gelesenen Wert hat, wird gesperrt.\n */\nfunction sperreEntscheiden(vorgang, wer, sekunden, jetzt) {\n\tconst t = new Date(jetzt).getTime();\n\tconst bis = vorgang.lock_bis ? new Date(vorgang.lock_bis).getTime() : null;\n\tconst frei = !vorgang.lock_durch || bis === null || bis < t || vorgang.lock_durch === wer;\n\treturn {\n\t\tmoeglich: frei,\n\t\tvorher_durch: vorgang.lock_durch || null,\n\t\tvorher_bis: vorgang.lock_bis || null,\n\t\tneu: { lock_durch: wer, lock_bis: new Date(t + sekunden * 1000).toISOString() },\n\t};\n}\n\nmodule.exports = {\n\tSPALTEN,\n\tJSON_SPALTEN,\n\tAENDERBAR,\n\tzeileLesen,\n\tzeileSchreiben,\n\tvorgangsIdAusZeile,\n\tneuerVorgang,\n\taktualisierungBerechnen,\n\tkandidatenFiltern,\n\tsperreEntscheiden,\n};\nreturn module.exports;\n})();\n// ===== Ende src/datenTabellen.js =====\n\n// ----- Node-Logik -----\nconst a = $('Anfrage lesen').first().json;\nconst da = (n) => { const j = $(n).first().json; return j && j.id !== undefined ? j : null; };\nconst tok = da('Token lesen');\nconst fg = da('Freigabe lesen');\nconst kunde = da('Kunde lesen');\nconst v = datenTabellen.zeileLesen($input.first().json, 'epa_vorgaenge');\nconst TITEL = { 400: 'Eingabe unvollständig', 403: 'Keine Berechtigung', 404: 'Link ungültig', 409: 'Bereits bearbeitet', 410: 'Link abgelaufen' };\nconst antwort = (status, text) => [{ json: { weg: 'antworten', status, html: freigabe.seiteMeldung(TITEL[status] || 'Hinweis', text, 'fehler') } }];\nif (!a.gueltig) return antwort(404, 'Dieser Freigabe-Link ist ungültig.');\nlet liste = [];\ntry { liste = JSON.parse((kunde && kunde.freigeber) || '[]').map((s) => String(s).toLowerCase()); } catch (e) { liste = []; }\nconst p = freigabe.freigabePruefen({ token: tok, freigabe: fg, freigeberErlaubt: Boolean(tok) && liste.includes(String(tok.freigeber).toLowerCase()), jetzt: new Date().toISOString() });\nif (!p.ok) return antwort(p.status, p.meldung);\nif (!v) return antwort(404, 'Der Vorgang existiert nicht mehr.');\nlet fehlende = [];\ntry { fehlende = JSON.parse(fg.fehlende_felder || '[]'); } catch (e) { fehlende = []; }\nif (a.methode === 'GET') {\n\treturn [{ json: { weg: 'antworten', status: 200, html: freigabe.seiteFormular({ token: a.token, freigabe: fg, vorgang: v, fehlende, text: fg.entwurf_text, abschluss: fg.abschluss }) } }];\n}\nconst f = a.formular;\nif (!f.ok) return antwort(400, f.meldung + ' Bitte über den Link erneut öffnen.');\nconst basis = { freigabe_id: fg.freigabe_id, kunde_id: fg.kunde_id, vorgangs_id: fg.vorgangs_id, entwurf_id: fg.entwurf_id, token_id: tok.id, entscheider: String(tok.freigeber).toLowerCase(), runde: fg.runde };\nif (f.aktion === 'ablehnen') return [{ json: { ...basis, weg: 'ablehnen', grund: f.grund } }];\nconst bearbeitet = freigabe.istBearbeitet(fg.entwurf_text, f.text);\nlet text = fg.entwurf_text;\nlet hinweis = [];\nif (bearbeitet) {\n\tconst c = entwurf.bearbeitungPruefen(f.text, []);\n\tif (!c.ok) return antwort(400, c.meldung || c.grund);\n\ttext = c.text;\n}\nreturn [{ json: { ...basis, weg: 'senden', bearbeitet, text, html_mail: bearbeitet ? entwurf.zuHtml(text, { signatur: kunde.signatur, ki_hinweistext: kunde.ki_hinweistext }) : null, postfach: kunde.postfach, postfach_workflow_id: kunde.postfach_workflow_id } }];\n"
+      },
+      "id": "89c07c8f-38bc-4693-ae8b-a64f3237d249",
+      "name": "Prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "98942c7a-b2e0-48c2-a65c-412909cc7a44",
+                    "leftValue": "={{ $json.weg }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "antworten"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "antworten"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "aa6cd8c0-ec5b-4a62-ad4c-5261e756a3e2",
+                    "leftValue": "={{ $json.weg }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "ablehnen"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ablehnen"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "3fd7acd2-9117-49e0-a648-b670719c1f63",
+                    "leftValue": "={{ $json.weg }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "senden"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "senden"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4e2f8242-a2d9-46c7-adc2-f884d0591344",
+      "name": "Weiter",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1540,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst p = $input.first().json;\nreturn [{ json: { status: 'abgelehnt', entscheider: p.entscheider, entscheidung: 'abgelehnt', bearbeitet: false, grund: p.grund } }];\n"
+      },
+      "id": "93422a4f-5ea2-4126-ac47-6637e520250e",
+      "name": "Ablehnung vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigaben"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "freigabe_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Prüfen').first().json.freigabe_id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "offen"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "cd736e74-0e83-461f-af5e-0badd6d85887",
+      "name": "Freigabe ablehnen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1980,
+        -260
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d8a2e304-be9f-4826-aaef-b2f18b60e77b",
+              "leftValue": "={{ $('Freigabe ablehnen').first().json.id }}",
+              "operator": {
+                "type": "number",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "a875e1c8-0d0a-4db5-a3a4-031abd5dd1c1",
+      "name": "Ablehnung übernommen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2200,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: { verbraucht_am: new Date().toISOString() } }];\n"
+      },
+      "id": "799eb584-9286-407d-abee-15c4e99660ba",
+      "name": "Token-Verbrauch (Ablehnung)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        -340
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigabe_tokens"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Prüfen').first().json.token_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "11c2ef00-4331-49a1-abe4-4403d894fc2a",
+      "name": "Token verbrauchen (Ablehnung)",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2640,
+        -340
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Status setzen",
+          "cachedResultName": "EPA SW Status setzen"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $('Prüfen').first().json.kunde_id }}",
+            "vorgangs_id": "={{ $('Prüfen').first().json.vorgangs_id }}",
+            "neuer_status": "Eskaliert / Manuell",
+            "ausloeser": "={{ 'Mitarbeiter:' + $('Prüfen').first().json.entscheider }}",
+            "details": "={{ { grund: 'Rückfrage abgelehnt', begruendung: $('Prüfen').first().json.grund, freigabe_id: $('Prüfen').first().json.freigabe_id } }}",
+            "referenz": "={{ $('Prüfen').first().json.freigabe_id }}",
+            "erwartete_version": "={{ null }}",
+            "nur_wenn_erlaubt": "={{ false }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "neuer_status",
+              "displayName": "neuer_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "ausloeser",
+              "displayName": "ausloeser",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "details",
+              "displayName": "details",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object",
+              "removed": false
+            },
+            {
+              "id": "referenz",
+              "displayName": "referenz",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "erwartete_version",
+              "displayName": "erwartete_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "nur_wenn_erlaubt",
+              "displayName": "nur_wenn_erlaubt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "230cd88f-b897-4d9b-a787-e52d427ffc9e",
+      "name": "Status: Eskaliert (abgelehnt)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        2860,
+        -340
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/freigabe.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst freigabe = (() => {\nconst module = { exports: {} };\n// Freigabe Variante B (Bauplan 6): einmaliges, ablaufendes Token je Freigeber. Gespeichert wird nur der\n// SHA-256-Hash. Der Endpunkt EPA-07 zeigt ein Formular (Vorschau, Text bearbeitbar, Senden/Ablehnen) und\n// verbraucht die Freigabe atomar (bedingtes Update auf status = 'offen').\n\nconst TOKEN_MUSTER = /^[A-Za-z0-9_-]{43}$/; // 32 Byte base64url\nconst AKTIONEN = ['senden', 'ablehnen'];\n\n/** @param {object} c Node-Modul \"crypto\" (im Code-Node per require('crypto')) */\nfunction tokenErzeugen(c) {\n\tconst token = c.randomBytes(32).toString('base64url');\n\treturn { token, hash: tokenHash(c, token) };\n}\n\nfunction tokenHash(c, token) {\n\treturn c.createHash('sha256').update(String(token), 'utf8').digest('hex');\n}\n\nfunction freigabeIdErzeugen(c) {\n\treturn 'F-' + c.randomUUID();\n}\n\nfunction istGueltigesToken(t) {\n\treturn typeof t === 'string' && TOKEN_MUSTER.test(t);\n}\n\n/** Basis-URL der Instanz aus $execution.resumeUrl (…/webhook-waiting/<id>) bzw. einem Override. */\nfunction basisUrl(resumeUrl, override) {\n\tif (override) return String(override).replace(/\\/+$/, '');\n\tconst m = String(resumeUrl || '').match(/^(https?:\\/\\/[^/]+(?:\\/[^/]+)*?)\\/webhook-waiting\\//);\n\tif (!m) throw new Error('Basis-URL der Instanz nicht ermittelbar');\n\treturn m[1];\n}\n\nfunction link(basis, token) {\n\treturn `${basis}/webhook/epa-freigabe?t=${encodeURIComponent(token)}`;\n}\n\n/**\n * Prüft Token und Freigabe vor Anzeige bzw. Entscheidung.\n * @returns {{ ok: true } | { ok: false, status: number, code: string, meldung: string }}\n */\nfunction freigabePruefen({ token, freigabe, freigeberErlaubt, jetzt }) {\n\tconst nein = (status, code, meldung) => ({ ok: false, status, code, meldung });\n\tif (!token || token.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Dieser Freigabe-Link ist ungültig.');\n\tif (!freigabe || freigabe.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Die Freigabe existiert nicht mehr.');\n\tif (freigabe.status !== 'offen') {\n\t\tconst wer = freigabe.entscheider ? ` von ${freigabe.entscheider}` : '';\n\t\tconst was = { in_versand: 'wird gerade versendet', gesendet: 'wurde bereits freigegeben und gesendet', abgelehnt: 'wurde bereits abgelehnt', abgelaufen: 'ist abgelaufen', ersetzt: 'wurde durch eine neuere Freigabe ersetzt', fehler: 'ist beim Versand fehlgeschlagen' }[freigabe.status] || `hat den Status \"${freigabe.status}\"`;\n\t\treturn nein(freigabe.status === 'abgelaufen' ? 410 : 409, freigabe.status === 'abgelaufen' ? 'FREIGABE_ABGELAUFEN' : 'DUPLIKAT', `Diese Rückfrage ${was}${freigabe.status === 'gesendet' || freigabe.status === 'abgelehnt' ? wer : ''}.`);\n\t}\n\tif (token.verbraucht_am) return nein(409, 'DUPLIKAT', 'Dieser Link wurde bereits verwendet.');\n\tif (new Date(freigabe.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Ein neuer Link wird automatisch verschickt.');\n\tif (!freigeberErlaubt) return nein(403, 'KEINE_BERECHTIGUNG', 'Sie sind für diesen Kunden nicht (mehr) als Freigeber eingetragen.');\n\treturn { ok: true };\n}\n\n/** Formulardaten aus EPA-07 (POST, application/x-www-form-urlencoded). */\nfunction formularLesen(body) {\n\tconst b = body && typeof body === 'object' ? body : {};\n\tconst aktion = String(b.aktion || '');\n\tif (!AKTIONEN.includes(aktion)) return { ok: false, meldung: 'Unbekannte Aktion.' };\n\tif (!istGueltigesToken(b.t)) return { ok: false, meldung: 'Ungültiger Link.' };\n\tconst grund = String(b.grund || '').trim().slice(0, 500);\n\tif (aktion === 'ablehnen' && !grund) return { ok: false, meldung: 'Bitte einen Grund für die Ablehnung angeben.' };\n\treturn { ok: true, aktion, token: b.t, text: typeof b.text === 'string' ? b.text : '', grund };\n}\n\nfunction istBearbeitet(original, neu) {\n\tconst n = (s) => String(s ?? '').replace(/\\r\\n?/g, '\\n').replace(/[ \\t]+/g, ' ').replace(/\\s+$/gm, '').trim();\n\treturn n(original) !== n(neu);\n}\n\n// ---------------------------------------------------------------- HTML\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nconst STIL = `body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;margin:0;background:#f4f5f7;color:#1d2433}\nmain{max-width:760px;margin:0 auto;padding:16px}\n.karte{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}\nh1{font-size:1.3rem;margin:0 0 12px}dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0}\ndt{color:#5b6475}dd{margin:0;overflow-wrap:anywhere}textarea{width:100%;box-sizing:border-box;min-height:260px;font:inherit;padding:8px}\npre{white-space:pre-wrap;font:inherit;color:#5b6475;margin:8px 0 0}.knoepfe{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}\nbutton{font:inherit;padding:10px 16px;border-radius:6px;border:0;cursor:pointer}.senden{background:#1f6f43;color:#fff}.ablehnen{background:#a3222b;color:#fff}\ninput[type=text]{width:100%;box-sizing:border-box;font:inherit;padding:8px}.hinweis{color:#5b6475;font-size:.9rem}\n.ok{border-left:4px solid #1f6f43}.fehler{border-left:4px solid #a3222b}`;\n\nfunction seite(titel, inhalt) {\n\treturn `<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><title>${esc(titel)}</title><style>${STIL}</style></head><body><main>${inhalt}</main></body></html>`;\n}\n\nfunction seiteFormular({ token, freigabe, vorgang, fehlende, text, abschluss }) {\n\tconst luecken = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}${f.grund ? ` <span class=\"hinweis\">(${esc(f.grund)})</span>` : ''}</li>`).join('');\n\treturn seite(`Rückfrage ${vorgang.vorgangs_id}`, `\n<div class=\"karte\"><h1>Rückfrage freigeben – ${esc(vorgang.vorgangs_id)}</h1>\n<dl><dt>An</dt><dd>${esc(freigabe.empfaenger)}</dd><dt>Betreff</dt><dd>${esc(freigabe.betreff)}</dd>\n<dt>Runde</dt><dd>${esc(Number(vorgang.rundenzaehler || 0) + 1)}</dd><dt>Gültig bis</dt><dd>${esc(new Date(freigabe.ablauf).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }))}</dd></dl>\n<p>Fehlende Angaben:</p><ul>${luecken}</ul>${freigabe.fallback ? '<p class=\"hinweis\">Hinweis: Die KI-Formulierung hat die Prüfung nicht bestanden, es wird die Standardvorlage verwendet.</p>' : ''}</div>\n<form class=\"karte\" method=\"post\" onsubmit=\"for(const b of this.querySelectorAll('button'))b.disabled=true\">\n<input type=\"hidden\" name=\"t\" value=\"${esc(token)}\">\n<label for=\"text\"><b>Text der Mail</b> (bearbeitbar)</label>\n<textarea id=\"text\" name=\"text\">${esc(text)}</textarea>\n<pre>${esc(abschluss)}</pre>\n<p class=\"hinweis\">Signatur und KI-Hinweis werden immer automatisch angehängt.</p>\n<label for=\"grund\">Grund (nur bei Ablehnung)</label><input type=\"text\" id=\"grund\" name=\"grund\" maxlength=\"500\">\n<div class=\"knoepfe\"><button class=\"senden\" name=\"aktion\" value=\"senden\">Freigeben und senden</button>\n<button class=\"ablehnen\" name=\"aktion\" value=\"ablehnen\">Ablehnen (manuell bearbeiten)</button></div>\n<p class=\"hinweis\">Der Link ist nur einmal verwendbar. Nichts wird ohne Ihren Klick versendet.</p></form>`);\n}\n\nfunction seiteMeldung(titel, text, art = 'ok') {\n\treturn seite(titel, `<div class=\"karte ${art === 'ok' ? 'ok' : 'fehler'}\"><h1>${esc(titel)}</h1><p>${esc(text)}</p></div>`);\n}\n\n/** Teams-Nachricht an den Freigeber (1:1-Chat). */\nfunction nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art }) {\n\tconst liste = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}</li>`).join('');\n\tconst titel = art === 'erinnerung' ? 'Erinnerung an den Kunden freigeben' : 'Rückfrage an den Kunden freigeben';\n\treturn `<b>${esc(titel)}: ${esc(vorgang.vorgangs_id)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>Fehlende Angaben:<ul>${liste}</ul>` +\n\t\t`<a href=\"${esc(url)}\">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Persönlicher Link, einmal verwendbar, gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;\n}\n\nmodule.exports = {\n\tTOKEN_MUSTER, AKTIONEN, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,\n\tfreigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber,\n};\nreturn module.exports;\n})();\n// ===== Ende src/freigabe.js =====\n\n// ----- Node-Logik -----\nconst s = $input.first().json || {};\nconst ok = s.ok === true;\nreturn [{ json: { status: 200, nachmelden: !ok, vorgangs_id: $('Prüfen').first().json.vorgangs_id, meldung: 'Status nach Ablehnung nicht gesetzt',\n\thtml: freigabe.seiteMeldung('Rückfrage abgelehnt', ok ? 'Es wurde nichts gesendet. Der Vorgang steht auf \"Eskaliert / Manuell\" und wird manuell bearbeitet.' : 'Es wurde nichts gesendet. Der Vorgangsstatus konnte nicht automatisch angepasst werden; die Entwicklung wurde informiert.', ok ? 'ok' : 'fehler') } }];\n"
+      },
+      "id": "1428cae6-48c5-4c89-a3d2-72566bbe8e8a",
+      "name": "Seite: abgelehnt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3080,
+        -340
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/freigabe.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst freigabe = (() => {\nconst module = { exports: {} };\n// Freigabe Variante B (Bauplan 6): einmaliges, ablaufendes Token je Freigeber. Gespeichert wird nur der\n// SHA-256-Hash. Der Endpunkt EPA-07 zeigt ein Formular (Vorschau, Text bearbeitbar, Senden/Ablehnen) und\n// verbraucht die Freigabe atomar (bedingtes Update auf status = 'offen').\n\nconst TOKEN_MUSTER = /^[A-Za-z0-9_-]{43}$/; // 32 Byte base64url\nconst AKTIONEN = ['senden', 'ablehnen'];\n\n/** @param {object} c Node-Modul \"crypto\" (im Code-Node per require('crypto')) */\nfunction tokenErzeugen(c) {\n\tconst token = c.randomBytes(32).toString('base64url');\n\treturn { token, hash: tokenHash(c, token) };\n}\n\nfunction tokenHash(c, token) {\n\treturn c.createHash('sha256').update(String(token), 'utf8').digest('hex');\n}\n\nfunction freigabeIdErzeugen(c) {\n\treturn 'F-' + c.randomUUID();\n}\n\nfunction istGueltigesToken(t) {\n\treturn typeof t === 'string' && TOKEN_MUSTER.test(t);\n}\n\n/** Basis-URL der Instanz aus $execution.resumeUrl (…/webhook-waiting/<id>) bzw. einem Override. */\nfunction basisUrl(resumeUrl, override) {\n\tif (override) return String(override).replace(/\\/+$/, '');\n\tconst m = String(resumeUrl || '').match(/^(https?:\\/\\/[^/]+(?:\\/[^/]+)*?)\\/webhook-waiting\\//);\n\tif (!m) throw new Error('Basis-URL der Instanz nicht ermittelbar');\n\treturn m[1];\n}\n\nfunction link(basis, token) {\n\treturn `${basis}/webhook/epa-freigabe?t=${encodeURIComponent(token)}`;\n}\n\n/**\n * Prüft Token und Freigabe vor Anzeige bzw. Entscheidung.\n * @returns {{ ok: true } | { ok: false, status: number, code: string, meldung: string }}\n */\nfunction freigabePruefen({ token, freigabe, freigeberErlaubt, jetzt }) {\n\tconst nein = (status, code, meldung) => ({ ok: false, status, code, meldung });\n\tif (!token || token.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Dieser Freigabe-Link ist ungültig.');\n\tif (!freigabe || freigabe.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Die Freigabe existiert nicht mehr.');\n\tif (freigabe.status !== 'offen') {\n\t\tconst wer = freigabe.entscheider ? ` von ${freigabe.entscheider}` : '';\n\t\tconst was = { in_versand: 'wird gerade versendet', gesendet: 'wurde bereits freigegeben und gesendet', abgelehnt: 'wurde bereits abgelehnt', abgelaufen: 'ist abgelaufen', ersetzt: 'wurde durch eine neuere Freigabe ersetzt', fehler: 'ist beim Versand fehlgeschlagen' }[freigabe.status] || `hat den Status \"${freigabe.status}\"`;\n\t\treturn nein(freigabe.status === 'abgelaufen' ? 410 : 409, freigabe.status === 'abgelaufen' ? 'FREIGABE_ABGELAUFEN' : 'DUPLIKAT', `Diese Rückfrage ${was}${freigabe.status === 'gesendet' || freigabe.status === 'abgelehnt' ? wer : ''}.`);\n\t}\n\tif (token.verbraucht_am) return nein(409, 'DUPLIKAT', 'Dieser Link wurde bereits verwendet.');\n\tif (new Date(freigabe.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Ein neuer Link wird automatisch verschickt.');\n\tif (!freigeberErlaubt) return nein(403, 'KEINE_BERECHTIGUNG', 'Sie sind für diesen Kunden nicht (mehr) als Freigeber eingetragen.');\n\treturn { ok: true };\n}\n\n/** Formulardaten aus EPA-07 (POST, application/x-www-form-urlencoded). */\nfunction formularLesen(body) {\n\tconst b = body && typeof body === 'object' ? body : {};\n\tconst aktion = String(b.aktion || '');\n\tif (!AKTIONEN.includes(aktion)) return { ok: false, meldung: 'Unbekannte Aktion.' };\n\tif (!istGueltigesToken(b.t)) return { ok: false, meldung: 'Ungültiger Link.' };\n\tconst grund = String(b.grund || '').trim().slice(0, 500);\n\tif (aktion === 'ablehnen' && !grund) return { ok: false, meldung: 'Bitte einen Grund für die Ablehnung angeben.' };\n\treturn { ok: true, aktion, token: b.t, text: typeof b.text === 'string' ? b.text : '', grund };\n}\n\nfunction istBearbeitet(original, neu) {\n\tconst n = (s) => String(s ?? '').replace(/\\r\\n?/g, '\\n').replace(/[ \\t]+/g, ' ').replace(/\\s+$/gm, '').trim();\n\treturn n(original) !== n(neu);\n}\n\n// ---------------------------------------------------------------- HTML\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nconst STIL = `body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;margin:0;background:#f4f5f7;color:#1d2433}\nmain{max-width:760px;margin:0 auto;padding:16px}\n.karte{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}\nh1{font-size:1.3rem;margin:0 0 12px}dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0}\ndt{color:#5b6475}dd{margin:0;overflow-wrap:anywhere}textarea{width:100%;box-sizing:border-box;min-height:260px;font:inherit;padding:8px}\npre{white-space:pre-wrap;font:inherit;color:#5b6475;margin:8px 0 0}.knoepfe{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}\nbutton{font:inherit;padding:10px 16px;border-radius:6px;border:0;cursor:pointer}.senden{background:#1f6f43;color:#fff}.ablehnen{background:#a3222b;color:#fff}\ninput[type=text]{width:100%;box-sizing:border-box;font:inherit;padding:8px}.hinweis{color:#5b6475;font-size:.9rem}\n.ok{border-left:4px solid #1f6f43}.fehler{border-left:4px solid #a3222b}`;\n\nfunction seite(titel, inhalt) {\n\treturn `<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><title>${esc(titel)}</title><style>${STIL}</style></head><body><main>${inhalt}</main></body></html>`;\n}\n\nfunction seiteFormular({ token, freigabe, vorgang, fehlende, text, abschluss }) {\n\tconst luecken = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}${f.grund ? ` <span class=\"hinweis\">(${esc(f.grund)})</span>` : ''}</li>`).join('');\n\treturn seite(`Rückfrage ${vorgang.vorgangs_id}`, `\n<div class=\"karte\"><h1>Rückfrage freigeben – ${esc(vorgang.vorgangs_id)}</h1>\n<dl><dt>An</dt><dd>${esc(freigabe.empfaenger)}</dd><dt>Betreff</dt><dd>${esc(freigabe.betreff)}</dd>\n<dt>Runde</dt><dd>${esc(Number(vorgang.rundenzaehler || 0) + 1)}</dd><dt>Gültig bis</dt><dd>${esc(new Date(freigabe.ablauf).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }))}</dd></dl>\n<p>Fehlende Angaben:</p><ul>${luecken}</ul>${freigabe.fallback ? '<p class=\"hinweis\">Hinweis: Die KI-Formulierung hat die Prüfung nicht bestanden, es wird die Standardvorlage verwendet.</p>' : ''}</div>\n<form class=\"karte\" method=\"post\" onsubmit=\"for(const b of this.querySelectorAll('button'))b.disabled=true\">\n<input type=\"hidden\" name=\"t\" value=\"${esc(token)}\">\n<label for=\"text\"><b>Text der Mail</b> (bearbeitbar)</label>\n<textarea id=\"text\" name=\"text\">${esc(text)}</textarea>\n<pre>${esc(abschluss)}</pre>\n<p class=\"hinweis\">Signatur und KI-Hinweis werden immer automatisch angehängt.</p>\n<label for=\"grund\">Grund (nur bei Ablehnung)</label><input type=\"text\" id=\"grund\" name=\"grund\" maxlength=\"500\">\n<div class=\"knoepfe\"><button class=\"senden\" name=\"aktion\" value=\"senden\">Freigeben und senden</button>\n<button class=\"ablehnen\" name=\"aktion\" value=\"ablehnen\">Ablehnen (manuell bearbeiten)</button></div>\n<p class=\"hinweis\">Der Link ist nur einmal verwendbar. Nichts wird ohne Ihren Klick versendet.</p></form>`);\n}\n\nfunction seiteMeldung(titel, text, art = 'ok') {\n\treturn seite(titel, `<div class=\"karte ${art === 'ok' ? 'ok' : 'fehler'}\"><h1>${esc(titel)}</h1><p>${esc(text)}</p></div>`);\n}\n\n/** Teams-Nachricht an den Freigeber (1:1-Chat). */\nfunction nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art }) {\n\tconst liste = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}</li>`).join('');\n\tconst titel = art === 'erinnerung' ? 'Erinnerung an den Kunden freigeben' : 'Rückfrage an den Kunden freigeben';\n\treturn `<b>${esc(titel)}: ${esc(vorgang.vorgangs_id)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>Fehlende Angaben:<ul>${liste}</ul>` +\n\t\t`<a href=\"${esc(url)}\">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Persönlicher Link, einmal verwendbar, gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;\n}\n\nmodule.exports = {\n\tTOKEN_MUSTER, AKTIONEN, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,\n\tfreigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber,\n};\nreturn module.exports;\n})();\n// ===== Ende src/freigabe.js =====\n\n// ----- Node-Logik -----\nreturn [{ json: { status: 409, html: freigabe.seiteMeldung('Bereits bearbeitet', 'Diese Rückfrage wurde gerade von jemand anderem bzw. in einem anderen Fenster bearbeitet. Es wurde nichts doppelt gesendet.', 'fehler') } }];\n"
+      },
+      "id": "30d5bc83-a16b-4794-a00c-be0d52d8259e",
+      "name": "Seite: bereits bearbeitet",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst p = $input.first().json;\nreturn [{ json: { status: 'in_versand', entscheider: p.entscheider, entscheidung: p.bearbeitet ? 'bearbeitet' : 'freigegeben', bearbeitet: p.bearbeitet, entwurf_text: p.text } }];\n"
+      },
+      "id": "67c4a0d2-a341-4e13-ae03-d885894a1ac3",
+      "name": "Versand vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigaben"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "freigabe_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Prüfen').first().json.freigabe_id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "offen"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "a962e025-e194-44ed-add0-e65795f48c8e",
+      "name": "Freigabe übernehmen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1980,
+        260
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c1159d99-9436-4570-acbb-1bf9ca50036e",
+              "leftValue": "={{ $('Freigabe übernehmen').first().json.id }}",
+              "operator": {
+                "type": "number",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "3c36b002-d8f2-4ae7-a79b-3c24bd9fea84",
+      "name": "Übernommen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2200,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: { verbraucht_am: new Date().toISOString() } }];\n"
+      },
+      "id": "08c3791a-0a26-484f-aa28-813946e680c2",
+      "name": "Token-Verbrauch (Versand)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigabe_tokens"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Prüfen').first().json.token_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "e0185bd5-89ba-4d34-aeee-534429da67f3",
+      "name": "Token verbrauchen (Versand)",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2640,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "38df40f3-68b1-4690-a0ed-c4cd8494222e",
+              "leftValue": "={{ $('Prüfen').first().json.bearbeitet }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "537252c0-e732-4be4-acd2-f7ae9c91bc95",
+      "name": "Bearbeitet?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2860,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Prüfen').first().json.postfach_workflow_id }}"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "aktion": "entwurf_aktualisieren",
+            "postfach": "={{ $('Prüfen').first().json.postfach }}",
+            "graph_id": "",
+            "internet_message_id": "",
+            "entwurf_id": "={{ $('Prüfen').first().json.entwurf_id }}",
+            "freigabe_id": "={{ $('Prüfen').first().json.freigabe_id }}",
+            "vorgangs_id": "={{ $('Prüfen').first().json.vorgangs_id }}",
+            "html": "={{ $('Prüfen').first().json.html_mail }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "aktion",
+              "displayName": "aktion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "postfach",
+              "displayName": "postfach",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "graph_id",
+              "displayName": "graph_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "internet_message_id",
+              "displayName": "internet_message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "entwurf_id",
+              "displayName": "entwurf_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "freigabe_id",
+              "displayName": "freigabe_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "html",
+              "displayName": "html",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "9c6e4f51-4a17-4a5b-aa2b-f79d892f77ec",
+      "name": "Entwurf aktualisieren",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3080,
+        260
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Prüfen').first().json.postfach_workflow_id }}"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "aktion": "entwurf_senden",
+            "postfach": "={{ $('Prüfen').first().json.postfach }}",
+            "graph_id": "",
+            "internet_message_id": "",
+            "entwurf_id": "={{ $('Prüfen').first().json.entwurf_id }}",
+            "freigabe_id": "={{ $('Prüfen').first().json.freigabe_id }}",
+            "vorgangs_id": "={{ $('Prüfen').first().json.vorgangs_id }}",
+            "html": ""
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "aktion",
+              "displayName": "aktion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "postfach",
+              "displayName": "postfach",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "graph_id",
+              "displayName": "graph_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "internet_message_id",
+              "displayName": "internet_message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "entwurf_id",
+              "displayName": "entwurf_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "freigabe_id",
+              "displayName": "freigabe_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "html",
+              "displayName": "html",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "e0900c93-7e64-4b9b-aabc-f9237d2e0fdf",
+      "name": "Entwurf senden",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3300,
+        340
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst r = $('Entwurf senden').isExecuted ? ($('Entwurf senden').first().json || {}) : {};\nconst akt = $('Entwurf aktualisieren').isExecuted ? $('Entwurf aktualisieren').first().json : null;\nconst fehler = akt && akt.aktualisiert !== true ? 'Bearbeiteter Text konnte nicht übernommen werden: ' + ((akt.error && (akt.error.message || akt.error)) || 'keine Bestätigung') : (r.gesendet === true ? null : 'Versand fehlgeschlagen: ' + ((r.error && (r.error.message || r.error)) || 'keine Bestätigung'));\nreturn [{ json: { gesendet: !fehler, bereits: r.bereits === true, internet_message_id: r.internet_message_id || null, fehler } }];\n"
+      },
+      "id": "2f5efbb7-6448-47de-a587-a9798fe59121",
+      "name": "Versand auswerten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3520,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "aee35aeb-1365-4477-a5b4-436d0466b846",
+              "leftValue": "={{ $json.gesendet }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "51e3a631-377f-4bda-aacd-d778e5b475ae",
+      "name": "Gesendet?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3740,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst r = $input.first().json;\nreturn [{ json: { status: 'gesendet', gesendet_am: new Date().toISOString(), gesendet_message_id: r.internet_message_id } }];\n"
+      },
+      "id": "adf6e21f-459c-43fb-a39a-9580cb2711de",
+      "name": "Gesendet vermerken (Daten)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3960,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigaben"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "freigabe_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Prüfen').first().json.freigabe_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "1e0bb8a2-698f-48fa-a2a5-4e1386205138",
+      "name": "Freigabe als gesendet vermerken",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        4180,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Status setzen",
+          "cachedResultName": "EPA SW Status setzen"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $('Prüfen').first().json.kunde_id }}",
+            "vorgangs_id": "={{ $('Prüfen').first().json.vorgangs_id }}",
+            "neuer_status": "Warten auf Kunde",
+            "ausloeser": "={{ 'Mitarbeiter:' + $('Prüfen').first().json.entscheider }}",
+            "details": "={{ { freigabe_id: $('Prüfen').first().json.freigabe_id, runde: $('Prüfen').first().json.runde, bearbeitet: $('Prüfen').first().json.bearbeitet, bereits_gesendet: $('Versand auswerten').first().json.bereits } }}",
+            "referenz": "={{ $('Prüfen').first().json.freigabe_id }}",
+            "erwartete_version": "={{ null }}",
+            "nur_wenn_erlaubt": "={{ false }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "neuer_status",
+              "displayName": "neuer_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "ausloeser",
+              "displayName": "ausloeser",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "details",
+              "displayName": "details",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object",
+              "removed": false
+            },
+            {
+              "id": "referenz",
+              "displayName": "referenz",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "erwartete_version",
+              "displayName": "erwartete_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "nur_wenn_erlaubt",
+              "displayName": "nur_wenn_erlaubt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "4f52be7b-2f9c-41f2-a28d-bcddb684bf40",
+      "name": "Status: Warten auf Kunde",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        4400,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Config laden",
+          "cachedResultName": "EPA SW Config laden"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $('Prüfen').first().json.kunde_id }}",
+            "postfach": ""
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "postfach",
+              "displayName": "postfach",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "e2bce443-a6f5-406b-aaae-f83f6a983946",
+      "name": "Config laden",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        4620,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/fristen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fristen = (() => {\nconst module = { exports: {} };\n// Fristberechnung mit Zeitzone, Geschäftszeiten und Feiertagen (Masterprompt 3 und Phase C4/E).\n// Nutzt Luxon. In n8n ist Luxon als globales `DateTime` verfügbar, lokal (Tests) über require.\n\nfunction luxon() {\n\t// eslint-disable-next-line no-undef\n\tif (typeof DateTime !== 'undefined' && DateTime && typeof DateTime.fromISO === 'function') return DateTime;\n\treturn require('luxon').DateTime;\n}\n\nconst BUNDESLAENDER = ['BW', 'BY', 'BE', 'BB', 'HB', 'HH', 'HE', 'MV', 'NI', 'NW', 'RP', 'SL', 'SN', 'ST', 'SH', 'TH'];\n\nfunction ostersonntag(jahr) {\n\t// Anonymer gregorianischer Algorithmus (Meeus/Jones/Butcher)\n\tconst a = jahr % 19;\n\tconst b = Math.floor(jahr / 100);\n\tconst c = jahr % 100;\n\tconst d = Math.floor(b / 4);\n\tconst e = b % 4;\n\tconst f = Math.floor((b + 8) / 25);\n\tconst g = Math.floor((b - f + 1) / 3);\n\tconst h = (19 * a + b - d - g + 15) % 30;\n\tconst i = Math.floor(c / 4);\n\tconst k = c % 4;\n\tconst l = (32 + 2 * e + 2 * i - h - k) % 7;\n\tconst m = Math.floor((a + 11 * h + 22 * l) / 451);\n\tconst monat = Math.floor((h + l - 7 * m + 114) / 31);\n\tconst tag = ((h + l - 7 * m + 114) % 31) + 1;\n\treturn { monat, tag };\n}\n\nfunction iso(jahr, monat, tag) {\n\treturn `${jahr}-${String(monat).padStart(2, '0')}-${String(tag).padStart(2, '0')}`;\n}\n\n/**\n * Gesetzliche Feiertage für ein Jahr und Bundesland als Map ISO-Datum -> Name.\n * Nicht enthalten: rein kommunale bzw. teilregionale Feiertage (z. B. Augsburger Friedensfest,\n * Mariä Himmelfahrt in Teilen Bayerns) und einmalige Sonderfeiertage. Diese über\n * `zusaetzliche` (Config) ergänzen.\n */\nfunction feiertage(jahr, region, zusaetzliche = []) {\n\tconst DT = luxon();\n\tconst r = String(region || '').toUpperCase();\n\tif (r && !BUNDESLAENDER.includes(r)) throw new Error(`Unbekannte Feiertagsregion \"${region}\"`);\n\tconst o = ostersonntag(jahr);\n\tconst ostern = DT.fromObject({ year: jahr, month: o.monat, day: o.tag }, { zone: 'UTC' });\n\tconst rel = (tage) => ostern.plus({ days: tage }).toISODate();\n\tconst liste = {\n\t\t[iso(jahr, 1, 1)]: 'Neujahr',\n\t\t[rel(-2)]: 'Karfreitag',\n\t\t[rel(1)]: 'Ostermontag',\n\t\t[iso(jahr, 5, 1)]: 'Tag der Arbeit',\n\t\t[rel(39)]: 'Christi Himmelfahrt',\n\t\t[rel(50)]: 'Pfingstmontag',\n\t\t[iso(jahr, 10, 3)]: 'Tag der Deutschen Einheit',\n\t\t[iso(jahr, 12, 25)]: '1. Weihnachtstag',\n\t\t[iso(jahr, 12, 26)]: '2. Weihnachtstag',\n\t};\n\tconst regional = (laender, datum, name) => {\n\t\tif (laender.includes(r)) liste[datum] = name;\n\t};\n\tregional(['BW', 'BY', 'ST'], iso(jahr, 1, 6), 'Heilige Drei Könige');\n\tif (jahr >= 2019) regional(['BE'], iso(jahr, 3, 8), 'Internationaler Frauentag');\n\tif (jahr >= 2023) regional(['MV'], iso(jahr, 3, 8), 'Internationaler Frauentag');\n\tregional(['BW', 'BY', 'HE', 'NW', 'RP', 'SL'], rel(60), 'Fronleichnam');\n\tregional(['SL'], iso(jahr, 8, 15), 'Mariä Himmelfahrt');\n\tif (jahr >= 2019) regional(['TH'], iso(jahr, 9, 20), 'Weltkindertag');\n\tconst reformation = jahr >= 2018 ? ['BB', 'MV', 'SN', 'ST', 'TH', 'HB', 'HH', 'NI', 'SH'] : ['BB', 'MV', 'SN', 'ST', 'TH'];\n\tregional(reformation, iso(jahr, 10, 31), 'Reformationstag');\n\tregional(['BW', 'BY', 'NW', 'RP', 'SL'], iso(jahr, 11, 1), 'Allerheiligen');\n\tif (r === 'SN') {\n\t\t// Mittwoch vor dem 23. November\n\t\tlet d = DT.fromObject({ year: jahr, month: 11, day: 22 }, { zone: 'UTC' });\n\t\twhile (d.weekday !== 3) d = d.minus({ days: 1 });\n\t\tliste[d.toISODate()] = 'Buß- und Bettag';\n\t}\n\tfor (const z of zusaetzliche || []) {\n\t\tif (typeof z === 'string' && z.startsWith(`${jahr}-`)) liste[z] = 'Zusätzlicher Feiertag (Config)';\n\t\telse if (z && typeof z.datum === 'string' && z.datum.startsWith(`${jahr}-`)) liste[z.datum] = z.name || 'Zusätzlicher Feiertag (Config)';\n\t}\n\treturn liste;\n}\n\nfunction parseUhrzeit(s) {\n\tconst m = /^([01]\\d|2[0-3]):([0-5]\\d)$/.exec(String(s || ''));\n\tif (!m) throw new Error(`Ungültige Uhrzeit \"${s}\" (erwartet HH:MM)`);\n\treturn { hour: Number(m[1]), minute: Number(m[2]) };\n}\n\n/**\n * Normalisiert die Zeit-Config.\n * cfg: { zeitzone, frist_nur_geschaeftszeit, geschaeftszeiten: {tage:[1..7], von:'08:00', bis:'17:00'},\n *        feiertage_region, zusaetzliche_feiertage }\n */\nfunction zeitConfig(cfg) {\n\tconst c = cfg || {};\n\tconst g = c.geschaeftszeiten || {};\n\tconst tage = Array.isArray(g.tage) && g.tage.length ? g.tage.map(Number) : [1, 2, 3, 4, 5];\n\tif (tage.some((t) => !Number.isInteger(t) || t < 1 || t > 7)) throw new Error('geschaeftszeiten.tage muss Werte 1 (Mo) bis 7 (So) enthalten');\n\tconst von = parseUhrzeit(g.von || '08:00');\n\tconst bis = parseUhrzeit(g.bis || '17:00');\n\tif (bis.hour * 60 + bis.minute <= von.hour * 60 + von.minute) throw new Error('geschaeftszeiten.bis muss nach geschaeftszeiten.von liegen');\n\treturn {\n\t\tzeitzone: c.zeitzone || 'Europe/Berlin',\n\t\tnurGeschaeftszeit: c.frist_nur_geschaeftszeit === true,\n\t\ttage,\n\t\tvon,\n\t\tbis,\n\t\tregion: c.feiertage_region || null,\n\t\tzusaetzliche: c.zusaetzliche_feiertage || [],\n\t};\n}\n\nfunction zuDateTime(wert, zone) {\n\tconst DT = luxon();\n\tlet d;\n\tif (wert && typeof wert === 'object' && typeof wert.setZone === 'function') d = wert;\n\telse if (wert instanceof Date) d = DT.fromJSDate(wert);\n\telse d = DT.fromISO(String(wert), { setZone: true });\n\tif (!d.isValid) throw new Error(`Ungültiger Zeitpunkt \"${wert}\"`);\n\td = d.setZone(zone);\n\tif (!d.isValid) throw new Error(`Ungültige Zeitzone \"${zone}\"`);\n\treturn d;\n}\n\nfunction istArbeitstag(d, z, cache) {\n\tif (!z.tage.includes(d.weekday)) return false;\n\tif (!z.region && !z.zusaetzliche.length) return true;\n\tif (!cache[d.year]) cache[d.year] = feiertage(d.year, z.region, z.zusaetzliche);\n\treturn !cache[d.year][d.toISODate()];\n}\n\nfunction istGeschaeftszeit(zeitpunkt, cfg) {\n\tconst z = zeitConfig(cfg);\n\tconst d = zuDateTime(zeitpunkt, z.zeitzone);\n\tif (!istArbeitstag(d, z, {})) return false;\n\tconst start = d.set({ ...z.von, second: 0, millisecond: 0 });\n\tconst ende = d.set({ ...z.bis, second: 0, millisecond: 0 });\n\treturn d >= start && d < ende;\n}\n\n/**\n * Berechnet eine Frist ab `start` um `stunden`.\n * Ohne Geschäftszeit-Modus: absolute Stunden. Mit: nur Minuten innerhalb der Geschäftszeiten zählen.\n * @returns {string} ISO-Zeitstempel in der konfigurierten Zeitzone\n */\nfunction berechneFrist(start, stunden, cfg) {\n\tconst z = zeitConfig(cfg);\n\tconst h = Number(stunden);\n\tif (!Number.isFinite(h) || h < 0) throw new Error(`Ungültige Fristdauer \"${stunden}\"`);\n\tlet t = zuDateTime(start, z.zeitzone);\n\tif (!z.nurGeschaeftszeit) return t.plus({ minutes: Math.round(h * 60) }).toISO();\n\n\tlet rest = Math.round(h * 60);\n\tconst cache = {};\n\tfor (let schutz = 0; schutz < 3700; schutz++) {\n\t\tconst tagStart = t.set({ ...z.von, second: 0, millisecond: 0 });\n\t\tconst tagEnde = t.set({ ...z.bis, second: 0, millisecond: 0 });\n\t\tif (!istArbeitstag(t, z, cache) || t >= tagEnde) {\n\t\t\tt = t.plus({ days: 1 }).set({ ...z.von, second: 0, millisecond: 0 });\n\t\t\tcontinue;\n\t\t}\n\t\tif (t < tagStart) t = tagStart;\n\t\tconst verfuegbar = tagEnde.diff(t, 'minutes').minutes;\n\t\tif (rest <= verfuegbar) return t.plus({ minutes: rest }).toISO();\n\t\trest -= verfuegbar;\n\t\tt = t.plus({ days: 1 }).set({ ...z.von, second: 0, millisecond: 0 });\n\t}\n\tthrow new Error('Frist konnte nicht berechnet werden (keine Arbeitstage gefunden)');\n}\n\n/** true, wenn die Frist zum Zeitpunkt `jetzt` überschritten ist. */\nfunction istUeberfaellig(frist, jetzt) {\n\tif (!frist) return false;\n\tconst DT = luxon();\n\tconst f = DT.fromISO(String(frist), { setZone: true });\n\tconst n = jetzt ? DT.fromISO(String(jetzt), { setZone: true }) : DT.now();\n\tif (!f.isValid || !n.isValid) throw new Error('Ungültiger Zeitpunkt für Fristvergleich');\n\treturn f.toMillis() < n.toMillis();\n}\n\nmodule.exports = {\n\tBUNDESLAENDER,\n\tostersonntag,\n\tfeiertage,\n\tzeitConfig,\n\tistGeschaeftszeit,\n\tberechneFrist,\n\tistUeberfaellig,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fristen.js =====\n\n// ----- Node-Logik -----\nconst config = $input.first().json.config;\nconst p = $('Prüfen').first().json;\nconst v = $('Versand auswerten').first().json;\nconst daten = {\n\trundenzaehler: Number(p.runde),\n\tantwort_frist: fristen.berechneFrist(new Date().toISOString(), config.frist_stunden, config),\n\terinnerungen_gesendet: 0,\n};\nif (v.internet_message_id) daten.neue_message_ids = [v.internet_message_id];\nreturn [{ json: { daten, version: $('Status: Warten auf Kunde').first().json.version } }];\n"
+      },
+      "id": "7a7acdf1-5b5b-4d8e-a924-ed40930f6eef",
+      "name": "Frist berechnen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4840,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Vorgang verwalten",
+          "cachedResultName": "EPA SW Vorgang verwalten"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "aktion": "aktualisieren",
+            "kunde_id": "={{ $('Prüfen').first().json.kunde_id }}",
+            "vorgangs_id": "={{ $('Prüfen').first().json.vorgangs_id }}",
+            "daten": "={{ $json.daten }}",
+            "erwartete_version": "={{ $json.version }}",
+            "referenz": "={{ $('Prüfen').first().json.freigabe_id }}",
+            "lock_sekunden": "={{ null }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "aktion",
+              "displayName": "aktion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "daten",
+              "displayName": "daten",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object",
+              "removed": false
+            },
+            {
+              "id": "erwartete_version",
+              "displayName": "erwartete_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "referenz",
+              "displayName": "referenz",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "lock_sekunden",
+              "displayName": "lock_sekunden",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "00d19d58-4733-4d62-a6c0-c1d47072b081",
+      "name": "Vorgang nach Versand aktualisieren",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        5060,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/freigabe.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst freigabe = (() => {\nconst module = { exports: {} };\n// Freigabe Variante B (Bauplan 6): einmaliges, ablaufendes Token je Freigeber. Gespeichert wird nur der\n// SHA-256-Hash. Der Endpunkt EPA-07 zeigt ein Formular (Vorschau, Text bearbeitbar, Senden/Ablehnen) und\n// verbraucht die Freigabe atomar (bedingtes Update auf status = 'offen').\n\nconst TOKEN_MUSTER = /^[A-Za-z0-9_-]{43}$/; // 32 Byte base64url\nconst AKTIONEN = ['senden', 'ablehnen'];\n\n/** @param {object} c Node-Modul \"crypto\" (im Code-Node per require('crypto')) */\nfunction tokenErzeugen(c) {\n\tconst token = c.randomBytes(32).toString('base64url');\n\treturn { token, hash: tokenHash(c, token) };\n}\n\nfunction tokenHash(c, token) {\n\treturn c.createHash('sha256').update(String(token), 'utf8').digest('hex');\n}\n\nfunction freigabeIdErzeugen(c) {\n\treturn 'F-' + c.randomUUID();\n}\n\nfunction istGueltigesToken(t) {\n\treturn typeof t === 'string' && TOKEN_MUSTER.test(t);\n}\n\n/** Basis-URL der Instanz aus $execution.resumeUrl (…/webhook-waiting/<id>) bzw. einem Override. */\nfunction basisUrl(resumeUrl, override) {\n\tif (override) return String(override).replace(/\\/+$/, '');\n\tconst m = String(resumeUrl || '').match(/^(https?:\\/\\/[^/]+(?:\\/[^/]+)*?)\\/webhook-waiting\\//);\n\tif (!m) throw new Error('Basis-URL der Instanz nicht ermittelbar');\n\treturn m[1];\n}\n\nfunction link(basis, token) {\n\treturn `${basis}/webhook/epa-freigabe?t=${encodeURIComponent(token)}`;\n}\n\n/**\n * Prüft Token und Freigabe vor Anzeige bzw. Entscheidung.\n * @returns {{ ok: true } | { ok: false, status: number, code: string, meldung: string }}\n */\nfunction freigabePruefen({ token, freigabe, freigeberErlaubt, jetzt }) {\n\tconst nein = (status, code, meldung) => ({ ok: false, status, code, meldung });\n\tif (!token || token.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Dieser Freigabe-Link ist ungültig.');\n\tif (!freigabe || freigabe.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Die Freigabe existiert nicht mehr.');\n\tif (freigabe.status !== 'offen') {\n\t\tconst wer = freigabe.entscheider ? ` von ${freigabe.entscheider}` : '';\n\t\tconst was = { in_versand: 'wird gerade versendet', gesendet: 'wurde bereits freigegeben und gesendet', abgelehnt: 'wurde bereits abgelehnt', abgelaufen: 'ist abgelaufen', ersetzt: 'wurde durch eine neuere Freigabe ersetzt', fehler: 'ist beim Versand fehlgeschlagen' }[freigabe.status] || `hat den Status \"${freigabe.status}\"`;\n\t\treturn nein(freigabe.status === 'abgelaufen' ? 410 : 409, freigabe.status === 'abgelaufen' ? 'FREIGABE_ABGELAUFEN' : 'DUPLIKAT', `Diese Rückfrage ${was}${freigabe.status === 'gesendet' || freigabe.status === 'abgelehnt' ? wer : ''}.`);\n\t}\n\tif (token.verbraucht_am) return nein(409, 'DUPLIKAT', 'Dieser Link wurde bereits verwendet.');\n\tif (new Date(freigabe.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Ein neuer Link wird automatisch verschickt.');\n\tif (!freigeberErlaubt) return nein(403, 'KEINE_BERECHTIGUNG', 'Sie sind für diesen Kunden nicht (mehr) als Freigeber eingetragen.');\n\treturn { ok: true };\n}\n\n/** Formulardaten aus EPA-07 (POST, application/x-www-form-urlencoded). */\nfunction formularLesen(body) {\n\tconst b = body && typeof body === 'object' ? body : {};\n\tconst aktion = String(b.aktion || '');\n\tif (!AKTIONEN.includes(aktion)) return { ok: false, meldung: 'Unbekannte Aktion.' };\n\tif (!istGueltigesToken(b.t)) return { ok: false, meldung: 'Ungültiger Link.' };\n\tconst grund = String(b.grund || '').trim().slice(0, 500);\n\tif (aktion === 'ablehnen' && !grund) return { ok: false, meldung: 'Bitte einen Grund für die Ablehnung angeben.' };\n\treturn { ok: true, aktion, token: b.t, text: typeof b.text === 'string' ? b.text : '', grund };\n}\n\nfunction istBearbeitet(original, neu) {\n\tconst n = (s) => String(s ?? '').replace(/\\r\\n?/g, '\\n').replace(/[ \\t]+/g, ' ').replace(/\\s+$/gm, '').trim();\n\treturn n(original) !== n(neu);\n}\n\n// ---------------------------------------------------------------- HTML\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nconst STIL = `body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;margin:0;background:#f4f5f7;color:#1d2433}\nmain{max-width:760px;margin:0 auto;padding:16px}\n.karte{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}\nh1{font-size:1.3rem;margin:0 0 12px}dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0}\ndt{color:#5b6475}dd{margin:0;overflow-wrap:anywhere}textarea{width:100%;box-sizing:border-box;min-height:260px;font:inherit;padding:8px}\npre{white-space:pre-wrap;font:inherit;color:#5b6475;margin:8px 0 0}.knoepfe{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}\nbutton{font:inherit;padding:10px 16px;border-radius:6px;border:0;cursor:pointer}.senden{background:#1f6f43;color:#fff}.ablehnen{background:#a3222b;color:#fff}\ninput[type=text]{width:100%;box-sizing:border-box;font:inherit;padding:8px}.hinweis{color:#5b6475;font-size:.9rem}\n.ok{border-left:4px solid #1f6f43}.fehler{border-left:4px solid #a3222b}`;\n\nfunction seite(titel, inhalt) {\n\treturn `<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><title>${esc(titel)}</title><style>${STIL}</style></head><body><main>${inhalt}</main></body></html>`;\n}\n\nfunction seiteFormular({ token, freigabe, vorgang, fehlende, text, abschluss }) {\n\tconst luecken = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}${f.grund ? ` <span class=\"hinweis\">(${esc(f.grund)})</span>` : ''}</li>`).join('');\n\treturn seite(`Rückfrage ${vorgang.vorgangs_id}`, `\n<div class=\"karte\"><h1>Rückfrage freigeben – ${esc(vorgang.vorgangs_id)}</h1>\n<dl><dt>An</dt><dd>${esc(freigabe.empfaenger)}</dd><dt>Betreff</dt><dd>${esc(freigabe.betreff)}</dd>\n<dt>Runde</dt><dd>${esc(Number(vorgang.rundenzaehler || 0) + 1)}</dd><dt>Gültig bis</dt><dd>${esc(new Date(freigabe.ablauf).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }))}</dd></dl>\n<p>Fehlende Angaben:</p><ul>${luecken}</ul>${freigabe.fallback ? '<p class=\"hinweis\">Hinweis: Die KI-Formulierung hat die Prüfung nicht bestanden, es wird die Standardvorlage verwendet.</p>' : ''}</div>\n<form class=\"karte\" method=\"post\" onsubmit=\"for(const b of this.querySelectorAll('button'))b.disabled=true\">\n<input type=\"hidden\" name=\"t\" value=\"${esc(token)}\">\n<label for=\"text\"><b>Text der Mail</b> (bearbeitbar)</label>\n<textarea id=\"text\" name=\"text\">${esc(text)}</textarea>\n<pre>${esc(abschluss)}</pre>\n<p class=\"hinweis\">Signatur und KI-Hinweis werden immer automatisch angehängt.</p>\n<label for=\"grund\">Grund (nur bei Ablehnung)</label><input type=\"text\" id=\"grund\" name=\"grund\" maxlength=\"500\">\n<div class=\"knoepfe\"><button class=\"senden\" name=\"aktion\" value=\"senden\">Freigeben und senden</button>\n<button class=\"ablehnen\" name=\"aktion\" value=\"ablehnen\">Ablehnen (manuell bearbeiten)</button></div>\n<p class=\"hinweis\">Der Link ist nur einmal verwendbar. Nichts wird ohne Ihren Klick versendet.</p></form>`);\n}\n\nfunction seiteMeldung(titel, text, art = 'ok') {\n\treturn seite(titel, `<div class=\"karte ${art === 'ok' ? 'ok' : 'fehler'}\"><h1>${esc(titel)}</h1><p>${esc(text)}</p></div>`);\n}\n\n/** Teams-Nachricht an den Freigeber (1:1-Chat). */\nfunction nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art }) {\n\tconst liste = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}</li>`).join('');\n\tconst titel = art === 'erinnerung' ? 'Erinnerung an den Kunden freigeben' : 'Rückfrage an den Kunden freigeben';\n\treturn `<b>${esc(titel)}: ${esc(vorgang.vorgangs_id)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>Fehlende Angaben:<ul>${liste}</ul>` +\n\t\t`<a href=\"${esc(url)}\">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Persönlicher Link, einmal verwendbar, gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;\n}\n\nmodule.exports = {\n\tTOKEN_MUSTER, AKTIONEN, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,\n\tfreigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber,\n};\nreturn module.exports;\n})();\n// ===== Ende src/freigabe.js =====\n\n// ----- Node-Logik -----\nconst p = $('Prüfen').first().json;\nconst frist = $('Frist berechnen').first().json.daten.antwort_frist;\nconst config = $('Config laden').first().json.config;\nconst t = DateTime.fromISO(frist).setZone(config.zeitzone).toFormat('dd.LL.yyyy, HH:mm');\nreturn [{ json: { status: 200, html: freigabe.seiteMeldung('Rückfrage gesendet', (p.bearbeitet ? 'Ihr bearbeiteter Text wurde gesendet. ' : 'Die Rückfrage wurde gesendet. ') + 'Der Vorgang ' + p.vorgangs_id + ' wartet jetzt auf die Antwort des Kunden (Frist: ' + t + ').', 'ok') } }];\n"
+      },
+      "id": "2e5ad32e-d661-4ab1-ab69-98184157158c",
+      "name": "Seite: gesendet",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5280,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: { status: 'fehler' } }];\n"
+      },
+      "id": "43cac158-0675-48f6-a1ba-10b5cf616f36",
+      "name": "Versandfehler (Daten)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3960,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigaben"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "freigabe_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Prüfen').first().json.freigabe_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "b34ebe21-d0cb-460d-a454-8aba9d179c6e",
+      "name": "Freigabe als fehlgeschlagen vermerken",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        4180,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/freigabe.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst freigabe = (() => {\nconst module = { exports: {} };\n// Freigabe Variante B (Bauplan 6): einmaliges, ablaufendes Token je Freigeber. Gespeichert wird nur der\n// SHA-256-Hash. Der Endpunkt EPA-07 zeigt ein Formular (Vorschau, Text bearbeitbar, Senden/Ablehnen) und\n// verbraucht die Freigabe atomar (bedingtes Update auf status = 'offen').\n\nconst TOKEN_MUSTER = /^[A-Za-z0-9_-]{43}$/; // 32 Byte base64url\nconst AKTIONEN = ['senden', 'ablehnen'];\n\n/** @param {object} c Node-Modul \"crypto\" (im Code-Node per require('crypto')) */\nfunction tokenErzeugen(c) {\n\tconst token = c.randomBytes(32).toString('base64url');\n\treturn { token, hash: tokenHash(c, token) };\n}\n\nfunction tokenHash(c, token) {\n\treturn c.createHash('sha256').update(String(token), 'utf8').digest('hex');\n}\n\nfunction freigabeIdErzeugen(c) {\n\treturn 'F-' + c.randomUUID();\n}\n\nfunction istGueltigesToken(t) {\n\treturn typeof t === 'string' && TOKEN_MUSTER.test(t);\n}\n\n/** Basis-URL der Instanz aus $execution.resumeUrl (…/webhook-waiting/<id>) bzw. einem Override. */\nfunction basisUrl(resumeUrl, override) {\n\tif (override) return String(override).replace(/\\/+$/, '');\n\tconst m = String(resumeUrl || '').match(/^(https?:\\/\\/[^/]+(?:\\/[^/]+)*?)\\/webhook-waiting\\//);\n\tif (!m) throw new Error('Basis-URL der Instanz nicht ermittelbar');\n\treturn m[1];\n}\n\nfunction link(basis, token) {\n\treturn `${basis}/webhook/epa-freigabe?t=${encodeURIComponent(token)}`;\n}\n\n/**\n * Prüft Token und Freigabe vor Anzeige bzw. Entscheidung.\n * @returns {{ ok: true } | { ok: false, status: number, code: string, meldung: string }}\n */\nfunction freigabePruefen({ token, freigabe, freigeberErlaubt, jetzt }) {\n\tconst nein = (status, code, meldung) => ({ ok: false, status, code, meldung });\n\tif (!token || token.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Dieser Freigabe-Link ist ungültig.');\n\tif (!freigabe || freigabe.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Die Freigabe existiert nicht mehr.');\n\tif (freigabe.status !== 'offen') {\n\t\tconst wer = freigabe.entscheider ? ` von ${freigabe.entscheider}` : '';\n\t\tconst was = { in_versand: 'wird gerade versendet', gesendet: 'wurde bereits freigegeben und gesendet', abgelehnt: 'wurde bereits abgelehnt', abgelaufen: 'ist abgelaufen', ersetzt: 'wurde durch eine neuere Freigabe ersetzt', fehler: 'ist beim Versand fehlgeschlagen' }[freigabe.status] || `hat den Status \"${freigabe.status}\"`;\n\t\treturn nein(freigabe.status === 'abgelaufen' ? 410 : 409, freigabe.status === 'abgelaufen' ? 'FREIGABE_ABGELAUFEN' : 'DUPLIKAT', `Diese Rückfrage ${was}${freigabe.status === 'gesendet' || freigabe.status === 'abgelehnt' ? wer : ''}.`);\n\t}\n\tif (token.verbraucht_am) return nein(409, 'DUPLIKAT', 'Dieser Link wurde bereits verwendet.');\n\tif (new Date(freigabe.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Ein neuer Link wird automatisch verschickt.');\n\tif (!freigeberErlaubt) return nein(403, 'KEINE_BERECHTIGUNG', 'Sie sind für diesen Kunden nicht (mehr) als Freigeber eingetragen.');\n\treturn { ok: true };\n}\n\n/** Formulardaten aus EPA-07 (POST, application/x-www-form-urlencoded). */\nfunction formularLesen(body) {\n\tconst b = body && typeof body === 'object' ? body : {};\n\tconst aktion = String(b.aktion || '');\n\tif (!AKTIONEN.includes(aktion)) return { ok: false, meldung: 'Unbekannte Aktion.' };\n\tif (!istGueltigesToken(b.t)) return { ok: false, meldung: 'Ungültiger Link.' };\n\tconst grund = String(b.grund || '').trim().slice(0, 500);\n\tif (aktion === 'ablehnen' && !grund) return { ok: false, meldung: 'Bitte einen Grund für die Ablehnung angeben.' };\n\treturn { ok: true, aktion, token: b.t, text: typeof b.text === 'string' ? b.text : '', grund };\n}\n\nfunction istBearbeitet(original, neu) {\n\tconst n = (s) => String(s ?? '').replace(/\\r\\n?/g, '\\n').replace(/[ \\t]+/g, ' ').replace(/\\s+$/gm, '').trim();\n\treturn n(original) !== n(neu);\n}\n\n// ---------------------------------------------------------------- HTML\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nconst STIL = `body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;margin:0;background:#f4f5f7;color:#1d2433}\nmain{max-width:760px;margin:0 auto;padding:16px}\n.karte{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}\nh1{font-size:1.3rem;margin:0 0 12px}dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0}\ndt{color:#5b6475}dd{margin:0;overflow-wrap:anywhere}textarea{width:100%;box-sizing:border-box;min-height:260px;font:inherit;padding:8px}\npre{white-space:pre-wrap;font:inherit;color:#5b6475;margin:8px 0 0}.knoepfe{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}\nbutton{font:inherit;padding:10px 16px;border-radius:6px;border:0;cursor:pointer}.senden{background:#1f6f43;color:#fff}.ablehnen{background:#a3222b;color:#fff}\ninput[type=text]{width:100%;box-sizing:border-box;font:inherit;padding:8px}.hinweis{color:#5b6475;font-size:.9rem}\n.ok{border-left:4px solid #1f6f43}.fehler{border-left:4px solid #a3222b}`;\n\nfunction seite(titel, inhalt) {\n\treturn `<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><title>${esc(titel)}</title><style>${STIL}</style></head><body><main>${inhalt}</main></body></html>`;\n}\n\nfunction seiteFormular({ token, freigabe, vorgang, fehlende, text, abschluss }) {\n\tconst luecken = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}${f.grund ? ` <span class=\"hinweis\">(${esc(f.grund)})</span>` : ''}</li>`).join('');\n\treturn seite(`Rückfrage ${vorgang.vorgangs_id}`, `\n<div class=\"karte\"><h1>Rückfrage freigeben – ${esc(vorgang.vorgangs_id)}</h1>\n<dl><dt>An</dt><dd>${esc(freigabe.empfaenger)}</dd><dt>Betreff</dt><dd>${esc(freigabe.betreff)}</dd>\n<dt>Runde</dt><dd>${esc(Number(vorgang.rundenzaehler || 0) + 1)}</dd><dt>Gültig bis</dt><dd>${esc(new Date(freigabe.ablauf).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }))}</dd></dl>\n<p>Fehlende Angaben:</p><ul>${luecken}</ul>${freigabe.fallback ? '<p class=\"hinweis\">Hinweis: Die KI-Formulierung hat die Prüfung nicht bestanden, es wird die Standardvorlage verwendet.</p>' : ''}</div>\n<form class=\"karte\" method=\"post\" onsubmit=\"for(const b of this.querySelectorAll('button'))b.disabled=true\">\n<input type=\"hidden\" name=\"t\" value=\"${esc(token)}\">\n<label for=\"text\"><b>Text der Mail</b> (bearbeitbar)</label>\n<textarea id=\"text\" name=\"text\">${esc(text)}</textarea>\n<pre>${esc(abschluss)}</pre>\n<p class=\"hinweis\">Signatur und KI-Hinweis werden immer automatisch angehängt.</p>\n<label for=\"grund\">Grund (nur bei Ablehnung)</label><input type=\"text\" id=\"grund\" name=\"grund\" maxlength=\"500\">\n<div class=\"knoepfe\"><button class=\"senden\" name=\"aktion\" value=\"senden\">Freigeben und senden</button>\n<button class=\"ablehnen\" name=\"aktion\" value=\"ablehnen\">Ablehnen (manuell bearbeiten)</button></div>\n<p class=\"hinweis\">Der Link ist nur einmal verwendbar. Nichts wird ohne Ihren Klick versendet.</p></form>`);\n}\n\nfunction seiteMeldung(titel, text, art = 'ok') {\n\treturn seite(titel, `<div class=\"karte ${art === 'ok' ? 'ok' : 'fehler'}\"><h1>${esc(titel)}</h1><p>${esc(text)}</p></div>`);\n}\n\n/** Teams-Nachricht an den Freigeber (1:1-Chat). */\nfunction nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art }) {\n\tconst liste = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}</li>`).join('');\n\tconst titel = art === 'erinnerung' ? 'Erinnerung an den Kunden freigeben' : 'Rückfrage an den Kunden freigeben';\n\treturn `<b>${esc(titel)}: ${esc(vorgang.vorgangs_id)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>Fehlende Angaben:<ul>${liste}</ul>` +\n\t\t`<a href=\"${esc(url)}\">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Persönlicher Link, einmal verwendbar, gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;\n}\n\nmodule.exports = {\n\tTOKEN_MUSTER, AKTIONEN, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,\n\tfreigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber,\n};\nreturn module.exports;\n})();\n// ===== Ende src/freigabe.js =====\n\n// ----- Node-Logik -----\nconst p = $('Prüfen').first().json;\nreturn [{ json: { status: 502, nachmelden: true, vorgangs_id: p.vorgangs_id, meldung: $('Versand auswerten').first().json.fehler,\n\thtml: freigabe.seiteMeldung('Versand fehlgeschlagen', 'Die Rückfrage konnte nicht gesendet werden. Es wurde nichts doppelt gesendet. Die Entwicklung ist informiert, der Vorgang wird manuell weiterbearbeitet.', 'fehler') } }];\n"
+      },
+      "id": "107d47b2-3d72-4752-a8bc-f241ac62fa80",
+      "name": "Seite: Versand fehlgeschlagen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4400,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseCode": "={{ $json.status }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              },
+              {
+                "name": "Referrer-Policy",
+                "value": "no-referrer"
+              },
+              {
+                "name": "X-Robots-Tag",
+                "value": "noindex"
+              }
+            ]
+          }
+        }
+      },
+      "id": "2f6cbfb4-aff4-4cf3-a4dc-2fd16a587bb8",
+      "name": "Seite ausliefern",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        5500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f622a82e-c9bf-4159-abdd-332bc4bb710a",
+              "leftValue": "={{ $json.nachmelden }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "e452f94a-fbc7-438a-a665-5c1597a48eca",
+      "name": "Fehler nachmelden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        5720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId),\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst zeilen = [\n\t\t`<b>EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)}</b> (${escapeHtml(e.klasse)})`,\n\t\t`Workflow: ${escapeHtml(e.workflow_name || e.workflow_id || '?')}`,\n\t\t`Node: ${escapeHtml(e.node || '?')}`,\n\t\t`Vorgang: ${escapeHtml(e.vorgangs_id || '–')}`,\n\t\t`Meldung: ${escapeHtml(e.meldung || '–')}`,\n\t\te.retrybar ? 'Hinweis: vorübergehender Fehler, erneuter Versuch kann helfen.' : 'Hinweis: dauerhafter Fehler, bitte prüfen.',\n\t];\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n\n// ----- Node-Logik -----\n// Erst nach der Antwort an den Browser: Fehler auslösen, damit EPA-05 protokolliert, alarmiert und den Vorgang sichert.\nconst j = $input.first().json;\nthrow fehlerklassen.epaFehler('UPSTREAM_FEHLER', j.vorgangs_id || null, j.meldung || 'Freigabe-Versand fehlgeschlagen');\n"
+      },
+      "id": "218d69f0-7ff5-448a-a51b-5fb25f2c3a4c",
+      "name": "Fehler an EPA-05",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5940,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6ed45a3c-5dcb-462f-ac56-768a9645d26c",
+              "leftValue": "={{ $json.aktualisiert }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "e7a4740e-12af-4645-a7e2-776f35e442a5",
+      "name": "Text übernommen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3300,
+        180
+      ]
+    }
+  ],
+  "connections": {
+    "Freigabe-Link": {
+      "main": [
+        [
+          {
+            "node": "Anfrage lesen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Anfrage lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anfrage lesen": {
+      "main": [
+        [
+          {
+            "node": "Token lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token lesen": {
+      "main": [
+        [
+          {
+            "node": "Freigabe lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigabe lesen": {
+      "main": [
+        [
+          {
+            "node": "Kunde lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kunde lesen": {
+      "main": [
+        [
+          {
+            "node": "Vorgang lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorgang lesen": {
+      "main": [
+        [
+          {
+            "node": "Prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prüfen": {
+      "main": [
+        [
+          {
+            "node": "Weiter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weiter": {
+      "main": [
+        [
+          {
+            "node": "Seite ausliefern",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ablehnung vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Versand vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ablehnung vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Freigabe ablehnen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigabe ablehnen": {
+      "main": [
+        [
+          {
+            "node": "Ablehnung übernommen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ablehnung übernommen?": {
+      "main": [
+        [
+          {
+            "node": "Token-Verbrauch (Ablehnung)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Seite: bereits bearbeitet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token-Verbrauch (Ablehnung)": {
+      "main": [
+        [
+          {
+            "node": "Token verbrauchen (Ablehnung)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token verbrauchen (Ablehnung)": {
+      "main": [
+        [
+          {
+            "node": "Status: Eskaliert (abgelehnt)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status: Eskaliert (abgelehnt)": {
+      "main": [
+        [
+          {
+            "node": "Seite: abgelehnt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Seite: abgelehnt": {
+      "main": [
+        [
+          {
+            "node": "Seite ausliefern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Versand vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Freigabe übernehmen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigabe übernehmen": {
+      "main": [
+        [
+          {
+            "node": "Übernommen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Übernommen?": {
+      "main": [
+        [
+          {
+            "node": "Token-Verbrauch (Versand)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Seite: bereits bearbeitet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Seite: bereits bearbeitet": {
+      "main": [
+        [
+          {
+            "node": "Seite ausliefern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token-Verbrauch (Versand)": {
+      "main": [
+        [
+          {
+            "node": "Token verbrauchen (Versand)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token verbrauchen (Versand)": {
+      "main": [
+        [
+          {
+            "node": "Bearbeitet?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bearbeitet?": {
+      "main": [
+        [
+          {
+            "node": "Entwurf aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Entwurf senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entwurf aktualisieren": {
+      "main": [
+        [
+          {
+            "node": "Text übernommen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text übernommen?": {
+      "main": [
+        [
+          {
+            "node": "Entwurf senden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Versand auswerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entwurf senden": {
+      "main": [
+        [
+          {
+            "node": "Versand auswerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Versand auswerten": {
+      "main": [
+        [
+          {
+            "node": "Gesendet?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gesendet?": {
+      "main": [
+        [
+          {
+            "node": "Gesendet vermerken (Daten)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Versandfehler (Daten)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gesendet vermerken (Daten)": {
+      "main": [
+        [
+          {
+            "node": "Freigabe als gesendet vermerken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigabe als gesendet vermerken": {
+      "main": [
+        [
+          {
+            "node": "Status: Warten auf Kunde",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status: Warten auf Kunde": {
+      "main": [
+        [
+          {
+            "node": "Config laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config laden": {
+      "main": [
+        [
+          {
+            "node": "Frist berechnen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Frist berechnen": {
+      "main": [
+        [
+          {
+            "node": "Vorgang nach Versand aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorgang nach Versand aktualisieren": {
+      "main": [
+        [
+          {
+            "node": "Seite: gesendet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Seite: gesendet": {
+      "main": [
+        [
+          {
+            "node": "Seite ausliefern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Versandfehler (Daten)": {
+      "main": [
+        [
+          {
+            "node": "Freigabe als fehlgeschlagen vermerken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigabe als fehlgeschlagen vermerken": {
+      "main": [
+        [
+          {
+            "node": "Seite: Versand fehlgeschlagen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Seite: Versand fehlgeschlagen": {
+      "main": [
+        [
+          {
+            "node": "Seite ausliefern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Seite ausliefern": {
+      "main": [
+        [
+          {
+            "node": "Fehler nachmelden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fehler nachmelden?": {
+      "main": [
+        [
+          {
+            "node": "Fehler an EPA-05",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

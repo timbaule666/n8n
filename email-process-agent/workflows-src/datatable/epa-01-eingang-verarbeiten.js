@@ -32,7 +32,7 @@ module.exports = function () {
 		'**Trigger:** Aufruf durch den Postfach-Workflow (EPA-00) mit der Graph-Message. Enthält selbst keine Microsoft-Zugänge, daher ohne Postfach testbar.',
 		'**Eingaben:** postfach, mail (Graph-Message inkl. internetMessageHeaders, webLink), anhaenge (Liste mit name, contentType, size, isInline, text, status, hinweis, bild_data_url), aufrufer_execution_id (damit EPA-05 den Eingang bei einem Fehler wieder freigeben kann).',
 		'**Ausgabe:** { ergebnis, vorgangs_id, archivieren, archivordner }. ergebnis: duplikat | ignoriert_<grund> | zugeordnet | zuordnung_unklar | klassifizierung_unklar | ignoriert | bereit | luecken | extraktion_fehlgeschlagen.',
-		'**Grenzen M2:** "zugeordnet" hängt die Mail nur an den Vorgang und meldet sie (Phase D folgt in M4). "luecken" meldet nur (Rückfrage mit Freigabe folgt in M3).',
+		'**Grenzen:** "zugeordnet" hängt die Mail nur an den Vorgang und meldet sie (Phase D folgt in M4). Bei "luecken" wird über EPA-02 die Rückfrage zur Freigabe vorbereitet (M3).',
 	].join('\n'), { breite: 900, hoehe: 400 });
 
 	const trigger = wf.trigger('Bei Aufruf', [0, 0], [
@@ -220,6 +220,7 @@ return [{ json: {
 		['prompt_version', 'string', `={{ ${C}.prompt_versionen.klassifizierung }}`],
 		['profil', 'object', `={{ ${C}.llm_profil.klassifizierung }}`],
 		['kontext', 'object', `={{ { mail: ${M}, vorgangstypen: Object.keys(${C}.vorgangstypen), hinweise: ${N}.hinweise_klassifizierung } }}`],
+		['fehler_als_ergebnis', 'boolean', '={{ false }}'],
 	]);
 	const klasse = wf.code('Klasse auswerten', [3080, 240], ['eingang'], `
 const config = $('Config laden').first().json.config;
@@ -263,6 +264,7 @@ return [{ json: { ergebnis: 'ignoriert', vorgangs_id: $('Vorgang anlegen').first
 		['prompt_version', 'string', `={{ ${C}.prompt_versionen.extraktion }}`],
 		['profil', 'object', `={{ ${C}.llm_profil.extraktion }}`],
 		['kontext', 'object', `={{ { mail: ${M}, felder: ${C}.vorgangstypen[${K}.vorgangstyp], heute: ${N}.heute, hinweise: ${N}.hinweise_extraktion } }}`],
+		['fehler_als_ergebnis', 'boolean', '={{ false }}'],
 	]);
 	const pruefen = wf.code('Pflichtfelder prüfen', [3960, 120], ['pflichtfelder'], `
 const config = $('Config laden').first().json.config;
@@ -313,7 +315,18 @@ return [{ json: {
 		['erwartete_version', 'number', "={{ $('Daten speichern').first().json.vorgang.version }}"],
 		['nur_wenn_erlaubt', 'boolean', '={{ false }}'],
 	]);
-	const mGeprueft = wf.code('Meldung: geprüft', [4620, 120], ['eingang'], `
+	const lueckenFrage = wf.node('Lücken?', 'n8n-nodes-base.if', [4620, 120], {
+		conditions: bedingungen([bedingung(`={{ ${P}.weg }}`, { type: 'string', operation: 'equals' }, 'luecken')]),
+		options: {},
+	});
+	// Fehler in EPA-02 meldet EPA-05 selbst (Alarm, Vorgang sichern); die Mailverarbeitung läuft weiter.
+	const rueckfrage = wf.aufruf('Rückfrage anfordern', [4840, 40], 'EPA-02 Rückfrage anfordern', [
+		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
+		['vorgangs_id', 'string', `={{ ${V}.vorgangs_id }}`],
+		['art', 'string', 'rueckfrage'],
+		['referenz', 'string', `={{ ${MID} }}`],
+	], { onError: 'continueRegularOutput', alwaysOutputData: true });
+	const mGeprueft = wf.code('Meldung: geprüft', [5060, 120], ['eingang'], `
 const config = $('Config laden').first().json.config;
 const k = $('Klasse auswerten').first().json;
 const p = $('Pflichtfelder prüfen').first().json;
@@ -321,7 +334,10 @@ const v = $('Vorgang anlegen').first().json.vorgang;
 const mail = $('Mail normalisieren').first().json.mail;
 const html = p.weg === 'extraktion_fehlgeschlagen'
 	? eingang.meldungExtraktionFehlgeschlagen(v.vorgangs_id, mail, p.fehlercode)
-	: eingang.meldungGeprueft(v.vorgangs_id, mail, config.vorgangstypen[k.vorgangstyp], p.pruefung, { verdacht_manipulation: p.verdacht_manipulation });
+	: eingang.meldungGeprueft(v.vorgangs_id, mail, config.vorgangstypen[k.vorgangstyp], p.pruefung, {
+		verdacht_manipulation: p.verdacht_manipulation,
+		rueckfrage: $('Rückfrage anfordern').isExecuted ? $('Rückfrage anfordern').first().json : null,
+	});
 return [{ json: {
 	vorgangs_id: v.vorgangs_id,
 	anlass: p.weg,
@@ -332,7 +348,7 @@ return [{ json: {
 
 	// ---------------------------------------------------------------- Meldung und Abschluss
 	const MELDUNGEN = ['Meldung: zugeordnet', 'Meldung: Zuordnung unklar', 'Meldung: Klassifizierung unklar', 'Meldung: geprüft'];
-	const informieren = wf.aufruf('Mitarbeiter informieren', [4840, 0], 'EPA SW Benachrichtigen', [
+	const informieren = wf.aufruf('Mitarbeiter informieren', [5280, 0], 'EPA SW Benachrichtigen', [
 		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
 		['vorgangs_id', 'string', '={{ $json.vorgangs_id }}'],
 		['team_id', 'string', `={{ ${C}.benachrichtigung.team_id }}`],
@@ -340,20 +356,20 @@ return [{ json: {
 		['nachricht_html', 'string', '={{ $json.nachricht_html }}'],
 		['anlass', 'string', '={{ $json.anlass }}'],
 	]);
-	const nachMeldung = wf.code('Ergebnis nach Meldung', [5060, 0], [], `
+	const nachMeldung = wf.code('Ergebnis nach Meldung', [5500, 0], [], `
 const MELDUNGEN = ${JSON.stringify(MELDUNGEN)};
 const quelle = MELDUNGEN.find((n) => $(n).isExecuted);
 return [{ json: { ...$(quelle).first().json.ergebnis, benachrichtigt: $input.first().json.gesendet === true } }];
 `);
 
-	const abschluss = wf.code('Abschluss vorbereiten', [5280, -200], [], `
+	const abschluss = wf.code('Abschluss vorbereiten', [5720, -200], [], `
 const r = $input.first().json;
 return [{ json: { status: 'fertig', ergebnis: r.ergebnis, vorgangs_id: r.vorgangs_id || null } }];
 `);
-	const abschliessen = wf.tabelle('Eingang abschließen', [5500, -200], 'update', 'epa_verarbeitete_mails', {
+	const abschliessen = wf.tabelle('Eingang abschließen', [5940, -200], 'update', 'epa_verarbeitete_mails', {
 		bedingungen: [['id', 'eq', "={{ $('Weg bestimmen').first().json.claim_id }}"]],
 	});
-	const melden = wf.code('Ergebnis melden', [5720, -200], ['eingang'], `
+	const melden = wf.code('Ergebnis melden', [6160, -200], ['eingang'], `
 const a = $('Abschluss vorbereiten').first().json;
 const config = $('Config laden').first().json.config;
 return [{ json: {
@@ -385,7 +401,10 @@ return [{ json: {
 	wf.verbinde(kWeiche, kiIgnoriert, 2);
 	wf.kette(mKlasse, informieren);
 	wf.kette(kiIgnoriert, abschluss);
-	wf.kette(extrahieren, pruefen, speichern, statusPruefung, mGeprueft, informieren);
+	wf.kette(extrahieren, pruefen, speichern, statusPruefung, lueckenFrage);
+	wf.verbinde(lueckenFrage, rueckfrage, 0);
+	wf.verbinde(lueckenFrage, mGeprueft, 1);
+	wf.kette(rueckfrage, mGeprueft, informieren);
 	wf.kette(informieren, nachMeldung, abschluss);
 	wf.kette(abschluss, abschliessen, melden);
 	return wf;

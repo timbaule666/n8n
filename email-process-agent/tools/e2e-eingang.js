@@ -17,12 +17,14 @@ const { einrichten, alleTabellen, alleZeilen, api } = require('./datatables-setu
 const { deploy } = require('./deploy');
 const { bauen } = require('./build-workflows');
 const { POSTFACH, FAELLE } = require('../test/daten/testmails');
+const { freigabeSzenarien } = require('./lib/e2e-freigabe');
 
 const BASIS = (process.env.N8N_URL || '').replace(/\/+$/, '');
 const KEY = process.env.N8N_API_KEY;
 const KUNDE = 'epa-e2e';
 const TEAM = '61165b04-e4cc-4026-b43f-926b4e2a7182';
 const KANAL = '19:e2e@thread.tacv2';
+const FREIGEBER = ['freigabe@spedition.example', 'chef@spedition.example'];
 
 const warte = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
@@ -45,8 +47,8 @@ async function zeilenLoeschen(tabellenId, spalte, wert) {
 	});
 }
 
-async function testkundeAnlegen(ids, mockPort) {
-	for (const t of ['epa_config_allgemein', 'epa_config_pflichtfelder', 'epa_vorgaenge', 'epa_audit_log', 'epa_verarbeitete_mails']) {
+async function testkundeAnlegen(ids, mockPort, postfachWorkflowId) {
+	for (const t of ['epa_config_allgemein', 'epa_config_pflichtfelder', 'epa_vorgaenge', 'epa_audit_log', 'epa_verarbeitete_mails', 'epa_freigaben', 'epa_freigabe_tokens']) {
 		await zeilenLoeschen(ids[t], 'kunde_id', KUNDE);
 	}
 	const daten = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'datatables', 'beispiel-transport.json'), 'utf8'));
@@ -59,7 +61,8 @@ async function testkundeAnlegen(ids, mockPort) {
 	Object.assign(allg, {
 		kunde_id: KUNDE,
 		postfach: POSTFACH,
-		freigeber: JSON.stringify(['freigabe@spedition.example']),
+		freigeber: JSON.stringify(FREIGEBER),
+		postfach_workflow_id: postfachWorkflowId,
 		benachrichtigung: JSON.stringify({ kanal: 'teams', team_id: TEAM, channel_id: KANAL }),
 		llm_profil: JSON.stringify(profil),
 		absender_blocklist: JSON.stringify(['spam@werbung.example']),
@@ -88,6 +91,10 @@ async function credentialsZuweisen(creds) {
 			}
 			if (n.type === 'n8n-nodes-base.httpRequest' && n.parameters.nodeCredentialType === 'openAiApi') {
 				n.credentials = { openAiApi: creds.openAiApi };
+				geaendert = true;
+			}
+			if (n.type === 'n8n-nodes-base.httpRequest' && n.parameters.nodeCredentialType === 'microsoftTeamsOAuth2Api') {
+				n.credentials = { microsoftTeamsOAuth2Api: creds.microsoftTeamsOAuth2Api };
 				geaendert = true;
 			}
 		}
@@ -129,6 +136,20 @@ function postfachKopie(ids, mockPort, errorWorkflow) {
 	return { name: 'EPA-TEST Postfach (Mock-Graph)', nodes, connections, settings: { executionOrder: 'v1', errorWorkflow } };
 }
 
+/** Lokal: Graph-Aufrufe von "EPA SW Freigabe senden" auf den Mock umleiten (Teams-Chats). */
+async function freigabeSendenUmleiten(id, mockPort) {
+	const wf = await api('GET', `/workflows/${id}`);
+	for (const n of wf.nodes) {
+		if (n.type !== 'n8n-nodes-base.httpRequest') continue;
+		n.parameters.url = String(n.parameters.url).split('https://graph.microsoft.com/v1.0').join(`http://127.0.0.1:${mockPort}/graph/v1.0`);
+		n.parameters.authentication = 'none';
+		delete n.parameters.nodeCredentialType;
+		delete n.credentials;
+	}
+	await api('PUT', `/workflows/${id}`, { name: wf.name, nodes: wf.nodes, connections: wf.connections, settings: wf.settings });
+	await api('POST', `/workflows/${id}/activate`);
+}
+
 async function aufrufen(slug, body) {
 	const res = await fetch(`${BASIS}/webhook/epa-test-${slug}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 	const text = await res.text();
@@ -156,10 +177,10 @@ async function main() {
 	console.log(`Mock (OpenAI + Graph) auf Port ${port}`);
 	const temp = [];
 	const zeilen = [];
+	const zeilenM3 = [];
 	try {
 		bauen();
 		const ids = await einrichten({ prompts: true, log: () => {} });
-		await testkundeAnlegen(ids, port);
 
 		const leise = () => {};
 		await deploy({ basis: BASIS, schluessel: KEY, log: leise });
@@ -169,11 +190,13 @@ async function main() {
 		const kopie = await api('POST', '/workflows', postfachKopie(wfIds, port, wfIds['EPA-05 Error-Handler']));
 		temp.push(kopie.id);
 		await api('POST', `/workflows/${kopie.id}/activate`);
+		await freigabeSendenUmleiten(wfIds['EPA SW Freigabe senden'], port);
+		await testkundeAnlegen(ids, port, kopie.id);
 		const h1 = await api('POST', '/workflows', harness('EPA-TEST Eingang', 'eingang', wfIds['EPA-01 Eingang verarbeiten'], 'EPA-01 Eingang verarbeiten', [['postfach', 'string'], ['mail', 'object'], ['anhaenge', 'array']]));
 		const h2 = await api('POST', '/workflows', harness('EPA-TEST Postfach', 'postfach', kopie.id, 'EPA-TEST Postfach (Mock-Graph)', [['postfach', 'string'], ['graph_id', 'string']]));
-		temp.push(h1.id, h2.id);
-		await api('POST', `/workflows/${h1.id}/activate`);
-		await api('POST', `/workflows/${h2.id}/activate`);
+		const h3 = await api('POST', '/workflows', harness('EPA-TEST Rückfrage', 'rueckfrage', wfIds['EPA-02 Rückfrage anfordern'], 'EPA-02 Rückfrage anfordern', [['kunde_id', 'string'], ['vorgangs_id', 'string'], ['art', 'string'], ['referenz', 'string']]));
+		temp.push(h1.id, h2.id, h3.id);
+		for (const h of [h1, h2, h3]) await api('POST', `/workflows/${h.id}/activate`);
 		await warte(1000);
 
 		const tabelle = async (name) => alleZeilen(ids[name]);
@@ -181,7 +204,7 @@ async function main() {
 		const gesendet = {}; // id -> { mail, ergebnis, vorgang }
 
 		for (const fall of FAELLE) {
-			if (nur.length && !nur.includes(fall.id)) continue;
+			if (nur.length && !nur.includes(fall.id) && !nur.includes('T')) continue;
 			const basisMail = fall.wiederholung ? gesendet[fall.wiederholung].mail : JSON.parse(JSON.stringify(fall.mail));
 			if (fall.bezug) {
 				const b = gesendet[fall.bezug].mail;
@@ -195,6 +218,8 @@ async function main() {
 				mock.zustand.graphMails.set(basisMail.id, { mail: { ...basisMail, hasAttachments: true }, anhaenge: (fall.anhaenge || []).map((a, i) => ({ ...a, id: `att-${fall.id}-${i}` })) });
 				antwort = await aufrufen('postfach', { postfach: POSTFACH, graph_id: basisMail.id });
 			} else {
+				// auch im Mock-Postfach ablegen, damit EPA-02 einen Antwortentwurf im Thread anlegen kann
+				mock.zustand.graphMails.set(basisMail.id, { mail: basisMail, anhaenge: [] });
 				antwort = await aufrufen('eingang', { postfach: POSTFACH, mail: basisMail, anhaenge: [] });
 			}
 			await warte(fall.erwartet.fehler ? 4000 : 300);
@@ -234,7 +259,7 @@ async function main() {
 				check('Datenblock nicht verlassbar', 1, (String(t).match(/<\/mail_daten>/g) || []).length);
 			}
 			if (e.manipulation) {
-				const audit = (await tabelle('epa_audit_log')).filter((a) => a.vorgangs_id === vorgang?.vorgangs_id && a.neu === e.status);
+				const audit = (await tabelle('epa_audit_log')).filter((a) => a.vorgangs_id === vorgang?.vorgangs_id);
 				check('Manipulationsverdacht im Audit', 'ja', audit.some((a) => JSON.parse(a.details || '{}').verdacht_manipulation === true) ? 'ja' : 'nein');
 			}
 			if (e.spoofing) check('Spoofing-Hinweis', 'ja', vorgang && vorgang.spoofing_hinweis ? 'ja' : 'nein');
@@ -258,6 +283,12 @@ async function main() {
 			console.log(`${ok ? 'ok    ' : 'FEHLER'} ${fall.id} ${fall.szenario}${ok ? '' : `\n       soll: ${soll.join('; ')}\n       ist:  ${ist.join('; ')}`}`);
 		}
 
+		// M3: Rückfrage und Freigabe
+		const freigabeZeilen = (!nur.length || nur.some((n) => /^F/.test(n)))
+			? await freigabeSzenarien({ mock, aufrufen, tabelle, api, ids, KUNDE, POSTFACH, FREIGEBER, nur: nur.filter((n) => /^F/.test(n)) })
+			: [];
+		zeilenM3.push(...freigabeZeilen);
+
 		// Teams-Versandfehler werden protokolliert (lokal gibt es nur ein Dummy-Credential)
 		const teamsFehler = (await tabelle('epa_fehler_log')).filter((z) => z.kunde_id === KUNDE && z.node === 'Teams-Nachricht senden');
 		console.log(`\nHinweis: ${teamsFehler.length} Teams-Meldungen konnten lokal nicht zugestellt werden (Dummy-Credential) und stehen als 502 im Fehlerlog.`);
@@ -266,21 +297,25 @@ async function main() {
 		for (const id of temp) await entfernen(id).catch((e) => console.error('Aufräumen:', e.message));
 		await mock.stoppen();
 	}
-	const bestanden = zeilen.filter((z) => z.ok).length;
-	console.log(`\n${bestanden}/${zeilen.length} Szenarien bestanden`);
-	if (!nur.length) protokoll(zeilen);
-	process.exit(bestanden === zeilen.length ? 0 : 1);
+	const alle = [...zeilen, ...zeilenM3];
+	const bestanden = alle.filter((z) => z.ok).length;
+	console.log(`\nM2: ${zeilen.filter((z) => z.ok).length}/${zeilen.length}, M3: ${zeilenM3.filter((z) => z.ok).length}/${zeilenM3.length} – gesamt ${bestanden}/${alle.length} Szenarien bestanden`);
+	if (!nur.length) {
+		protokoll(zeilen, 'M2', 'Eingang (EPA-00/EPA-01)', 'Testprotokoll-M2.md');
+		protokoll(zeilenM3, 'M3', 'Rückfrage und Freigabe (EPA-02/EPA-07)', 'Testprotokoll-M3.md');
+	}
+	process.exit(bestanden === alle.length ? 0 : 1);
 }
 
-function protokoll(zeilen) {
+function protokoll(zeilen, m, titel, datei) {
 	const esc = (s) => String(s).replace(/\|/g, '\\|');
 	const md = [
-		'# Testprotokoll M2: Eingang (EPA-00/EPA-01)',
+		`# Testprotokoll ${m}: ${titel}`,
 		'',
 		`Stand ${new Date().toISOString().slice(0, 10)}. Lokale n8n-Instanz 2.43.4, Data Tables, Mock-LLM (skriptgesteuert) und Mock-Graph.`,
 		'Erzeugt von `tools/e2e-eingang.js` aus `test/daten/testmails.js`.',
 		'',
-		'Das Mock-LLM liefert festgelegte Antworten. Geprüft wird damit die Verarbeitungskette (Normalisierung, Dedupe, Zuordnung, Statuswechsel, Pflichtfelder, Fehlerpfade, Anhänge), **nicht** die Qualität des echten Modells. Die Gegenprobe mit OpenAI erfolgt in der Cloud-Instanz (siehe M2-Bericht).',
+		'Das Mock-LLM liefert festgelegte Antworten, der Mock-Graph simuliert Postfach (Entwürfe, Versand, Gesendete Elemente) und Teams-Chats. Geprüft wird damit die Verarbeitungskette, **nicht** die Qualität des echten Modells und nicht das Verhalten der echten Microsoft-APIs. Die Gegenprobe erfolgt in der Cloud-Instanz.',
 		'',
 		'| Nr. | Szenario | erwartet | tatsächlich | bestanden |',
 		'|---|---|---|---|---|',
@@ -289,7 +324,7 @@ function protokoll(zeilen) {
 		`**Ergebnis:** ${zeilen.filter((z) => z.ok).length} von ${zeilen.length} Szenarien bestanden.`,
 		'',
 	].join('\n');
-	fs.writeFileSync(path.join(ROOT, 'docs', 'Testprotokoll-M2.md'), md);
+	fs.writeFileSync(path.join(ROOT, 'docs', datei), md);
 }
 
 main().catch((e) => {

@@ -3,7 +3,7 @@
 // im Code-Node keine externen Bibliotheken), Prompt-Aufbau mit klar abgegrenzten, nicht vertrauenswürdigen Mail-Daten,
 // Auswertung der OpenAI-Antwort inkl. Retry-Entscheidung.
 
-const AUFGABEN = ['klassifizierung', 'extraktion'];
+const AUFGABEN = ['klassifizierung', 'extraktion', 'entwurf'];
 const KLASSEN = ['anfrage', 'keine_anfrage', 'unklar'];
 const MAX_VERSUCHE_TECHNISCH = 3; // 429, 5xx, Timeout
 const MAX_KORREKTUREN = 1; // ungültiges JSON/Schema
@@ -54,7 +54,19 @@ function extraktionSchema(felder) {
 	};
 }
 
+/** Entwurf der Rückfrage: nur die Hülle. Bausteine, Signatur und KI-Hinweis setzt src/entwurf.js ein. */
+function entwurfSchema() {
+	const teil = (max) => ({ type: 'string', maxLength: max });
+	return {
+		type: 'object',
+		additionalProperties: false,
+		required: ['anrede', 'einleitung', 'schluss'],
+		properties: { anrede: teil(80), einleitung: teil(400), schluss: teil(300) },
+	};
+}
+
 function schemaFuer(aufgabe, kontext) {
+	if (aufgabe === 'entwurf') return entwurfSchema();
 	if (aufgabe === 'klassifizierung') return klassifizierungSchema(kontext.vorgangstypen);
 	if (aufgabe === 'extraktion') return extraktionSchema(kontext.felder);
 	throw new Error(`Unbekannte LLM-Aufgabe "${aufgabe}"`);
@@ -177,8 +189,16 @@ function ersetzen(vorlage, variablen) {
 function anfrageBauen(aufgabe, prompt, kontext, profil) {
 	if (!AUFGABEN.includes(aufgabe)) throw new Error(`Unbekannte LLM-Aufgabe "${aufgabe}"`);
 	const schema = schemaFuer(aufgabe, kontext);
+	const mailBlock = aufgabe === 'entwurf'
+		// Datenminimierung: für die Hülle reichen Name und Betreff, kein Mailinhalt.
+		? datenblock('mail_daten', `Name des Kunden: ${kontext.name || '(unbekannt)'}\nBetreff: ${kontext.betreff || '(leer)'}`)
+		: datenblock('mail_daten', mailText(kontext.mail, { mitAnhaengen: aufgabe === 'extraktion' }));
 	const variablen = {
-		MAIL: datenblock('mail_daten', mailText(kontext.mail, { mitAnhaengen: aufgabe === 'extraktion' })),
+		MAIL: mailBlock,
+		ANREDE_STIL: kontext.anrede_stil || 'Sie',
+		SPRACHE: kontext.sprache || 'de',
+		LUECKEN: (kontext.luecken || []).map((l) => `- ${l}`).join('\n') || '- keine',
+		RUNDE: String(kontext.runde || 1),
 		VORGANGSTYPEN: (kontext.vorgangstypen || []).join(', ') || '(keine)',
 		FELDLISTE: feldliste(kontext.felder),
 		HINWEISE: (kontext.hinweise || []).length ? kontext.hinweise.map((h) => `- ${h}`).join('\n') : '- keine',
@@ -186,7 +206,7 @@ function anfrageBauen(aufgabe, prompt, kontext, profil) {
 		SCHEMA: JSON.stringify(schema),
 	};
 	const userText = ersetzen(prompt.user_vorlage, variablen);
-	const bilder = aufgabe === 'extraktion' ? (kontext.mail.anhaenge || []).filter((a) => a.bild && a.bild_data_url) : [];
+	const bilder = aufgabe === 'extraktion' ? ((kontext.mail && kontext.mail.anhaenge) || []).filter((a) => a.bild && a.bild_data_url) : [];
 	const userInhalt = bilder.length
 		? [{ type: 'text', text: userText }, ...bilder.map((b) => ({ type: 'image_url', image_url: { url: b.bild_data_url, detail: 'high' } }))]
 		: userText;
@@ -276,6 +296,7 @@ module.exports = {
 	MAX_KORREKTUREN,
 	klassifizierungSchema,
 	extraktionSchema,
+	entwurfSchema,
 	schemaFuer,
 	validieren,
 	fuerOpenAi,

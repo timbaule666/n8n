@@ -33,7 +33,9 @@
       "anhang_limits": "string",
       "leerantwort_fristverlaengerung_stunden": "number",
       "freigabe_erinnerung_stunden": "number",
-      "freigabe_ablauf_stunden": "number"
+      "freigabe_ablauf_stunden": "number",
+      "postfach_workflow_id": "string",
+      "freigabe_basis_url": "string"
     },
     "epa_config_pflichtfelder": {
       "kunde_id": "string",
@@ -120,6 +122,35 @@
       "user_vorlage": "string",
       "pruefsumme": "string",
       "aktiv": "boolean"
+    },
+    "epa_freigaben": {
+      "freigabe_id": "string",
+      "kunde_id": "string",
+      "vorgangs_id": "string",
+      "art": "string",
+      "runde": "number",
+      "status": "string",
+      "empfaenger": "string",
+      "betreff": "string",
+      "entwurf_id": "string",
+      "entwurf_text": "string",
+      "abschluss": "string",
+      "fehlende_felder": "string",
+      "fallback": "boolean",
+      "ablauf": "date",
+      "entscheider": "string",
+      "entscheidung": "string",
+      "bearbeitet": "boolean",
+      "grund": "string",
+      "gesendet_am": "date",
+      "gesendet_message_id": "string"
+    },
+    "epa_freigabe_tokens": {
+      "freigabe_id": "string",
+      "kunde_id": "string",
+      "freigeber": "string",
+      "token_hash": "string",
+      "verbraucht_am": "date"
     }
   }
 }

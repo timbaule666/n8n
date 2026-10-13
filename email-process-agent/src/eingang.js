@@ -132,7 +132,10 @@ function meldungGeprueft(vorgangsId, mail, felder, pruefung, extra = {}) {
 	let html = kopf(titel, vorgangsId, mail) + '<br>' + feldTabelle(felder, pruefung.daten);
 	if (!pruefung.vollstaendig) {
 		html += '<br>Fehlende oder ungültige Pflichtangaben:<ul>' + pruefung.fehlende.map((f) => `<li>${esc(f.anzeigename)}: ${esc(f.grund)}</li>`).join('') + '</ul>';
-		html += 'Die Rückfrage an den Kunden (mit Freigabe) folgt mit Meilenstein M3.';
+		const r = extra.rueckfrage;
+		if (r && r.ergebnis === 'freigabe_angefordert') html += `Die Rückfrage liegt als Entwurf zur Freigabe bereit (persönlicher Link an ${r.zugestellt} Freigeber per Teams-Chat${r.fallback ? '; Standardvorlage verwendet' : ''}).`;
+		else if (r && r.ergebnis === 'eskaliert_max_runden') html += 'Die maximale Anzahl Rückfragen ist erreicht: bitte manuell klären.';
+		else html += '<b>Die Rückfrage konnte nicht automatisch vorbereitet werden – bitte manuell klären.</b> Details im Fehlerlog.';
 	}
 	const w = [];
 	for (const h of pruefung.hinweise || []) w.push(`${h.anzeigename}: ${h.grund} (verworfen)`);

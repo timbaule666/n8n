@@ -19,9 +19,12 @@ const M2 = [
 	['sw-benachrichtigen', 'EPA_SW_Benachrichtigen.json'],
 	['epa-01-eingang-verarbeiten', 'EPA-01_Eingang_verarbeiten.json'],
 	['epa-00-postfach', 'EPA-00_Postfach_Vorlage.json'],
+	['sw-freigabe-senden', 'EPA_SW_Freigabe_senden.json'],
+	['epa-02-rueckfrage', 'EPA-02_Rueckfrage_anfordern.json'],
+	['epa-07-freigabe', 'EPA-07_Freigabe-Endpunkt.json'],
 ];
 // Die Postgres-Variante bleibt auf dem Stand von M1 (Speicher-Standard sind Data Tables).
-const DATEIEN = { datatable: [...M1, ...M2], postgres: M1 };
+const DATEIEN = { datatable: [...M1, ...M2], postgres: M1 }; // M2 enthält ab M3 auch EPA-02/EPA-07
 const VARIANTEN = { datatable: 'workflows', postgres: 'workflows-postgres' };
 
 function bauen() {
