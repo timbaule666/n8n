@@ -68,12 +68,19 @@ function ladeLokal(ordner = 'workflows') {
  * Sammelt die in den EPA-Workflows genutzten Credentials je Node-Typ. Eindeutig = genau ein Credential
  * pro Typ; nur dann wird es neuen Nodes desselben Typs automatisch zugewiesen.
  */
+/** HTTP-Request-Nodes werden zusätzlich nach Credential-Typ unterschieden (OpenAI vs. Outlook). */
+function credSchluessel(n) {
+	const art = n.parameters && n.parameters.nodeCredentialType;
+	return art ? `${n.type}:${art}` : n.type;
+}
+
 function eindeutigeCredentials(workflows) {
 	const jeTyp = {};
 	for (const wf of workflows) {
 		for (const n of wf?.nodes || []) {
 			if (!n.credentials) continue;
-			const s = (jeTyp[n.type] = jeTyp[n.type] || new Map());
+			const k = credSchluessel(n);
+			const s = (jeTyp[k] = jeTyp[k] || new Map());
 			s.set(JSON.stringify(n.credentials), n.credentials);
 		}
 	}
@@ -85,8 +92,8 @@ function verknuepfen(wf, ids, bestehend, { errorWorkflowSetzen = true, credentia
 	const nodes = wf.nodes.map((n) => {
 		const kopie = JSON.parse(JSON.stringify(n));
 		const vorher = alt.get(n.name);
-		if (vorher?.credentials && vorher.type === n.type) kopie.credentials = vorher.credentials;
-		else if (credentialsJeTyp[n.type]) kopie.credentials = credentialsJeTyp[n.type];
+		if (vorher?.credentials && credSchluessel(vorher) === credSchluessel(n)) kopie.credentials = vorher.credentials;
+		else if (credentialsJeTyp[credSchluessel(n)]) kopie.credentials = credentialsJeTyp[credSchluessel(n)];
 		if (vorher && vorher.type === n.type) {
 			for (const p of BEHALTEN_WENN_GESETZT) {
 				if (p in kopie.parameters && istPlatzhalter(kopie.parameters[p]) && !istPlatzhalter(vorher.parameters?.[p])) {
@@ -94,7 +101,8 @@ function verknuepfen(wf, ids, bestehend, { errorWorkflowSetzen = true, credentia
 				}
 			}
 		}
-		if (n.type === 'n8n-nodes-base.executeWorkflow') {
+		const selbstaufruf = n.type === 'n8n-nodes-base.executeWorkflow' && n.parameters.workflowId.mode === 'id' && n.parameters.workflowId.value === '={{ $workflow.id }}';
+		if (n.type === 'n8n-nodes-base.executeWorkflow' && !selbstaufruf) {
 			const ziel = n.parameters.workflowId.cachedResultName;
 			if (!ids[ziel]) throw new Error(`${wf.name}/${n.name}: Ziel-Workflow "${ziel}" nicht gefunden`);
 			kopie.parameters.workflowId = { __rl: true, mode: 'list', value: ids[ziel], cachedResultName: ziel, cachedResultUrl: `/workflow/${ids[ziel]}` };
@@ -184,4 +192,4 @@ if (require.main === module) {
 	});
 }
 
-module.exports = { deploy, verknuepfen, eindeutigeCredentials };
+module.exports = { deploy, verknuepfen, eindeutigeCredentials, credSchluessel };

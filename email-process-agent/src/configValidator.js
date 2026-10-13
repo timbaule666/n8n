@@ -155,7 +155,13 @@ function pruefeLlmProfil(wert, fehler) {
 			fehler.push(`${p}: fehlt`);
 			continue;
 		}
+		const basis = a.basis_url === undefined || a.basis_url === null || a.basis_url === '' ? 'https://api.openai.com/v1' : String(a.basis_url).replace(/\/+$/, '');
+		// https Pflicht; http nur für lokale Tests (Mock-LLM). EU-Datenresidenz z. B. über https://eu.api.openai.com/v1 [zu verifizieren].
+		if (!/^https:\/\/[A-Za-z0-9.-]+(:\d+)?(\/[\w./-]*)?$/.test(basis) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/[\w./-]*)?$/.test(basis)) {
+			fehler.push(`${p}.basis_url: muss eine https-URL sein`);
+		}
 		out[aufgabe] = {
+			basis_url: basis,
 			modell: text(a.modell, `${p}.modell`, fehler),
 			temperatur: zahl(a.temperatur, `${p}.temperatur`, fehler, { min: 0, max: 1 }),
 			timeout_ms: zahl(a.timeout_ms, `${p}.timeout_ms`, fehler, { min: 1000, max: 300000, ganz: true }),

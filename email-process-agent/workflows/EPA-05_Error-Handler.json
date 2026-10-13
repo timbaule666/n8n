@@ -73,6 +73,64 @@
     },
     {
       "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: { status: 'fehler' } }];\n"
+      },
+      "id": "33389ee3-470f-4adf-aa54-62ac26ceb0f6",
+      "name": "Eingang-Freigabe vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_verarbeitete_mails"
+        },
+        "matchType": "anyCondition",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "execution_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Fehler klassifizieren').first().json.execution_id || '__keine__' }}"
+            },
+            {
+              "keyName": "aufrufer_execution_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Fehler klassifizieren').first().json.execution_id || '__keine__' }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "2a5e8e41-dd6e-475c-aa67-5b2f56567b06",
+      "name": "Eingang freigeben",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        180
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
         "conditions": {
           "options": {
             "caseSensitive": true,
@@ -102,7 +160,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        660,
+        880,
         0
       ]
     },
@@ -347,7 +405,9 @@
         },
         "contentType": "html",
         "message": "={{ $json.alarm_html }}",
-        "options": {}
+        "options": {
+          "includeLinkToWorkflow": false
+        }
       },
       "id": "60298696-a1ed-40fb-acdf-f87e3a420641",
       "name": "Entwickler-Kanal alarmieren",
@@ -472,6 +532,28 @@
       ]
     },
     "Fehler protokollieren": {
+      "main": [
+        [
+          {
+            "node": "Eingang-Freigabe vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eingang-Freigabe vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Eingang freigeben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eingang freigeben": {
       "main": [
         [
           {

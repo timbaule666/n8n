@@ -1,0 +1,108 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const pf = require('../src/pflichtfelder');
+const { validiereConfig } = require('../src/configValidator');
+
+const beispiel = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config', 'datatables', 'beispiel-transport.json'), 'utf8'));
+const FELDER = validiereConfig({ ...beispiel.epa_config_allgemein[0], postfach: 'a@b.de', freigeber: '["c@b.de"]' }, beispiel.epa_config_pflichtfelder).config.vorgangstypen.transport;
+const feld = (name) => FELDER.find((f) => f.feldname === name);
+const HEUTE = '2026-10-13';
+
+const ex = (werte) => Object.fromEntries(Object.entries(werte).map(([k, v]) => [k, { wert: v, quelle: 'Mailtext', konfidenz: 0.9 }]));
+const VOLL = {
+	Start_PLZ: '20095', Start_Ort: 'Hamburg', Ziel_PLZ: '80331', Ziel_Ort: 'München', Abholdatum: '20.10.2026',
+	Gewicht_kg: '1.200', Packstuecke: '4', Ladungsart: 'palette', Ansprechpartner: 'Max Muster', Telefon: '+49 40 123456',
+};
+
+test('Vollständige Anfrage: normalisierte Werte', () => {
+	const r = pf.pruefen(ex(VOLL), FELDER, { heute: HEUTE });
+	assert.equal(r.vollstaendig, true, JSON.stringify(r.fehlende));
+	assert.deepEqual(pf.werte(r.daten), {
+		Start_PLZ: '20095', Start_Ort: 'Hamburg', Ziel_PLZ: '80331', Ziel_Ort: 'München', Abholdatum: '2026-10-20',
+		Gewicht_kg: 1200, Packstuecke: 4, Ladungsart: 'Palette', Ansprechpartner: 'Max Muster', Telefon: '+4940123456',
+	});
+});
+
+test('null, leer, fehlend und Platzhalter gelten als fehlend', () => {
+	const r = pf.pruefen(ex({ ...VOLL, Start_PLZ: null, Ziel_PLZ: '  ', Telefon: 'k.A.', Ansprechpartner: 'TBD', Gewicht_kg: '-', Abholdatum: undefined }), FELDER, { heute: HEUTE });
+	assert.equal(r.vollstaendig, false);
+	assert.deepEqual(r.fehlende.map((f) => [f.feldname, f.grund]), [
+		['Start_PLZ', 'fehlt'], ['Ziel_PLZ', 'fehlt'], ['Abholdatum', 'fehlt'], ['Gewicht_kg', 'Platzhalter statt Angabe'],
+		['Ansprechpartner', 'Platzhalter statt Angabe'], ['Telefon', 'Platzhalter statt Angabe'],
+	]);
+	assert.equal(r.fehlende[0].anzeigename, 'PLZ Abholort');
+	// Feld fehlt komplett in der LLM-Ausgabe
+	assert.equal(pf.pruefen({}, FELDER, { heute: HEUTE }).fehlende.length, FELDER.filter((f) => f.pflicht).length);
+});
+
+test('Optionale Felder: fehlend ist ok, ungültig ist ein Hinweis', () => {
+	const r = pf.pruefen(ex({ ...VOLL, Packstuecke: null, Ladungsart: 'Container' }), FELDER, { heute: HEUTE });
+	assert.equal(r.vollstaendig, true);
+	assert.deepEqual(r.hinweise.map((h) => h.feldname), ['Ladungsart']);
+	assert.equal(r.daten.Ladungsart.wert, null);
+	assert.equal(r.daten.Ladungsart.roh, 'Container');
+});
+
+test('PLZ', () => {
+	const p = (w) => pf.feldPruefen(feld('Start_PLZ'), w);
+	assert.deepEqual(p('D-20095'), { ok: true, wert: '20095' });
+	assert.deepEqual(p(20095), { ok: true, wert: '20095' });
+	assert.equal(p('2009').ok, false);
+	assert.equal(p('200951').ok, false);
+	assert.equal(p('Hamburg').ok, false);
+});
+
+test('Datum: Formate, ungültige Tage, Grenzen relativ zu heute, ohne Jahr', () => {
+	const d = (w) => pf.feldPruefen(feld('Abholdatum'), w, { heute: HEUTE });
+	assert.deepEqual(d('2026-10-20'), { ok: true, wert: '2026-10-20' });
+	assert.deepEqual(d('1.11.26'), { ok: true, wert: '2026-11-01' });
+	assert.deepEqual(d('20.10.'), { ok: true, wert: '2026-10-20' });
+	assert.deepEqual(d('05.01.'), { ok: true, wert: '2027-01-05' });
+	assert.deepEqual(d('13.10.'), { ok: true, wert: '2026-10-13' });
+	assert.equal(d('31.02.2027').ok, false);
+	assert.equal(d('nächsten Dienstag').ok, false);
+	assert.match(d('01.10.2026').grund, /zu früh/);
+	assert.match(d('01.01.2028').grund, /zu weit/);
+});
+
+test('Zahl: deutsche/englische Formate, Einheiten, Grenzen, Ganzzahl', () => {
+	assert.equal(pf.zahlLesen('1.200'), 1200);
+	assert.equal(pf.zahlLesen('1.200,5'), 1200.5);
+	assert.equal(pf.zahlLesen('1,200.5'), 1200.5);
+	assert.equal(pf.zahlLesen('2,5'), 2.5);
+	assert.equal(pf.zahlLesen('ca. 800 kg'), 800);
+	assert.equal(pf.zahlLesen('12 Paletten'), 12);
+	assert.equal(pf.zahlLesen('1.5'), 1.5);
+	assert.equal(pf.zahlLesen('viel'), null);
+	assert.equal(pf.zahlLesen('1-2'), null);
+	assert.match(pf.feldPruefen(feld('Gewicht_kg'), '50000').grund, /größer/);
+	assert.match(pf.feldPruefen(feld('Gewicht_kg'), '0').grund, /kleiner/);
+	assert.match(pf.feldPruefen(feld('Packstuecke'), '2,5').grund, /ganze Zahl/);
+});
+
+test('Telefon, E-Mail, Text, Enum', () => {
+	assert.deepEqual(pf.feldPruefen(feld('Telefon'), '040 / 123-456'), { ok: true, wert: '040123456' });
+	assert.equal(pf.feldPruefen(feld('Telefon'), '12345').ok, false);
+	assert.equal(pf.feldPruefen(feld('Telefon'), 'ruf mich an').ok, false);
+	assert.deepEqual(pf.feldPruefen({ typ: 'email', validierungsregel: {} }, 'mailto:Max@Kunde.de'), { ok: true, wert: 'max@kunde.de' });
+	assert.equal(pf.feldPruefen({ typ: 'email', validierungsregel: {} }, 'max@').ok, false);
+	assert.match(pf.feldPruefen(feld('Start_Ort'), 'H').grund, /zu kurz/);
+	assert.deepEqual(pf.feldPruefen(feld('Start_Ort'), '  Bad   Oldesloe '), { ok: true, wert: 'Bad Oldesloe' });
+	assert.deepEqual(pf.feldPruefen(feld('Ladungsart'), 'STÜCKGUT'), { ok: true, wert: 'Stückgut' });
+});
+
+test('Feldspezifische Platzhalter und geringe Konfidenz', () => {
+	const f = [{ ...feld('Start_Ort'), platzhalter_muster: ['Musterstadt'] }];
+	assert.equal(pf.pruefen(ex({ Start_Ort: 'musterstadt' }), f).fehlende[0].grund, 'Platzhalter statt Angabe');
+	const r = pf.pruefen({ Start_Ort: { wert: 'Hamburg', quelle: 'Mailtext', konfidenz: 0.3 } }, f);
+	assert.equal(r.vollstaendig, true);
+	assert.deepEqual(r.unsicher, [{ feldname: 'Start_Ort', anzeigename: 'Abholort', konfidenz: 0.3 }]);
+});
+
+test('Objekt statt Wert wird abgelehnt', () => {
+	const r = pf.pruefen({ Start_Ort: { wert: { a: 1 } } }, [feld('Start_Ort')]);
+	assert.match(r.fehlende[0].grund, /unerwartetes Format/);
+});

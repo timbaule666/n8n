@@ -221,7 +221,7 @@ Zusätzlich liefere ich in M1 eine leere Config-Vorlage.
 | Absenderadresse gleich (case-insensitive) | +25 |
 | Absender-Domain gleich, Adresse anders | +10 |
 | normalisierter Betreff gleich (Re:/AW:/WG:/Fwd:/[Ticket] entfernt) | +15 |
-| Vorgangs-ID im Betreff oder Text (`V-\d{4}-\d{4}`) | +50 |
+| Vorgangs-ID im Betreff oder Text (`V-\d{4}-\d{4}`) | +60 (in M2 von 50 angehoben) |
 | Thread passt, Absender-Domain fremd | −40 (Konfliktmarker) |
 
 Regeln, die im Code in dieser Reihenfolge ausgewertet werden:

@@ -78,3 +78,17 @@ test('Credentials werden nur bei gleichem Node-Typ übernommen', () => {
 	assert.equal(n.type, 'n8n-nodes-base.dataTable');
 	assert.equal(n.credentials, undefined);
 });
+
+test('Credentials für HTTP-Nodes je Credential-Typ, Selbstaufruf bleibt unverändert', () => {
+	const { verknuepfen: vk, eindeutigeCredentials: ec } = require('../tools/deploy');
+	const http = (name, art, cred) => ({ name, type: 'n8n-nodes-base.httpRequest', parameters: { nodeCredentialType: art }, ...(cred ? { credentials: cred } : {}) });
+	const openai = { openAiApi: { id: '1', name: 'OpenAI' } };
+	const outlook = { microsoftOutlookOAuth2Api: { id: '2', name: 'Outlook' } };
+	const jeTyp = ec([{ nodes: [http('A', 'openAiApi', openai), http('B', 'microsoftOutlookOAuth2Api', outlook)] }]);
+	const selbst = { name: 'Selbst', type: 'n8n-nodes-base.executeWorkflow', parameters: { workflowId: { __rl: true, mode: 'id', value: '={{ $workflow.id }}' } } };
+	const wf = { name: 'X', settings: {}, connections: {}, nodes: [http('Neu1', 'openAiApi'), http('Neu2', 'microsoftOutlookOAuth2Api'), selbst] };
+	const r = vk(wf, { 'EPA-05 Error-Handler': 'e5' }, null, { credentialsJeTyp: jeTyp });
+	assert.deepEqual(r.nodes[0].credentials, openai);
+	assert.deepEqual(r.nodes[1].credentials, outlook);
+	assert.equal(r.nodes[2].parameters.workflowId.value, '={{ $workflow.id }}');
+});

@@ -25,7 +25,19 @@ return [{ json: eintrag }];
 		{ onError: 'continueRegularOutput', alwaysOutputData: true });
 
 	const K = "$('Fehler klassifizieren').first().json";
-	const noetig = wf.node('Vorgang sichern nötig?', 'n8n-nodes-base.if', [660, 0], {
+	// Ein Eingang, dessen Verarbeitung abgebrochen ist, gilt nicht mehr als "in Arbeit": eine erneute Ausführung
+	// derselben Mail wird dann nicht als Duplikat verworfen (src/eingang.js dedupeEntscheiden).
+	const freigabeDaten = wf.code('Eingang-Freigabe vorbereiten', [440, 180], [], `
+return [{ json: { status: 'fehler' } }];
+`);
+	const freigeben = wf.tabelle('Eingang freigeben', [660, 180], 'update', 'epa_verarbeitete_mails', {
+		match: 'anyCondition',
+		bedingungen: [
+			['execution_id', 'eq', `={{ ${K}.execution_id || '__keine__' }}`],
+			['aufrufer_execution_id', 'eq', `={{ ${K}.execution_id || '__keine__' }}`],
+		],
+	}, { onError: 'continueRegularOutput', alwaysOutputData: true });
+	const noetig = wf.node('Vorgang sichern nötig?', 'n8n-nodes-base.if', [880, 0], {
 		conditions: bedingungen([bedingung(`={{ ${K}.eskalieren }}`, { type: 'boolean', operation: 'true', singleValue: true })]),
 		options: { looseTypeValidation: true },
 	});
@@ -81,7 +93,7 @@ return [{ json: { fehler_id: fehlerId, eskaliert, alarm_html: html } }];
 		channelId: { __rl: true, mode: 'id', value: '<CHANNEL_ID_ENTWICKLER>' },
 		contentType: 'html',
 		message: '={{ $json.alarm_html }}',
-		options: {},
+		options: { includeLinkToWorkflow: false },
 	}, Workflow.retry());
 
 	const A = "$('Alarm vorbereiten').first().json";
@@ -96,7 +108,7 @@ return [{ json: { alarmiert_am: new Date().toISOString() } }];
 		bedingungen: [['id', 'eq', `={{ ${A}.fehler_id }}`]],
 	});
 
-	wf.kette(trigger, klassifizieren, protokollieren, noetig);
+	wf.kette(trigger, klassifizieren, protokollieren, freigabeDaten, freigeben, noetig);
 	wf.verbinde(noetig, mandant, 0);
 	wf.verbinde(noetig, vorbereiten, 1);
 	wf.kette(mandant, sichern, eskDaten, eskVermerken, vorbereiten);

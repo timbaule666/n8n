@@ -1,0 +1,312 @@
+{
+  "name": "EPA SW Benachrichtigen",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## EPA SW Benachrichtigen\n**Zweck:** Info-Meldungen an Mitarbeiter (Teams-Kanal aus der Kunden-Config). Kanal-Adapter: ein Wechsel auf Slack betrifft nur diesen Workflow.\n**Trigger:** Aufruf durch andere Workflows.\n**Eingaben:** kunde_id, vorgangs_id, team_id, channel_id, nachricht_html, anlass.\n**Ausgabe:** { gesendet, fehler_id }\n**Fehler:** Ein Versandfehler bricht die Verarbeitung NICHT ab. Er wird in epa_fehler_log eingetragen (alarmiert_am leer), der Watchdog (M6) meldet ihn an den Entwickler-Kanal.\n**Einrichten:** Im Node \"Teams-Nachricht senden\" das Teams-Credential (OAuth2, delegiert) zuweisen.",
+        "width": 680,
+        "height": 320,
+        "color": 7
+      },
+      "id": "d8674664-4b4d-4808-a4c9-b0c7f944a381",
+      "name": "Notiz Zweck",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "kunde_id",
+              "type": "string"
+            },
+            {
+              "name": "vorgangs_id",
+              "type": "string"
+            },
+            {
+              "name": "team_id",
+              "type": "string"
+            },
+            {
+              "name": "channel_id",
+              "type": "string"
+            },
+            {
+              "name": "nachricht_html",
+              "type": "string"
+            },
+            {
+              "name": "anlass",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "2bfe0bb1-e7b8-4422-a2b6-4fb99ed491ba",
+      "name": "Bei Aufruf",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId),\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst zeilen = [\n\t\t`<b>EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)}</b> (${escapeHtml(e.klasse)})`,\n\t\t`Workflow: ${escapeHtml(e.workflow_name || e.workflow_id || '?')}`,\n\t\t`Node: ${escapeHtml(e.node || '?')}`,\n\t\t`Vorgang: ${escapeHtml(e.vorgangs_id || '–')}`,\n\t\t`Meldung: ${escapeHtml(e.meldung || '–')}`,\n\t\te.retrybar ? 'Hinweis: vorübergehender Fehler, erneuter Versuch kann helfen.' : 'Hinweis: dauerhafter Fehler, bitte prüfen.',\n\t];\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n\n// ----- Node-Logik -----\nconst e = $input.first().json;\nconst vid = e.vorgangs_id || null;\nif (!e.team_id || !e.channel_id) throw fehlerklassen.epaFehler('KONFIGURATIONSFEHLER', vid, 'Teams-Ziel (team_id/channel_id) fehlt in der Config');\nif (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(e.team_id)) throw fehlerklassen.epaFehler('KONFIGURATIONSFEHLER', vid, 'team_id muss eine GUID sein');\nif (typeof e.nachricht_html !== 'string' || !e.nachricht_html.trim()) throw fehlerklassen.epaFehler('UNGUELTIGES_FORMAT', vid, 'Nachricht fehlt');\nreturn [{ json: { ...e, vorgangs_id: vid } }];\n"
+      },
+      "id": "7c52011b-750d-4ba8-adaa-ad1b1fb0b40f",
+      "name": "Eingabe prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "channelMessage",
+        "operation": "create",
+        "teamId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.team_id }}"
+        },
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.channel_id }}"
+        },
+        "contentType": "html",
+        "message": "={{ $json.nachricht_html }}",
+        "options": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "id": "78192d1b-9fd8-45f8-ac1d-0583c3895218",
+      "name": "Teams-Nachricht senden",
+      "type": "n8n-nodes-base.microsoftTeams",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId),\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst zeilen = [\n\t\t`<b>EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)}</b> (${escapeHtml(e.klasse)})`,\n\t\t`Workflow: ${escapeHtml(e.workflow_name || e.workflow_id || '?')}`,\n\t\t`Node: ${escapeHtml(e.node || '?')}`,\n\t\t`Vorgang: ${escapeHtml(e.vorgangs_id || '–')}`,\n\t\t`Meldung: ${escapeHtml(e.meldung || '–')}`,\n\t\te.retrybar ? 'Hinweis: vorübergehender Fehler, erneuter Versuch kann helfen.' : 'Hinweis: dauerhafter Fehler, bitte prüfen.',\n\t];\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n\n// ----- Node-Logik -----\nconst e = $('Eingabe prüfen').first().json;\nconst r = $input.first().json || {};\nif (!r.error) return [{ json: { gesendet: true } }];\nconst meldung = typeof r.error === 'string' ? r.error : (r.error.message || 'Teams-Versand fehlgeschlagen');\nreturn [{ json: {\n\tgesendet: false,\n\tfehler: {\n\t\tstatuscode: 502, fehlercode: 'UPSTREAM_FEHLER', klasse: 'Upstream', retrybar: true, eskalieren: false,\n\t\tworkflow_id: String($workflow.id), workflow_name: $workflow.name, node: 'Teams-Nachricht senden',\n\t\texecution_id: String($execution.id), execution_url: null, modus: $execution.mode,\n\t\tvorgangs_id: e.vorgangs_id, kunde_id: e.kunde_id || null,\n\t\tmeldung: fehlerklassen.bereinigeMeldung(`Meldung \"${e.anlass || '-'}\" nicht zugestellt: ${meldung}`),\n\t\teskaliert: false, alarmiert_am: null,\n\t},\n} }];\n"
+      },
+      "id": "0f5afb93-5c1f-49e0-ac7b-9ae19cc765ad",
+      "name": "Versand prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "817f15f2-27a4-4a58-aea8-1bae3e24fb0b",
+              "leftValue": "={{ $json.gesendet }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1f23737-eaba-4ad0-ab9e-e52c63410683",
+      "name": "Versand fehlgeschlagen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: $input.first().json.fehler }];\n"
+      },
+      "id": "00d9fa69-dccb-47c6-aaf4-29657f39262e",
+      "name": "Fehlerlog vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_fehler_log"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "bd26880b-e4cd-4c24-a5ec-764e32253f6b",
+      "name": "Fehler protokollieren",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1320,
+        -100
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst v = $('Versand prüfen').first().json;\nconst p = $('Fehler protokollieren').isExecuted ? $('Fehler protokollieren').first().json : null;\nreturn [{ json: { gesendet: v.gesendet, fehler_id: p && p.id !== undefined ? p.id : null } }];\n"
+      },
+      "id": "f9490248-a713-4160-a417-8f2bebcbf3d4",
+      "name": "Ergebnis melden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Bei Aufruf": {
+      "main": [
+        [
+          {
+            "node": "Eingabe prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eingabe prüfen": {
+      "main": [
+        [
+          {
+            "node": "Teams-Nachricht senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teams-Nachricht senden": {
+      "main": [
+        [
+          {
+            "node": "Versand prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Versand prüfen": {
+      "main": [
+        [
+          {
+            "node": "Versand fehlgeschlagen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Versand fehlgeschlagen?": {
+      "main": [
+        [
+          {
+            "node": "Fehlerlog vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ergebnis melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fehlerlog vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Fehler protokollieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fehler protokollieren": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

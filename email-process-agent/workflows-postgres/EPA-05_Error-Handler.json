@@ -300,7 +300,9 @@
         },
         "contentType": "html",
         "message": "={{ $json.alarm_html }}",
-        "options": {}
+        "options": {
+          "includeLinkToWorkflow": false
+        }
       },
       "id": "60298696-a1ed-40fb-acdf-f87e3a420641",
       "name": "Entwickler-Kanal alarmieren",

@@ -36,8 +36,18 @@ function pruefeWorkflow(json, alleNamen) {
 			if (['update'].includes(n.parameters.operation) && !(n.parameters.filters && n.parameters.filters.conditions.length)) fehler.push(`${n.name}: Update ohne Bedingung`);
 		}
 		if (n.type === 'n8n-nodes-base.executeWorkflow') {
-			const ref = n.parameters.workflowId.cachedResultName;
-			if (!alleNamen.has(ref)) fehler.push(`${n.name}: ruft unbekannten Workflow "${ref}" auf`);
+			const w = n.parameters.workflowId;
+			const selbst = w.mode === 'id' && w.value === '={{ $workflow.id }}';
+			if (!selbst && !alleNamen.has(w.cachedResultName)) fehler.push(`${n.name}: ruft unbekannten Workflow "${w.cachedResultName}" auf`);
+		}
+		if (n.type === 'n8n-nodes-base.httpRequest') {
+			const p = n.parameters;
+			if (p.authentication !== 'predefinedCredentialType' || !p.nodeCredentialType) fehler.push(`${n.name}: HTTP-Aufruf ohne vordefiniertes Credential`);
+			if (/[?&](api[_-]?key|token|access_token)=/i.test(String(p.url))) fehler.push(`${n.name}: Secret in der URL`);
+			if (p.sendHeaders) fehler.push(`${n.name}: eigene Header (Secrets nur über Credentials)`);
+		}
+		if (n.type === 'n8n-nodes-base.microsoftTeams' && !(n.parameters.options && n.parameters.options.includeLinkToWorkflow === false)) {
+			fehler.push(`${n.name}: Teams-Nachricht ohne includeLinkToWorkflow=false`);
 		}
 	}
 	for (const [von, c] of Object.entries(json.connections)) {

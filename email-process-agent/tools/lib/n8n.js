@@ -19,6 +19,10 @@ const VERSIONEN = Object.freeze({
 	'n8n-nodes-base.stickyNote': 1,
 	'n8n-nodes-base.dataTable': 1.1,
 	'n8n-nodes-base.webhook': 2, // nur Test-Harness (tools/e2e-test.js)
+	'n8n-nodes-base.httpRequest': 4.2,
+	'n8n-nodes-base.wait': 1.1,
+	'n8n-nodes-base.extractFromFile': 1.1,
+	'n8n-nodes-base.microsoftOutlookTrigger': 1,
 });
 
 function uuid(...teile) {

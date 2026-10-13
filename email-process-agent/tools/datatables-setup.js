@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 'use strict';
 // Legt die EPA-Data-Tables laut config/datatables/schema.json an (idempotent: fehlende Tabellen und
-// Spalten werden ergänzt, nichts wird gelöscht) und spielt optional die Beispiel-Config ein.
+// Spalten werden ergänzt, nichts wird gelöscht), spielt optional die Beispiel-Config und die Prompts ein.
 //
 // Aufruf:
-//   N8N_URL=… N8N_API_KEY=… node tools/datatables-setup.js [--beispiel] [--postfach=a@b.de] [--freigeber=c@d.de]
+//   N8N_URL=… N8N_API_KEY=… node tools/datatables-setup.js [--beispiel] [--postfach=a@b.de] [--freigeber=c@d.de] [--prompts]
+//
+// --prompts überträgt prompts/<version>/*.md in epa_prompts. Eine vorhandene Version wird nie überschrieben:
+// Weicht der Inhalt ab, bricht das Skript ab (Prompt-Änderung = neue Version, z. B. prompts/v2).
 const fs = require('node:fs');
 const path = require('node:path');
+const { allePrompts } = require('./lib/prompts');
 
 const ROOT = path.resolve(__dirname, '..');
 const BASIS = (process.env.N8N_URL || '').replace(/\/+$/, '');
@@ -49,7 +53,7 @@ async function alleZeilen(tabellenId) {
 	return liste;
 }
 
-async function einrichten({ beispiel = false, postfach, freigeber, log = console.log } = {}) {
+async function einrichten({ beispiel = false, postfach, freigeber, prompts = false, log = console.log } = {}) {
 	const schema = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'datatables', 'schema.json'), 'utf8')).tabellen;
 	const vorhanden = await alleTabellen();
 	const ids = {};
@@ -86,6 +90,21 @@ async function einrichten({ beispiel = false, postfach, freigeber, log = console
 			log(`Beispiel-Config "${kunde}" eingespielt (${daten.epa_config_pflichtfelder.length} Felder).`);
 		}
 	}
+	if (prompts) {
+		const vorhanden = await alleZeilen(ids.epa_prompts);
+		const neu = [];
+		for (const p of allePrompts()) {
+			const alt = vorhanden.find((z) => z.name === p.name && z.version === p.version);
+			if (!alt) neu.push(p);
+			else if (alt.pruefsumme !== p.pruefsumme) {
+				throw new Error(`Prompt ${p.name}/${p.version} ist in der Instanz anders als im Repo. Änderungen bitte als neue Version (z. B. prompts/v2) anlegen.`);
+			} else log(`Prompt ${p.name}/${p.version} ist aktuell.`);
+		}
+		if (neu.length) {
+			await api('POST', `/data-tables/${ids.epa_prompts}/rows`, { data: neu, returnType: 'count' });
+			for (const p of neu) log(`Prompt eingespielt: ${p.name}/${p.version}`);
+		}
+	}
 	return ids;
 }
 
@@ -95,7 +114,7 @@ if (require.main === module) {
 		process.exit(2);
 	}
 	const arg = (n) => (process.argv.find((a) => a.startsWith(`--${n}=`)) || '').split('=').slice(1).join('=') || undefined;
-	einrichten({ beispiel: process.argv.includes('--beispiel'), postfach: arg('postfach'), freigeber: arg('freigeber') }).catch((e) => {
+	einrichten({ beispiel: process.argv.includes('--beispiel'), postfach: arg('postfach'), freigeber: arg('freigeber'), prompts: process.argv.includes('--prompts') }).catch((e) => {
 		console.error(e.message);
 		process.exit(1);
 	});

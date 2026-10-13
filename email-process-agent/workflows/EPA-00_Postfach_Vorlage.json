@@ -1,0 +1,673 @@
+{
+  "name": "EPA-00 Postfach (Vorlage)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## EPA-00 Postfach (Vorlage, je Postfach eine Kopie)\n**Zweck:** Holt neue Mails aus dem Posteingang (Polling, Bauplan 5.1), lädt Header und Anhänge über Microsoft Graph, liest PDF-Text und bereitet Bilder für die KI auf und übergibt alles an \"EPA-01 Eingang verarbeiten\". Aussortierte Mails (Newsletter, Auto-Replies, Blockliste) werden danach in den Archivordner verschoben, nie gelöscht.\n**Trigger:** Microsoft Outlook Trigger (jede Minute, nur Posteingang). Jede Mail wird als eigene Ausführung dieses Workflows verarbeitet (Aufruf von sich selbst), damit ein Fehler nur diese eine Mail betrifft.\n**Einrichten:** 1) Workflow duplizieren und umbenennen (z. B. \"EPA-00 Postfach anfragen@kunde.de\"). 2) Im Node \"Postfach festlegen\" die Adresse eintragen (muss in epa_config_allgemein.postfach stehen). 3) Outlook-Credential (Microsoft Outlook OAuth2, bei Shared Mailbox mit \"Use Shared Mailbox\") im Trigger und in allen Graph-Nodes zuweisen. 4) Archivordner (Config: archivordner) als Ordner auf oberster Ebene im Postfach anlegen. 5) Veröffentlichen.\n**Hinweis:** Der Trigger liefert nur die Message-ID; Header (In-Reply-To, References, Auto-Submitted, Authentication-Results) holt \"Mail laden\", weil der Trigger sie nicht ausgibt.",
+        "width": 900,
+        "height": 380,
+        "color": 7
+      },
+      "id": "73b25480-6f19-4279-a5aa-b9c3e7ef07da",
+      "name": "Notiz Zweck",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -120,
+        -620
+      ]
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "authentication": "microsoftOutlookOAuth2Api",
+        "event": "messageReceived",
+        "output": "fields",
+        "fields": [
+          "id",
+          "receivedDateTime"
+        ],
+        "filters": {
+          "foldersToInclude": [
+            "inbox"
+          ],
+          "readStatus": "both"
+        },
+        "options": {}
+      },
+      "id": "d5cc5431-09d0-4bf0-a8eb-6a1b0bfff3f6",
+      "name": "Neue Mail im Posteingang",
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\n// Adresse des überwachten Postfachs (muss mit epa_config_allgemein.postfach übereinstimmen).\nconst POSTFACH = '<postfach@ihre-domain.de>';\nif (!/^[^@<>\\s]+@[^@<>\\s]+\\.[A-Za-z]{2,}$/.test(POSTFACH)) throw new Error('[EPA:424:KONFIGURATIONSFEHLER:-] Im Node \"Postfach festlegen\" ist keine gültige Postfach-Adresse eingetragen');\nreturn $input.all().filter((i) => i.json.id).map((i) => ({ json: { postfach: POSTFACH.toLowerCase(), graph_id: i.json.id } }));\n"
+      },
+      "id": "c65f77d8-4cec-4ef9-a1c0-75f76b48c80d",
+      "name": "Postfach festlegen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $workflow.id }}"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "postfach": "={{ $json.postfach }}",
+            "graph_id": "={{ $json.graph_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "postfach",
+              "displayName": "postfach",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "graph_id",
+              "displayName": "graph_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "a51b56d1-4f16-4bd6-aa2f-fa0b33fe4897",
+      "name": "Jede Mail einzeln verarbeiten",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        440,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "postfach",
+              "type": "string"
+            },
+            {
+              "name": "graph_id",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "bc74c620-01b0-4abb-a7d7-386cbb4a3094",
+      "name": "Bei Einzelaufruf",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.graph_id) }}?$select=id,internetMessageId,conversationId,subject,body,bodyPreview,from,sender,replyTo,toRecipients,ccRecipients,receivedDateTime,hasAttachments,internetMessageHeaders,webLink",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "options": {}
+      },
+      "id": "0c04f8f4-7c7e-4a21-afd0-39d1009b82e5",
+      "name": "Mail laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.graph_id) }}/attachments?$select=id,name,contentType,size,isInline&$top=100",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "options": {}
+      },
+      "id": "9ac91098-ebd4-4921-a4fb-a65f087cce10",
+      "name": "Anhänge auflisten",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst MAX = 26214400;\nconst basis = \"https://graph.microsoft.com/v1.0\" + '/users/' + encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) + '/messages/' + encodeURIComponent($('Bei Einzelaufruf').first().json.graph_id) + '/attachments/';\nconst liste = ($input.first().json.value || []);\nconst alle = [];\nconst laden = [];\nfor (const a of liste) {\n\tconst typ = String(a.contentType || '').toLowerCase();\n\tconst name = String(a.name || 'Anhang');\n\tconst datei = String(a['@odata.type'] || '').endsWith('fileAttachment');\n\tconst art = typ === 'application/pdf' || /\\.pdf$/i.test(name) ? 'pdf' : /^image\\/(jpeg|png|gif|webp)$/.test(typ) ? 'bild' : 'sonst';\n\tconst meta = { name, contentType: art === 'pdf' ? 'application/pdf' : typ, size: Number(a.size) || 0, isInline: a.isInline === true, status: 'ok', hinweis: null };\n\tif (!datei) { meta.status = 'nicht_ausgewertet'; meta.hinweis = 'Eingebettete Mail/Element wird nicht ausgelesen'; }\n\telse if (art === 'sonst') { meta.status = 'nicht_ausgewertet'; meta.hinweis = 'Dateityp wird nicht ausgelesen'; }\n\telse if (meta.size > MAX) { meta.status = 'zu_gross'; meta.hinweis = 'größer als 25 MB'; }\n\talle.push(meta);\n\tif (meta.status === 'ok' && !meta.isInline) laden.push({ index: alle.length - 1, art, url: basis + encodeURIComponent(a.id) + '/$value' });\n}\nreturn laden.length ? laden.map((l) => ({ json: { ...l, alle } })) : [{ json: { index: null, alle } }];\n"
+      },
+      "id": "abc740c4-199c-4d4b-a5dc-72bd0d8fa409",
+      "name": "Anhänge prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "17d80fa0-c06c-45c1-acd6-bfa4cd3fa658",
+              "leftValue": "={{ $json.index }}",
+              "operator": {
+                "type": "number",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "fbb460fe-e086-45ad-a4ee-d1b5dd894033",
+      "name": "Anhang zu laden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "870f6f5c-ac2e-4c6d-ac70-8dd413dcda1d",
+      "name": "Anhang laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "binaryToPropery",
+        "binaryPropertyName": "data",
+        "destinationKey": "base64",
+        "options": {
+          "keepSource": "both"
+        }
+      },
+      "id": "86e29e0f-7154-4bea-a952-c4e3a2aed1c6",
+      "name": "Anhang kodieren",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        1320,
+        200
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data",
+        "options": {
+          "joinPages": true,
+          "maxPages": 50
+        }
+      },
+      "id": "dfe6ef51-3857-4a38-aa94-85570ee60dbd",
+      "name": "PDF lesen",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        1540,
+        200
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst MAX_BILD_BASE64 = 14 * 1024 * 1024; // ca. 10 MB Bild\nconst geprueft = $('Anhänge prüfen').all().map((i) => i.json);\nconst alle = (geprueft[0] && geprueft[0].alle ? geprueft[0].alle : []).map((a) => ({ ...a }));\nif ($('PDF lesen').isExecuted) {\n\tconst geladen = $('Anhang laden').all();\n\tconst kodiert = $('Anhang kodieren').all();\n\tconst gelesen = $('PDF lesen').all();\n\tgeprueft.forEach((g, i) => {\n\t\tif (g.index === null || g.index === undefined) return;\n\t\tconst ziel = alle[g.index];\n\t\tif (!geladen[i] || geladen[i].json.error) { ziel.status = 'defekt'; ziel.hinweis = 'Anhang konnte nicht geladen werden'; return; }\n\t\tif (g.art === 'bild') {\n\t\t\tconst b64 = kodiert[i] && kodiert[i].json.base64;\n\t\t\tif (!b64) { ziel.status = 'defekt'; ziel.hinweis = 'Bild nicht lesbar'; }\n\t\t\telse if (b64.length > MAX_BILD_BASE64) { ziel.status = 'zu_gross'; ziel.hinweis = 'Bild zu groß für die KI-Auswertung'; }\n\t\t\telse ziel.bild_data_url = 'data:' + ziel.contentType + ';base64,' + b64;\n\t\t} else {\n\t\t\tconst r = gelesen[i] && gelesen[i].json;\n\t\t\tif (!r || r.error) { ziel.status = 'defekt'; ziel.hinweis = 'PDF nicht lesbar (beschädigt oder verschlüsselt)'; }\n\t\t\telse ziel.text = typeof r.text === 'string' ? r.text : '';\n\t\t}\n\t});\n}\nreturn [{ json: {\n\tpostfach: $('Bei Einzelaufruf').first().json.postfach,\n\tmail: $('Mail laden').first().json,\n\tanhaenge: alle,\n} }];\n"
+      },
+      "id": "0f616ebf-4b80-4b90-a642-03708aeed1cc",
+      "name": "Anhänge zusammenstellen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA-01 Eingang verarbeiten",
+          "cachedResultName": "EPA-01 Eingang verarbeiten"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "postfach": "={{ $json.postfach }}",
+            "mail": "={{ $json.mail }}",
+            "anhaenge": "={{ $json.anhaenge }}",
+            "aufrufer_execution_id": "={{ String($execution.id) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "postfach",
+              "displayName": "postfach",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "mail",
+              "displayName": "mail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object",
+              "removed": false
+            },
+            {
+              "id": "anhaenge",
+              "displayName": "anhaenge",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "array",
+              "removed": false
+            },
+            {
+              "id": "aufrufer_execution_id",
+              "displayName": "aufrufer_execution_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "4c9a739b-710c-4280-aab7-a8fc845ce348",
+      "name": "Eingang verarbeiten",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1980,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ee06b903-7884-4224-a315-e25f70e9910b",
+              "leftValue": "={{ $json.archivieren }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "196fe4b5-3710-4827-a9e7-dd0d733db088",
+      "name": "Archivieren?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/mailFolders?$filter=displayName eq '{{ String($json.archivordner).replace(/'/g, \"''\") }}'&$select=id,displayName",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "options": {}
+      },
+      "id": "40f5247f-9bb9-4fb1-ab6e-bec4fd49642c",
+      "name": "Archivordner suchen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2420,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst name = $('Eingang verarbeiten').first().json.archivordner;\nconst treffer = ($input.first().json.value || []).filter((f) => f.displayName === name);\nif (treffer.length !== 1) throw new Error(`[EPA:424:KONFIGURATIONSFEHLER:${$('Eingang verarbeiten').first().json.vorgangs_id || '-'}] Archivordner \"${name}\" ${treffer.length ? 'ist mehrdeutig' : 'fehlt'} im Postfach (Ordner auf oberster Ebene anlegen)`);\nreturn [{ json: { ordner_id: treffer[0].id } }];\n"
+      },
+      "id": "744a4cc7-fa9a-4320-ada2-7c01d804b79b",
+      "name": "Ordner-ID ermitteln",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.graph_id) }}/move",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ destinationId: $json.ordner_id }) }}"
+      },
+      "id": "d3ecb056-735b-4bc0-a02a-af3d19305272",
+      "name": "In Archiv verschieben",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    }
+  ],
+  "connections": {
+    "Neue Mail im Posteingang": {
+      "main": [
+        [
+          {
+            "node": "Postfach festlegen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postfach festlegen": {
+      "main": [
+        [
+          {
+            "node": "Jede Mail einzeln verarbeiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bei Einzelaufruf": {
+      "main": [
+        [
+          {
+            "node": "Mail laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mail laden": {
+      "main": [
+        [
+          {
+            "node": "Anhänge auflisten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anhänge auflisten": {
+      "main": [
+        [
+          {
+            "node": "Anhänge prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anhänge prüfen": {
+      "main": [
+        [
+          {
+            "node": "Anhang zu laden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anhang zu laden?": {
+      "main": [
+        [
+          {
+            "node": "Anhang laden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Anhänge zusammenstellen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anhang laden": {
+      "main": [
+        [
+          {
+            "node": "Anhang kodieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anhang kodieren": {
+      "main": [
+        [
+          {
+            "node": "PDF lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF lesen": {
+      "main": [
+        [
+          {
+            "node": "Anhänge zusammenstellen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anhänge zusammenstellen": {
+      "main": [
+        [
+          {
+            "node": "Eingang verarbeiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eingang verarbeiten": {
+      "main": [
+        [
+          {
+            "node": "Archivieren?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Archivieren?": {
+      "main": [
+        [
+          {
+            "node": "Archivordner suchen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Archivordner suchen": {
+      "main": [
+        [
+          {
+            "node": "Ordner-ID ermitteln",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ordner-ID ermitteln": {
+      "main": [
+        [
+          {
+            "node": "In Archiv verschieben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

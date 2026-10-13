@@ -78,7 +78,7 @@ return [{ json: { fehler_id: fehlerId, eskaliert, alarm_html: html } }];
 		channelId: { __rl: true, mode: 'id', value: '<CHANNEL_ID_ENTWICKLER>' },
 		contentType: 'html',
 		message: '={{ $json.alarm_html }}',
-		options: {},
+		options: { includeLinkToWorkflow: false },
 	}, Workflow.retry());
 
 	const kennzeichnen = wf.node('Fehler-ID vorhanden?', 'n8n-nodes-base.if', [1980, 0], {
