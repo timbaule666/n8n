@@ -53,3 +53,11 @@ Stand 2026-10-13. Zielversion n8n 2.43.4, PostgreSQL ≥ 13.
 ## Hinweise für M2
 - Retries: Lesende DB- und Netzwerk-Nodes wiederholen 3× mit 3 s Abstand. Schreibende, nicht idempotente DB-Nodes wiederholen bewusst nicht, ein Fehler geht an EPA-05. Für Graph und OpenAI in M2 baue ich eine Retry-Logik, die 429 und 5xx unterscheidet.
 - Fehlermeldungen tragen ein Suffix wie „[line 42]“ aus dem Code-Node. Die Erkennung des EPA-Codes ist dagegen robust.
+
+## Nachtrag: Umstellung auf n8n Data Tables (auf Wunsch)
+- Standard-Speicher sind jetzt n8n Data Tables (`workflows/`), die Postgres-Fassung bleibt als `workflows-postgres/` erhalten.
+- Neues Modul `src/datenTabellen.js` (9 Unit-Tests): Zeilen lesen/schreiben, Vorgangs-ID aus der Zeilen-ID, Compare-and-Set für Version und Sperre.
+- Gleichzeitige Änderungen: Jeder schreibende Zugriff ist ein bedingtes Update (Status + Version bzw. lock_durch). E2E-Tests mit 8 parallelen Anlagen (8 eindeutige IDs) und zwei konkurrierenden Statuswechseln (genau einer gewinnt, 1 Audit-Eintrag) sind grün.
+- Lokal in n8n 2.43.4: 14/14 E2E-Szenarien grün, drei Läufe hintereinander.
+- In der Cloud-Instanz: Tabellen angelegt, Workflows aus GitHub (fester Commit) eingespielt und gegen die Quelle abgeglichen (0 Abweichungen), 4 Sub-Workflows veröffentlicht, Kurztest mit 9 Fällen grün (siehe `docs/Instanz-timbaule.md`).
+- Gefundener und behobener Fehler im Deploy-Skript: Credentials wurden auf gleichnamige Nodes anderen Typs übertragen.

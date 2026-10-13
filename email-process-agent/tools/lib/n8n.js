@@ -122,7 +122,7 @@ class Workflow {
 	 */
 	tabelle(name, position, op, tabelle, { bedingungen = [], match = 'allConditions', alle = false, limit = 1, sortierung } = {}, extra = {}) {
 		const p = { resource: 'row', operation: op, dataTableId: { __rl: true, mode: 'name', value: tabelle } };
-		if (op === 'get' || op === 'update') {
+		if (op === 'get' || op === 'update' || op === 'deleteRows') {
 			p.matchType = match;
 			p.filters = { conditions: bedingungen.map(([keyName, condition, keyValue]) => (keyValue === undefined ? { keyName, condition } : { keyName, condition, keyValue })) };
 		}

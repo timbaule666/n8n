@@ -1,6 +1,21 @@
 # Inbetriebnahme M1 (Fundament)
 
-Gilt für n8n 2.43.4 (Cloud, `https://timbaule.app.n8n.cloud`) und PostgreSQL ≥ 13.
+Gilt für n8n 2.43.4 (Cloud, `https://timbaule.app.n8n.cloud`).
+
+**Standard-Speicher: n8n Data Tables** (Ordner `workflows/`). Keine externe Datenbank und keine Datenbank-Credentials nötig:
+1. Tabellen anlegen: `N8N_URL=… N8N_API_KEY=… node tools/datatables-setup.js --beispiel --postfach=<postfach> --freigeber=<adresse>` (legt die 5 Tabellen aus `config/datatables/schema.json` an und spielt die Beispiel-Config ein). Alternativ in der n8n-Oberfläche nach `config/datatables/schema.json` anlegen.
+2. Workflows einspielen: `node tools/deploy.js` (siehe Abschnitt 2). Die Data-Table-Nodes finden ihre Tabellen über den Namen (`epa_…`) im selben Projekt.
+3. Abschnitt 3 gilt dann nur für das Teams-Credential.
+
+Grenzen der Data-Table-Variante:
+- keine Unique-Constraints;
+- Status und Audit werden in zwei Schritten geschrieben;
+- Audit-Log ist technisch änderbar;
+- Speicherlimit, standardmäßig 200 MB je Instanz, in der Cloud [zu verifizieren].
+
+Gleichzeitige Änderungen werden über bedingte Updates (Compare-and-Set) abgefangen, das ist getestet.
+
+Die folgenden Abschnitte 1–3 beschreiben die **Postgres-Variante** (`workflows-postgres/`, Deploy mit `--postgres`).
 
 ## 1. Datenbank
 1. Eine Postgres-Datenbank bereitstellen, Region EU (z. B. Azure Database for PostgreSQL Flexible Server, Germany West Central). n8n Cloud muss sie über das Internet erreichen können; Zugriff per Firewall auf die n8n-Cloud-IP-Adressen beschränken [zu verifizieren: aktuelle IP-Liste in der n8n-Doku] und TLS erzwingen.

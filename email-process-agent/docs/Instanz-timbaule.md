@@ -1,21 +1,42 @@
 # Stand in der Instanz timbaule.app.n8n.cloud
 
-Eingespielt am 2026-10-13 über den n8n-MCP-Connector (persönliches Projekt).
+Stand 2026-10-13. Speicher: **n8n Data Tables** (persönliches Projekt).
 
+## Workflows
 | Workflow | ID | Nodes | Status |
 |---|---|---|---|
-| EPA SW Audit schreiben | `SPKLbe2MY028CKtn` | 4 | Entwurf, nicht veröffentlicht |
-| EPA SW Config laden | `hbeJAwoqdebivRSQ` | 5 | Entwurf, nicht veröffentlicht |
-| EPA SW Status setzen | `xwBsSqK1LVgMuQx4` | 9 | Entwurf, nicht veröffentlicht |
-| EPA SW Vorgang verwalten | `EixHJ4vRqMIGcyuL` | 11 | Entwurf, nicht veröffentlicht |
-| EPA-05 Error-Handler | `nMkGyI82z0mwm9ud` | 12 | Entwurf, nicht veröffentlicht |
+| EPA SW Audit schreiben | `SPKLbe2MY028CKtn` | 5 | veröffentlicht |
+| EPA SW Config laden | `hbeJAwoqdebivRSQ` | 7 | veröffentlicht |
+| EPA SW Status setzen | `xwBsSqK1LVgMuQx4` | 12 | veröffentlicht |
+| EPA SW Vorgang verwalten | `EixHJ4vRqMIGcyuL` | 32 | veröffentlicht |
+| EPA-05 Error-Handler | `nMkGyI82z0mwm9ud` | 14 | Entwurf, Teams-IDs fehlen noch |
 
-**Integritätsprüfung:** Prüfsummen (FNV-1a) aller 25 Code- und SQL-Bausteine in der Instanz stimmen mit `workflows/*.json` überein. Geprüft wurde per vorübergehendem Workflow „EPA-TEST Integritätsprüfung“, der danach archiviert wurde.
+Eingespielt aus `workflows/` vom Commit `b195eb6`, direkt von GitHub geladen. Danach wurde jeder Node mit der Quelle abgeglichen (Typ, Version, Parameter): 0 Abweichungen.
 
-**Verknüpfung:** EPA-05 „Vorgang sichern“ ruft `xwBsSqK1LVgMuQx4` auf.
+## Data Tables
+| Tabelle | ID | Inhalt |
+|---|---|---|
+| epa_config_allgemein | `oTBuAY0RpfLKghRX` | Beispielkunde `beispiel-transport` (mit Platzhaltern) |
+| epa_config_pflichtfelder | `NclQNQq8EXyXXs6j` | 10 Felder Transportanfrage |
+| epa_vorgaenge | `CI1WPpgTEMgt9laD` | leer |
+| epa_audit_log | `sfxpMPAFEHqHA8Of` | leer |
+| epa_fehler_log | `p6qBzQhHBJFe4sT4` | leer |
 
-**Offen, bevor veröffentlicht werden kann:**
-- Postgres-Credential anlegen und den 14 Postgres-Nodes zuweisen (Instanz hat noch keins).
-- EPA-05 „Entwickler-Kanal alarmieren“: Team-ID (GUID) und Kanal-ID eintragen. Das MCP-Werkzeug hat dem Node automatisch das vorhandene Credential „Microsoft Teams account“ zugewiesen.
-- Danach EPA-05 veröffentlichen und in den vier Sub-Workflows als Error Workflow eintragen, dann diese veröffentlichen.
-- Hinweis: Das Credential „n8n account“ hat eine ungültige Basis-URL („Invalid URL“); „n8n account 2“ funktioniert.
+## Kurztest in der Instanz (manuell ausgeführt, Testdaten danach gelöscht)
+| Fall | Ergebnis |
+|---|---|
+| Vorgang anlegen | ok: V-2026-0001, Status Neu |
+| Status Neu -> In Prüfung (KI) | ok: Version 2, Audit geschrieben |
+| Unzulässiger Statuswechsel | ok: 409 UNZULAESSIGER_STATUSWECHSEL |
+| Aktualisieren mit falscher Version | ok: 409 VERSIONSKONFLIKT |
+| Aktualisieren korrekt | ok: Version 3, Message-IDs ergänzt |
+| Sperre A / Sperre B | ok: A gesperrt, B abgewiesen |
+| Kandidaten über Message-ID | ok: 1 Treffer |
+| Config mit Platzhaltern | ok: 424 KONFIGURATIONSFEHLER (gewollt) |
+
+Hinweis: Vorgangs-IDs entstehen aus der fortlaufenden Zeilennummer. Gelöschte Zeilen werden nicht wiederverwendet, der nächste echte Vorgang bekommt daher V-2026-0002.
+
+## Offen
+1. **Config ausfüllen** (Data Table `epa_config_allgemein`, Zeile `beispiel-transport`): `postfach`, `freigeber` (JSON-Liste), in `benachrichtigung` die Team- und Kanal-ID, in `signatur` die Telefonnummer. Solange Platzhalter drinstehen, lehnt „EPA SW Config laden“ die Config bewusst ab.
+2. **EPA-05**: Im Node „Entwickler-Kanal alarmieren“ Team (GUID) und Kanal eintragen und das Teams-Credential prüfen. Danach EPA-05 veröffentlichen und in den vier Sub-Workflows als Error Workflow eintragen. Das kann ich übernehmen, sobald die IDs da sind.
+3. Das Credential „n8n account“ hat eine ungültige Basis-URL („Invalid URL“), „n8n account 2“ funktioniert.
