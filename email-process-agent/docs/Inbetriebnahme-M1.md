@@ -77,3 +77,10 @@ Das Skript legt vorübergehend Test-Workflows „EPA-TEST …“ mit Webhook an,
 
 ## 6. Datenschutz-Einstellungen in n8n
 In den Workflow-Settings bzw. global: Ausführungsdaten erfolgreicher Läufe nicht oder nur kurz speichern. Die Daten enthalten später Mail-Inhalte. [zu verifizieren: welche Pruning-Optionen der Cloud-Tarif bietet]
+
+## 7. Ab M3: Rückfrage und Freigabe
+- **Postfach-Workflow verknüpfen:** Die ID der EPA-00-Kopie eines Kunden (steht in der Workflow-URL) gehört in `epa_config_allgemein.postfach_workflow_id`. EPA-02/EPA-07 legen darüber Entwürfe an und senden sie, mit dem Outlook-Credential genau dieses Postfachs.
+- **Freigeber:** `freigeber` (JSON-Liste) müssen Microsoft-365-Konten im selben Tenant wie das Teams-Dienstkonto sein; jeder bekommt einen persönlichen Link im 1:1-Chat.
+- **Freigabe-Link:** `https://<instanz>/webhook/epa-freigabe`. EPA-07 muss veröffentlicht sein. Die Basis-URL wird automatisch ermittelt; abweichend (z. B. eigene Domain) über `freigabe_basis_url`.
+- **Selbst gehostetes n8n:** Code-Nodes nutzen `require('crypto')` für die Token. In n8n Cloud ist das erlaubt; bei eigener Installation `NODE_FUNCTION_ALLOW_BUILTIN=crypto` setzen.
+- **Ausführungsdaten:** Der Klartext-Link steht nur in den Ausführungsdaten von EPA-02. Aufbewahrung erfolgreicher Ausführungen begrenzen (Abschnitt 6).
