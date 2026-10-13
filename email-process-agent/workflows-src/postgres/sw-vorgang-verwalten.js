@@ -1,5 +1,5 @@
 'use strict';
-const { Workflow, bedingung, bedingungen } = require('../tools/lib/n8n');
+const { Workflow, bedingung, bedingungen } = require('../../tools/lib/n8n');
 
 const AKTIONEN = ['lesen', 'anlegen', 'aktualisieren', 'kandidaten_suchen', 'sperren', 'entsperren'];
 

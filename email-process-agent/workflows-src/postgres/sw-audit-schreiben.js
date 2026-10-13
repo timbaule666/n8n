@@ -1,5 +1,5 @@
 'use strict';
-const { Workflow } = require('../tools/lib/n8n');
+const { Workflow } = require('../../tools/lib/n8n');
 
 module.exports = function () {
 	const wf = new Workflow('EPA SW Audit schreiben');

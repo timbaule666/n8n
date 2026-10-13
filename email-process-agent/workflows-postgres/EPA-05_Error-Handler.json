@@ -1,0 +1,503 @@
+{
+  "name": "EPA-05 Error-Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## EPA-05 Error-Handler\n**Zweck:** Fängt Abstürze aller EPA-Workflows. Bestimmt Fehlerklasse und Statuscode (src/fehlerklassen.js), schreibt epa_fehler_log (nur IDs, Codes, bereinigte technische Meldung, keine Mail-Inhalte), sichert betroffene Vorgänge auf \"Eskaliert / Manuell\" (nicht bei Versionskonflikt, Sperre, Duplikat) und alarmiert den Entwickler-Kanal in Teams.\n**Trigger:** Error Trigger. In **jedem** EPA-Workflow unter Settings -> Error workflow eintragen (macht tools/deploy.js automatisch).\n**Eingaben:** execution/workflow-Daten des fehlgeschlagenen Laufs.\n**Ausgabe:** Teams-Nachricht; epa_fehler_log.alarmiert_am wird gesetzt. Bleibt alarmiert_am leer, meldet der Watchdog (M6) den Fehler erneut.\n**Einrichten:** Im Node \"Entwickler-Kanal alarmieren\" Team- und Kanal-ID eintragen und das Teams-Credential (Dienstkonto, OAuth2) zuweisen.",
+        "width": 680,
+        "height": 320,
+        "color": 7
+      },
+      "id": "c4cd16c3-0f14-4e06-a059-822fa3c1a614",
+      "name": "Notiz Zweck",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -400
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "373bdc8b-64c9-4556-a2dd-64951bca04c5",
+      "name": "Bei Workflow-Fehler",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId),\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst zeilen = [\n\t\t`<b>EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)}</b> (${escapeHtml(e.klasse)})`,\n\t\t`Workflow: ${escapeHtml(e.workflow_name || e.workflow_id || '?')}`,\n\t\t`Node: ${escapeHtml(e.node || '?')}`,\n\t\t`Vorgang: ${escapeHtml(e.vorgangs_id || '–')}`,\n\t\t`Meldung: ${escapeHtml(e.meldung || '–')}`,\n\t\te.retrybar ? 'Hinweis: vorübergehender Fehler, erneuter Versuch kann helfen.' : 'Hinweis: dauerhafter Fehler, bitte prüfen.',\n\t];\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n\n// ----- Node-Logik -----\nconst eintrag = fehlerklassen.ausErrorTrigger($input.first().json);\nreturn [{ json: eintrag }];\n"
+      },
+      "id": "792d7475-0f88-436b-a057-048b73b98cb0",
+      "name": "Fehler klassifizieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH e AS (SELECT $1::jsonb AS e)\nINSERT INTO epa_fehler_log (statuscode, fehlercode, klasse, retrybar, workflow_id, workflow_name, node,\n                            execution_id, execution_url, modus, vorgangs_id, kunde_id, meldung)\nSELECT (e->>'statuscode')::int, e->>'fehlercode', e->>'klasse', (e->>'retrybar')::boolean, e->>'workflow_id',\n       e->>'workflow_name', e->>'node', e->>'execution_id', e->>'execution_url', e->>'modus',\n       e->>'vorgangs_id', e->>'kunde_id', e->>'meldung'\nFROM e\nRETURNING id AS fehler_id;",
+        "options": {
+          "queryReplacement": "={{ [ $json ] }}"
+        }
+      },
+      "id": "83a2540f-daf6-4bb1-abf3-aecc92b75b06",
+      "name": "Fehler protokollieren",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        440,
+        0
+      ],
+      "retryOnFail": false,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notes": "$1 Fehlerlog-Eintrag (JSON aus fehlerklassen.ausErrorTrigger)",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1a099246-560c-41c8-aa43-fdad9b766d93",
+              "leftValue": "={{ $('Fehler klassifizieren').first().json.eskalieren }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "5ad5d4e7-2bfe-48b2-a839-2404894d8c88",
+      "name": "Vorgang sichern nötig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT (SELECT kunde_id FROM epa_vorgaenge WHERE vorgangs_id = $1) AS kunde_id;",
+        "options": {
+          "queryReplacement": "={{ [ $('Fehler klassifizieren').first().json.vorgangs_id ] }}"
+        }
+      },
+      "id": "13564cdc-6d97-4703-a22b-1e22af9e736a",
+      "name": "Mandant ermitteln",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        880,
+        -120
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notes": "$1 vorgangs_id. Ermittelt den Mandanten eines Vorgangs für den Error-Handler.",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Status setzen",
+          "cachedResultName": "EPA SW Status setzen"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $json.kunde_id }}",
+            "vorgangs_id": "={{ $('Fehler klassifizieren').first().json.vorgangs_id }}",
+            "neuer_status": "Eskaliert / Manuell",
+            "ausloeser": "System",
+            "details": "={{ { grund: 'Technischer Fehler', fehlercode: $('Fehler klassifizieren').first().json.fehlercode, execution_id: $('Fehler klassifizieren').first().json.execution_id } }}",
+            "referenz": "={{ 'fehler:' + ($('Fehler klassifizieren').first().json.execution_id || '') }}",
+            "erwartete_version": "={{ null }}",
+            "nur_wenn_erlaubt": "={{ true }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "neuer_status",
+              "displayName": "neuer_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "ausloeser",
+              "displayName": "ausloeser",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "details",
+              "displayName": "details",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object",
+              "removed": false
+            },
+            {
+              "id": "referenz",
+              "displayName": "referenz",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "erwartete_version",
+              "displayName": "erwartete_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "nur_wenn_erlaubt",
+              "displayName": "nur_wenn_erlaubt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "fb033514-e6f5-4c2a-af66-cc25e0e1bccc",
+      "name": "Vorgang sichern",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1100,
+        -120
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE epa_fehler_log SET eskaliert = $2::boolean\nWHERE id = $1::bigint\nRETURNING id AS fehler_id, eskaliert;",
+        "options": {
+          "queryReplacement": "={{ [ $('Fehler protokollieren').first().json.fehler_id ?? null, $json.ok === true ] }}"
+        }
+      },
+      "id": "722ee5ea-3307-44cd-ad08-ded8e5b2d893",
+      "name": "Eskalation vermerken",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1320,
+        -120
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notes": "$1 fehler_id (oder null), $2 eskaliert (bool)",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId),\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst zeilen = [\n\t\t`<b>EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)}</b> (${escapeHtml(e.klasse)})`,\n\t\t`Workflow: ${escapeHtml(e.workflow_name || e.workflow_id || '?')}`,\n\t\t`Node: ${escapeHtml(e.node || '?')}`,\n\t\t`Vorgang: ${escapeHtml(e.vorgangs_id || '–')}`,\n\t\t`Meldung: ${escapeHtml(e.meldung || '–')}`,\n\t\te.retrybar ? 'Hinweis: vorübergehender Fehler, erneuter Versuch kann helfen.' : 'Hinweis: dauerhafter Fehler, bitte prüfen.',\n\t];\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n\n// ----- Node-Logik -----\nconst e = $('Fehler klassifizieren').first().json;\nconst protokoll = $('Fehler protokollieren').first().json;\nlet eskaliert = false;\nlet hinweis = '';\nif (e.vorgangs_id && !e.eskalieren) {\n\thinweis = 'Vorgang bewusst nicht eskaliert (Konflikt mit parallel laufender Verarbeitung).';\n} else if ($('Vorgang sichern').isExecuted) {\n\tconst s = $('Vorgang sichern').first().json;\n\teskaliert = s.ok === true;\n\tif (s.error) hinweis = 'Vorgang konnte NICHT gesichert werden, bitte manuell prüfen.';\n\telse if (s.uebersprungen) hinweis = `Vorgang nicht geändert (Status \"${s.alter_status}\").`;\n\telse if (eskaliert) hinweis = 'Vorgang wurde auf \"Eskaliert / Manuell\" gesetzt.';\n}\nconst fehlerId = protokoll && protokoll.fehler_id ? protokoll.fehler_id : null;\nlet html = fehlerklassen.alarmHtml(e);\nif (hinweis) html += '<br>' + fehlerklassen.escapeHtml(hinweis);\nif (!fehlerId) html += '<br><b>Achtung:</b> Eintrag im Fehlerlog fehlgeschlagen (Datenbank prüfen).';\nreturn [{ json: { fehler_id: fehlerId, eskaliert, alarm_html: html } }];\n"
+      },
+      "id": "28c47b41-f36c-4ea4-a531-08fa62aaa9d8",
+      "name": "Alarm vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "channelMessage",
+        "operation": "create",
+        "teamId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "<TEAM_ID_ENTWICKLER>"
+        },
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "<CHANNEL_ID_ENTWICKLER>"
+        },
+        "contentType": "html",
+        "message": "={{ $json.alarm_html }}",
+        "options": {}
+      },
+      "id": "60298696-a1ed-40fb-acdf-f87e3a420641",
+      "name": "Entwickler-Kanal alarmieren",
+      "type": "n8n-nodes-base.microsoftTeams",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7ff6807d-0bc6-41ed-aadd-68faf6ccdf45",
+              "leftValue": "={{ $('Alarm vorbereiten').first().json.fehler_id }}",
+              "operator": {
+                "type": "number",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "f5d8ecbc-299c-4982-a97a-75201c5653cf",
+      "name": "Fehler-ID vorhanden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1980,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE epa_fehler_log SET alarmiert_am = now()\nWHERE id = $1::bigint\nRETURNING id AS fehler_id, alarmiert_am;",
+        "options": {
+          "queryReplacement": "={{ [ $('Alarm vorbereiten').first().json.fehler_id ] }}"
+        }
+      },
+      "id": "fec74426-9446-4ba9-aa6b-091abaaa7f43",
+      "name": "Alarm vermerken",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2200,
+        -80
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notes": "$1 fehler_id"
+    }
+  ],
+  "connections": {
+    "Bei Workflow-Fehler": {
+      "main": [
+        [
+          {
+            "node": "Fehler klassifizieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fehler klassifizieren": {
+      "main": [
+        [
+          {
+            "node": "Fehler protokollieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fehler protokollieren": {
+      "main": [
+        [
+          {
+            "node": "Vorgang sichern nötig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorgang sichern nötig?": {
+      "main": [
+        [
+          {
+            "node": "Mandant ermitteln",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alarm vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mandant ermitteln": {
+      "main": [
+        [
+          {
+            "node": "Vorgang sichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorgang sichern": {
+      "main": [
+        [
+          {
+            "node": "Eskalation vermerken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eskalation vermerken": {
+      "main": [
+        [
+          {
+            "node": "Alarm vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alarm vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Entwickler-Kanal alarmieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entwickler-Kanal alarmieren": {
+      "main": [
+        [
+          {
+            "node": "Fehler-ID vorhanden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fehler-ID vorhanden?": {
+      "main": [
+        [
+          {
+            "node": "Alarm vermerken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

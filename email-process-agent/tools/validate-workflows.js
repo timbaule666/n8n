@@ -30,6 +30,11 @@ function pruefeWorkflow(json, alleNamen) {
 			const anzahl = (n.parameters.options.queryReplacement.match(/^=\{\{\s*\[([\s\S]*)\]\s*\}\}$/) || [, ''])[1];
 			if (!anzahl && max > 0) fehler.push(`${n.name}: Parameter müssen als Array-Ausdruck übergeben werden`);
 		}
+		if (n.type === 'n8n-nodes-base.dataTable') {
+			const t = n.parameters.dataTableId;
+			if (!t || t.mode !== 'name' || !/^epa_[a-z_]+$/.test(t.value)) fehler.push(`${n.name}: Data Table muss per Name (epa_…) referenziert sein`);
+			if (['update'].includes(n.parameters.operation) && !(n.parameters.filters && n.parameters.filters.conditions.length)) fehler.push(`${n.name}: Update ohne Bedingung`);
+		}
 		if (n.type === 'n8n-nodes-base.executeWorkflow') {
 			const ref = n.parameters.workflowId.cachedResultName;
 			if (!alleNamen.has(ref)) fehler.push(`${n.name}: ruft unbekannten Workflow "${ref}" auf`);
@@ -49,11 +54,15 @@ function pruefeWorkflow(json, alleNamen) {
 }
 
 function pruefeAlle() {
-	const dir = path.join(ROOT, 'workflows');
-	const dateien = fs.readdirSync(dir).filter((d) => d.endsWith('.json'));
-	const wfs = dateien.map((d) => [d, JSON.parse(fs.readFileSync(path.join(dir, d), 'utf8'))]);
-	const alleNamen = new Set(wfs.map(([, w]) => w.name));
-	return wfs.map(([d, w]) => ({ datei: d, fehler: pruefeWorkflow(w, alleNamen) }));
+	const ergebnis = [];
+	for (const ordner of ['workflows', 'workflows-postgres']) {
+		const dir = path.join(ROOT, ordner);
+		const dateien = fs.readdirSync(dir).filter((d) => d.endsWith('.json'));
+		const wfs = dateien.map((d) => [d, JSON.parse(fs.readFileSync(path.join(dir, d), 'utf8'))]);
+		const alleNamen = new Set(wfs.map(([, w]) => w.name));
+		ergebnis.push(...wfs.map(([d, w]) => ({ datei: `${ordner}/${d}`, fehler: pruefeWorkflow(w, alleNamen) })));
+	}
+	return ergebnis;
 }
 
 if (require.main === module) {

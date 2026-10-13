@@ -9,7 +9,8 @@
 //   für diesen Node-Typ bereits (eindeutig) genutzt wird
 // Credentials werden nie angelegt und nie aus dem Repo gesetzt.
 //
-// Aufruf:  N8N_URL=https://timbaule.app.n8n.cloud N8N_API_KEY=... node tools/deploy.js [--dry-run]
+// Aufruf:  N8N_URL=https://timbaule.app.n8n.cloud N8N_API_KEY=... node tools/deploy.js [--dry-run] [--postgres]
+// Standard ist die Data-Table-Variante (workflows/), --postgres nimmt workflows-postgres/.
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -54,8 +55,8 @@ async function alleWorkflows(basis, schluessel) {
 	return liste;
 }
 
-function ladeLokal() {
-	const dir = path.join(ROOT, 'workflows');
+function ladeLokal(ordner = 'workflows') {
+	const dir = path.join(ROOT, ordner);
 	return fs
 		.readdirSync(dir)
 		.filter((d) => d.endsWith('.json'))
@@ -84,7 +85,7 @@ function verknuepfen(wf, ids, bestehend, { errorWorkflowSetzen = true, credentia
 	const nodes = wf.nodes.map((n) => {
 		const kopie = JSON.parse(JSON.stringify(n));
 		const vorher = alt.get(n.name);
-		if (vorher?.credentials) kopie.credentials = vorher.credentials;
+		if (vorher?.credentials && vorher.type === n.type) kopie.credentials = vorher.credentials;
 		else if (credentialsJeTyp[n.type]) kopie.credentials = credentialsJeTyp[n.type];
 		if (vorher && vorher.type === n.type) {
 			for (const p of BEHALTEN_WENN_GESETZT) {
@@ -105,8 +106,8 @@ function verknuepfen(wf, ids, bestehend, { errorWorkflowSetzen = true, credentia
 	return { name: wf.name, nodes, connections: wf.connections, settings };
 }
 
-async function deploy({ basis, schluessel, trocken = false, log = console.log }) {
-	const lokal = ladeLokal();
+async function deploy({ basis, schluessel, trocken = false, ordner = 'workflows', log = console.log }) {
+	const lokal = ladeLokal(ordner);
 	const remote = await alleWorkflows(basis, schluessel);
 	const doppelt = remote.filter((w, i) => remote.findIndex((x) => x.name === w.name) !== i).map((w) => w.name);
 	const betroffen = doppelt.filter((n) => lokal.some((w) => w.name === n));
@@ -177,7 +178,7 @@ if (require.main === module) {
 		console.error('N8N_URL und N8N_API_KEY setzen (API-Key in n8n unter Settings -> n8n API).');
 		process.exit(2);
 	}
-	deploy({ basis, schluessel, trocken: process.argv.includes('--dry-run') }).catch((e) => {
+	deploy({ basis, schluessel, trocken: process.argv.includes('--dry-run'), ordner: process.argv.includes('--postgres') ? 'workflows-postgres' : 'workflows' }).catch((e) => {
 		console.error(`Deploy fehlgeschlagen: ${e.message}`);
 		process.exit(1);
 	});

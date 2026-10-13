@@ -17,6 +17,7 @@ const VERSIONEN = Object.freeze({
 	'n8n-nodes-base.switch': 3.4,
 	'n8n-nodes-base.microsoftTeams': 2,
 	'n8n-nodes-base.stickyNote': 1,
+	'n8n-nodes-base.dataTable': 1.1,
 	'n8n-nodes-base.webhook': 2, // nur Test-Harness (tools/e2e-test.js)
 });
 
@@ -113,6 +114,33 @@ class Workflow {
 			},
 			{ ...Workflow.retry(), notes: sqlKopf(sqlName), ...extra },
 		);
+	}
+
+	/**
+	 * Data-Table-Node. op: get | insert | update. bedingungen: [[spalte, bedingung, wert], ...]
+	 * Schreibende Operationen übernehmen das Eingabe-Item 1:1 als Zeile (autoMapInputData).
+	 */
+	tabelle(name, position, op, tabelle, { bedingungen = [], match = 'allConditions', alle = false, limit = 1, sortierung } = {}, extra = {}) {
+		const p = { resource: 'row', operation: op, dataTableId: { __rl: true, mode: 'name', value: tabelle } };
+		if (op === 'get' || op === 'update') {
+			p.matchType = match;
+			p.filters = { conditions: bedingungen.map(([keyName, condition, keyValue]) => (keyValue === undefined ? { keyName, condition } : { keyName, condition, keyValue })) };
+		}
+		if (op === 'get') {
+			if (alle) p.returnAll = true;
+			else p.limit = limit;
+			if (sortierung) {
+				p.orderBy = true;
+				p.orderByColumn = sortierung[0];
+				p.orderByDirection = sortierung[1];
+			}
+		}
+		if (op === 'insert' || op === 'update') {
+			p.columns = { mappingMode: 'autoMapInputData', value: {}, matchingColumns: [], schema: [] };
+			p.options = {};
+		}
+		const lesend = op === 'get';
+		return this.node(name, 'n8n-nodes-base.dataTable', position, p, { ...(lesend ? Workflow.retry() : {}), ...extra });
 	}
 
 	trigger(name, position, eingaben) {

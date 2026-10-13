@@ -1,5 +1,5 @@
 'use strict';
-const { Workflow, bedingung, bedingungen } = require('../tools/lib/n8n');
+const { Workflow, bedingung, bedingungen } = require('../../tools/lib/n8n');
 
 module.exports = function () {
 	const wf = new Workflow('EPA SW Status setzen');

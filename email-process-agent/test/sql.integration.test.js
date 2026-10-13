@@ -34,11 +34,11 @@ test('SQL-Integration', { skip: SKIP }, async (t) => {
 		await db.multi(fs.readFileSync(path.join(sqlDir, f), 'utf8'));
 	}
 
-	const wfConfig = h.workflow('EPA_SW_Config_laden.json');
-	const wfStatus = h.workflow('EPA_SW_Status_setzen.json');
-	const wfVorgang = h.workflow('EPA_SW_Vorgang_verwalten.json');
-	const wfAudit = h.workflow('EPA_SW_Audit_schreiben.json');
-	const wfFehler = h.workflow('EPA-05_Error-Handler.json');
+	const wfConfig = h.workflow('EPA_SW_Config_laden.json', 'workflows-postgres');
+	const wfStatus = h.workflow('EPA_SW_Status_setzen.json', 'workflows-postgres');
+	const wfVorgang = h.workflow('EPA_SW_Vorgang_verwalten.json', 'workflows-postgres');
+	const wfAudit = h.workflow('EPA_SW_Audit_schreiben.json', 'workflows-postgres');
+	const wfFehler = h.workflow('EPA-05_Error-Handler.json', 'workflows-postgres');
 
 	await t.test('Beispiel-Config mit Platzhaltern wird abgelehnt, nach Ersetzen akzeptiert', async () => {
 		let [r] = await h.postgres(db, pgp, wfConfig, 'Config lesen', { kunde_id: 'beispiel-transport', postfach: '' });

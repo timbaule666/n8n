@@ -29,7 +29,7 @@ test('Sub-Workflow-Referenz und Error Workflow werden gesetzt', () => {
 });
 
 test('bestehende Credentials und eingetragene Teams-IDs bleiben erhalten, Platzhalter nicht', () => {
-	const wf = h.workflow('EPA-05_Error-Handler.json');
+	const wf = h.workflow('EPA-05_Error-Handler.json', 'workflows-postgres');
 	const bestehend = {
 		nodes: [
 			{ name: 'Fehler protokollieren', type: 'n8n-nodes-base.postgres', parameters: {}, credentials: { postgres: { id: '7', name: 'EPA – Postgres' } } },
@@ -57,8 +57,24 @@ test('neue Nodes erhalten das eindeutig genutzte Credential ihres Typs', () => {
 	const andere = { postgres: { id: '8', name: 'Andere DB' } };
 	assert.deepEqual(eindeutigeCredentials([{ nodes: [{ type: 'n8n-nodes-base.postgres', credentials: pg }, { type: 'n8n-nodes-base.postgres', credentials: pg }] }]), { 'n8n-nodes-base.postgres': pg });
 	assert.deepEqual(eindeutigeCredentials([{ nodes: [{ type: 'n8n-nodes-base.postgres', credentials: pg }] }, { nodes: [{ type: 'n8n-nodes-base.postgres', credentials: andere }] }]), {}, 'mehrdeutig -> nichts zuweisen');
-	const body = verknuepfen(h.workflow('EPA-05_Error-Handler.json'), IDS, { nodes: [] }, { credentialsJeTyp: { 'n8n-nodes-base.postgres': pg } });
+	const body = verknuepfen(h.workflow('EPA-05_Error-Handler.json', 'workflows-postgres'), IDS, { nodes: [] }, { credentialsJeTyp: { 'n8n-nodes-base.postgres': pg } });
 	const pgNodes = body.nodes.filter((n) => n.type === 'n8n-nodes-base.postgres');
 	assert.ok(pgNodes.length >= 4 && pgNodes.every((n) => n.credentials === pg));
 	assert.equal(body.nodes.find((n) => n.type === 'n8n-nodes-base.microsoftTeams').credentials, undefined);
+});
+
+test('Data-Table-Variante kommt ohne Datenbank-Credentials aus', () => {
+	for (const datei of ['EPA_SW_Config_laden.json', 'EPA_SW_Audit_schreiben.json', 'EPA_SW_Status_setzen.json', 'EPA_SW_Vorgang_verwalten.json', 'EPA-05_Error-Handler.json']) {
+		const wf = h.workflow(datei);
+		assert.equal(wf.nodes.filter((n) => n.type === 'n8n-nodes-base.postgres').length, 0, datei);
+		assert.ok(wf.nodes.some((n) => n.type === 'n8n-nodes-base.dataTable'), datei);
+	}
+});
+
+test('Credentials werden nur bei gleichem Node-Typ übernommen', () => {
+	const bestehend = { nodes: [{ name: 'Fehler protokollieren', type: 'n8n-nodes-base.postgres', parameters: {}, credentials: { postgres: { id: '7', name: 'PG' } } }] };
+	const body = verknuepfen(h.workflow('EPA-05_Error-Handler.json'), IDS, bestehend);
+	const n = body.nodes.find((x) => x.name === 'Fehler protokollieren');
+	assert.equal(n.type, 'n8n-nodes-base.dataTable');
+	assert.equal(n.credentials, undefined);
 });

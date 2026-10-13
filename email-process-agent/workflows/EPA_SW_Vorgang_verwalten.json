@@ -3,9 +3,9 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## EPA SW Vorgang verwalten\n**Zweck:** Einziger Lese- und Schreibzugriff auf epa_vorgaenge (Speicher-Adapter, Bauplan 4.6). Ein Wechsel des Speichers betrifft nur diesen Workflow.\n**Trigger:** Aufruf durch andere Workflows.\n**Eingaben:** aktion (lesen | anlegen | aktualisieren | kandidaten_suchen | sperren | entsperren), kunde_id, vorgangs_id, daten (Objekt), erwartete_version, referenz, lock_sekunden.\n**Ausgabe:** lesen/anlegen/aktualisieren -> { vorgang }; kandidaten_suchen -> { kandidaten }; sperren -> { gesperrt, sperre }; entsperren -> { entsperrt }.\n**Regeln:** Status ist hier nicht änderbar (nur EPA SW Status setzen). aktualisieren braucht erwartete_version (409 bei Konflikt). Nur Whitelist-Felder.",
-        "width": 660,
-        "height": 300,
+        "content": "## EPA SW Vorgang verwalten\n**Zweck:** Einziger Lese- und Schreibzugriff auf die Data Table epa_vorgaenge (Speicher-Adapter, Bauplan 4.6). Ein Wechsel des Speichers betrifft nur diesen Workflow.\n**Trigger:** Aufruf durch andere Workflows.\n**Eingaben:** aktion (lesen | anlegen | aktualisieren | kandidaten_suchen | sperren | entsperren), kunde_id, vorgangs_id, daten (Objekt), erwartete_version, referenz, lock_sekunden.\n**Ausgabe:** lesen/anlegen/aktualisieren -> { vorgang }; kandidaten_suchen -> { kandidaten }; sperren -> { gesperrt, ... }; entsperren -> { entsperrt }.\n**Regeln:** Status ist hier nicht änderbar (nur EPA SW Status setzen). Schreiben nur per bedingtem Update (Compare-and-Set auf version bzw. lock_durch). Nur Whitelist-Felder.",
+        "width": 700,
+        "height": 320,
         "color": 7
       },
       "id": "095f01c4-6107-4343-afde-b98e9ff9e61d",
@@ -14,7 +14,7 @@
       "typeVersion": 1,
       "position": [
         -80,
-        -420
+        -560
       ]
     },
     {
@@ -66,7 +66,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId),\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst zeilen = [\n\t\t`<b>EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)}</b> (${escapeHtml(e.klasse)})`,\n\t\t`Workflow: ${escapeHtml(e.workflow_name || e.workflow_id || '?')}`,\n\t\t`Node: ${escapeHtml(e.node || '?')}`,\n\t\t`Vorgang: ${escapeHtml(e.vorgangs_id || '–')}`,\n\t\t`Meldung: ${escapeHtml(e.meldung || '–')}`,\n\t\te.retrybar ? 'Hinweis: vorübergehender Fehler, erneuter Versuch kann helfen.' : 'Hinweis: dauerhafter Fehler, bitte prüfen.',\n\t];\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n\n// ----- Node-Logik -----\nconst AKTIONEN = [\"lesen\",\"anlegen\",\"aktualisieren\",\"kandidaten_suchen\",\"sperren\",\"entsperren\"];\nconst AENDERBAR = ['vorgangstyp', 'conversation_id', 'letzte_message_id', 'neue_message_ids', 'absender_name', 'betreff',\n\t'betreff_normalisiert', 'extrahierte_daten', 'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist',\n\t'erinnerungen_gesendet', 'bearbeiter', 'freigabe_id_aktuell', 'spoofing_hinweis'];\nconst ANLEGBAR = ['vorgangstyp', 'conversation_id', 'erste_message_id', 'absender_adresse', 'absender_name', 'betreff',\n\t'betreff_normalisiert', 'spoofing_hinweis'];\nconst e = $input.first().json;\nconst vid = typeof e.vorgangs_id === 'string' ? e.vorgangs_id.trim() : '';\nconst fehler = (code, text) => fehlerklassen.epaFehler(code, vid || null, text);\nif (!AKTIONEN.includes(e.aktion)) throw fehler('UNGUELTIGES_FORMAT', `Aktion \"${e.aktion}\" ist unbekannt`);\nif (typeof e.kunde_id !== 'string' || !e.kunde_id.trim()) throw fehler('UNGUELTIGES_FORMAT', 'kunde_id fehlt');\nconst daten = e.daten && typeof e.daten === 'object' && !Array.isArray(e.daten) ? e.daten : {};\nconst brauchtId = ['lesen', 'aktualisieren', 'sperren', 'entsperren'].includes(e.aktion);\nif (brauchtId && !/^V-\\d{4}-\\d{4,}$/.test(vid)) throw fehler('UNGUELTIGES_FORMAT', `vorgangs_id \"${vid}\" ist ungültig`);\nif (e.aktion === 'aktualisieren') {\n\tconst unbekannt = Object.keys(daten).filter((k) => !AENDERBAR.includes(k));\n\tif (unbekannt.length) throw fehler('UNGUELTIGES_FORMAT', `Nicht änderbare Felder: ${unbekannt.join(', ')}`);\n\tif (Object.keys(daten).length === 0) throw fehler('UNGUELTIGES_FORMAT', 'Keine Änderungen übergeben');\n\tif (!Number.isInteger(e.erwartete_version)) throw fehler('UNGUELTIGES_FORMAT', 'erwartete_version ist Pflicht beim Aktualisieren');\n\tif ('neue_message_ids' in daten && !Array.isArray(daten.neue_message_ids)) throw fehler('UNGUELTIGES_FORMAT', 'neue_message_ids muss eine Liste sein');\n}\nif (e.aktion === 'anlegen') {\n\tconst unbekannt = Object.keys(daten).filter((k) => !ANLEGBAR.includes(k));\n\tif (unbekannt.length) throw fehler('UNGUELTIGES_FORMAT', `Nicht anlegbare Felder: ${unbekannt.join(', ')}`);\n}\nconst lockSekunden = e.lock_sekunden === undefined || e.lock_sekunden === null ? 300 : Number(e.lock_sekunden);\nif (e.aktion === 'sperren' && (!Number.isInteger(lockSekunden) || lockSekunden < 10 || lockSekunden > 3600)) {\n\tthrow fehler('UNGUELTIGES_FORMAT', 'lock_sekunden muss zwischen 10 und 3600 liegen');\n}\nreturn [{ json: {\n\taktion: e.aktion,\n\tkunde_id: e.kunde_id.trim(),\n\tvorgangs_id: vid || null,\n\tdaten,\n\terwartete_version: Number.isInteger(e.erwartete_version) ? e.erwartete_version : null,\n\treferenz: e.referenz ? String(e.referenz) : String($execution.id),\n\tlock_sekunden: lockSekunden,\n} }];\n"
+        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId),\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst zeilen = [\n\t\t`<b>EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)}</b> (${escapeHtml(e.klasse)})`,\n\t\t`Workflow: ${escapeHtml(e.workflow_name || e.workflow_id || '?')}`,\n\t\t`Node: ${escapeHtml(e.node || '?')}`,\n\t\t`Vorgang: ${escapeHtml(e.vorgangs_id || '–')}`,\n\t\t`Meldung: ${escapeHtml(e.meldung || '–')}`,\n\t\te.retrybar ? 'Hinweis: vorübergehender Fehler, erneuter Versuch kann helfen.' : 'Hinweis: dauerhafter Fehler, bitte prüfen.',\n\t];\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n// ===== eingebettet aus src/datenTabellen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst datenTabellen = (() => {\nconst module = { exports: {} };\n// Hilfsfunktionen für den Speicher-Adapter \"n8n Data Tables\".\n// Data Tables kennen nur string/number/boolean/date. JSON-Felder werden als Text gespeichert und hier\n// beim Lesen geparst bzw. beim Schreiben serialisiert. Der Data-Table-Node übernimmt im Modus\n// \"autoMapInputData\" genau die Felder des Eingabe-Items; deshalb erzeugen diese Funktionen nur\n// gültige Spalten (unbekannte Spalten würden den Node abbrechen lassen).\n\nconst SPALTEN = {\n\tepa_vorgaenge: [\n\t\t'vorgangs_id', 'kunde_id', 'vorgangstyp', 'status', 'conversation_id', 'erste_message_id', 'letzte_message_id',\n\t\t'bekannte_message_ids', 'absender_adresse', 'absender_name', 'betreff', 'betreff_normalisiert', 'extrahierte_daten',\n\t\t'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist', 'erinnerungen_gesendet', 'bearbeiter',\n\t\t'freigabe_id_aktuell', 'spoofing_hinweis', 'version', 'lock_bis', 'lock_durch', 'loeschen_ab',\n\t],\n\tepa_audit_log: ['kunde_id', 'vorgangs_id', 'typ', 'alt', 'neu', 'ausloeser', 'details', 'referenz'],\n};\n\nconst JSON_SPALTEN = {\n\tepa_vorgaenge: { bekannte_message_ids: [], extrahierte_daten: {}, fehlende_felder: [], konflikte: [] },\n\tepa_audit_log: { details: {} },\n};\n\nconst OFFEN_AUSGESCHLOSSEN = ['Abgeschlossen', 'Ignoriert'];\n\nfunction parseJsonSpalte(wert, standard) {\n\tif (wert === null || wert === undefined || wert === '') return Array.isArray(standard) ? [] : { ...standard };\n\tif (typeof wert === 'object') return wert;\n\ttry {\n\t\treturn JSON.parse(wert);\n\t} catch {\n\t\treturn Array.isArray(standard) ? [] : { ...standard };\n\t}\n}\n\n/** Item eines Data-Table-Lesezugriffs -> Objekt (oder null, wenn leer, z. B. bei alwaysOutputData). */\nfunction zeileLesen(row, tabelle) {\n\tif (!row || row.id === undefined || row.id === null) return null;\n\tconst out = { ...row };\n\tfor (const [spalte, standard] of Object.entries(JSON_SPALTEN[tabelle] || {})) out[spalte] = parseJsonSpalte(row[spalte], standard);\n\treturn out;\n}\n\n/** Objekt -> schreibbare Zeile (nur bekannte Spalten, JSON als Text, undefined entfernt). */\nfunction zeileSchreiben(obj, tabelle) {\n\tconst erlaubt = SPALTEN[tabelle];\n\tif (!erlaubt) throw new Error(`Unbekannte Tabelle ${tabelle}`);\n\tconst json = JSON_SPALTEN[tabelle] || {};\n\tconst out = {};\n\tfor (const [k, v] of Object.entries(obj || {})) {\n\t\tif (!erlaubt.includes(k)) throw new Error(`Spalte \"${k}\" gibt es in ${tabelle} nicht`);\n\t\tif (v === undefined) continue;\n\t\tout[k] = k in json && v !== null && typeof v !== 'string' ? JSON.stringify(v) : v;\n\t}\n\treturn out;\n}\n\n/** Kollisionsfreie Vorgangs-ID aus der fortlaufenden Zeilen-ID der Data Table. */\nfunction vorgangsIdAusZeile(zeilenId, jahr) {\n\tconst n = Number(zeilenId);\n\tif (!Number.isInteger(n) || n < 1) throw new Error(`Ungültige Zeilen-ID ${zeilenId}`);\n\treturn `V-${jahr}-${String(n).padStart(4, '0')}`;\n}\n\n/** Neuer Vorgang (Status \"Neu\") aus den erlaubten Anlage-Feldern. */\nfunction neuerVorgang(kundeId, daten, { aufbewahrungTage, jetzt, platzhalterId }) {\n\tconst d = daten || {};\n\tconst loeschen = new Date(new Date(jetzt).getTime() + Number(aufbewahrungTage) * 86400000).toISOString();\n\treturn zeileSchreiben({\n\t\tvorgangs_id: platzhalterId,\n\t\tkunde_id: kundeId,\n\t\tvorgangstyp: d.vorgangstyp ?? null,\n\t\tstatus: 'Neu',\n\t\tconversation_id: d.conversation_id ?? null,\n\t\terste_message_id: d.erste_message_id ?? null,\n\t\tletzte_message_id: d.erste_message_id ?? null,\n\t\tbekannte_message_ids: d.erste_message_id ? [d.erste_message_id] : [],\n\t\tabsender_adresse: d.absender_adresse ? String(d.absender_adresse).toLowerCase() : null,\n\t\tabsender_name: d.absender_name ?? null,\n\t\tbetreff: d.betreff ?? null,\n\t\tbetreff_normalisiert: d.betreff_normalisiert ?? null,\n\t\textrahierte_daten: {},\n\t\tfehlende_felder: [],\n\t\tkonflikte: [],\n\t\trundenzaehler: 0,\n\t\terinnerungen_gesendet: 0,\n\t\tspoofing_hinweis: d.spoofing_hinweis ?? null,\n\t\tversion: 1,\n\t\tloeschen_ab: loeschen,\n\t}, 'epa_vorgaenge');\n}\n\nconst AENDERBAR = ['vorgangstyp', 'conversation_id', 'letzte_message_id', 'neue_message_ids', 'absender_name', 'betreff',\n\t'betreff_normalisiert', 'extrahierte_daten', 'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist',\n\t'erinnerungen_gesendet', 'bearbeiter', 'freigabe_id_aktuell', 'spoofing_hinweis'];\n\n/**\n * Teil-Update eines Vorgangs. Gibt nur geänderte Spalten + neue Version zurück.\n * neue_message_ids werden an bekannte_message_ids angehängt (ohne Duplikate).\n */\nfunction aktualisierungBerechnen(vorgang, daten) {\n\tconst patch = {};\n\tfor (const [k, v] of Object.entries(daten || {})) {\n\t\tif (!AENDERBAR.includes(k)) throw new Error(`Feld \"${k}\" ist nicht änderbar`);\n\t\tif (k === 'neue_message_ids') {\n\t\t\tconst alle = [...(vorgang.bekannte_message_ids || []), ...(v || [])];\n\t\t\tpatch.bekannte_message_ids = [...new Set(alle)];\n\t\t} else {\n\t\t\tpatch[k] = v;\n\t\t}\n\t}\n\tpatch.version = Number(vorgang.version) + 1;\n\treturn zeileSchreiben(patch, 'epa_vorgaenge');\n}\n\n/** Filtert offene Vorgänge eines Kunden nach Zuordnungskriterien (wie die SQL-Variante). */\nfunction kandidatenFiltern(zeilen, kriterien) {\n\tconst k = kriterien || {};\n\tconst ids = new Set(k.message_ids || []);\n\tconst vids = new Set(k.vorgangs_ids || []);\n\tconst absender = k.absender_adresse ? String(k.absender_adresse).toLowerCase() : null;\n\treturn (zeilen || [])\n\t\t.map((z) => zeileLesen(z, 'epa_vorgaenge'))\n\t\t.filter((v) => v && !OFFEN_AUSGESCHLOSSEN.includes(v.status))\n\t\t.filter((v) =>\n\t\t\t(v.bekannte_message_ids || []).some((m) => ids.has(m)) ||\n\t\t\t(k.conversation_id && v.conversation_id === k.conversation_id) ||\n\t\t\t(absender && String(v.absender_adresse || '').toLowerCase() === absender) ||\n\t\t\t(k.betreff_normalisiert && v.betreff_normalisiert === k.betreff_normalisiert) ||\n\t\t\tvids.has(v.vorgangs_id))\n\t\t.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))\n\t\t.slice(0, 20)\n\t\t.map((v) => ({\n\t\t\tvorgangs_id: v.vorgangs_id, status: v.status, conversation_id: v.conversation_id,\n\t\t\tbekannte_message_ids: v.bekannte_message_ids, absender_adresse: v.absender_adresse,\n\t\t\tbetreff_normalisiert: v.betreff_normalisiert, version: v.version, geaendert_am: v.updatedAt,\n\t\t}));\n}\n\n/**\n * Entscheidet über eine Sperre. Ergebnis enthält die Werte für ein bedingtes Update\n * (Compare-and-Set auf lock_durch): Nur wenn lock_durch noch den gelesenen Wert hat, wird gesperrt.\n */\nfunction sperreEntscheiden(vorgang, wer, sekunden, jetzt) {\n\tconst t = new Date(jetzt).getTime();\n\tconst bis = vorgang.lock_bis ? new Date(vorgang.lock_bis).getTime() : null;\n\tconst frei = !vorgang.lock_durch || bis === null || bis < t || vorgang.lock_durch === wer;\n\treturn {\n\t\tmoeglich: frei,\n\t\tvorher_durch: vorgang.lock_durch || null,\n\t\tvorher_bis: vorgang.lock_bis || null,\n\t\tneu: { lock_durch: wer, lock_bis: new Date(t + sekunden * 1000).toISOString() },\n\t};\n}\n\nmodule.exports = {\n\tSPALTEN,\n\tJSON_SPALTEN,\n\tAENDERBAR,\n\tzeileLesen,\n\tzeileSchreiben,\n\tvorgangsIdAusZeile,\n\tneuerVorgang,\n\taktualisierungBerechnen,\n\tkandidatenFiltern,\n\tsperreEntscheiden,\n};\nreturn module.exports;\n})();\n// ===== Ende src/datenTabellen.js =====\n\n// ----- Node-Logik -----\nconst AKTIONEN = [\"lesen\",\"anlegen\",\"aktualisieren\",\"kandidaten_suchen\",\"sperren\",\"entsperren\"];\nconst ANLEGBAR = ['vorgangstyp', 'conversation_id', 'erste_message_id', 'absender_adresse', 'absender_name', 'betreff',\n\t'betreff_normalisiert', 'spoofing_hinweis'];\nconst e = $input.first().json;\nconst vid = typeof e.vorgangs_id === 'string' ? e.vorgangs_id.trim() : '';\nconst fehler = (code, text) => fehlerklassen.epaFehler(code, vid || null, text);\nif (!AKTIONEN.includes(e.aktion)) throw fehler('UNGUELTIGES_FORMAT', `Aktion \"${e.aktion}\" ist unbekannt`);\nif (typeof e.kunde_id !== 'string' || !e.kunde_id.trim()) throw fehler('UNGUELTIGES_FORMAT', 'kunde_id fehlt');\nconst daten = e.daten && typeof e.daten === 'object' && !Array.isArray(e.daten) ? e.daten : {};\nconst brauchtId = ['lesen', 'aktualisieren', 'sperren', 'entsperren'].includes(e.aktion);\nif (brauchtId && !/^V-\\d{4}-\\d{4,}$/.test(vid)) throw fehler('UNGUELTIGES_FORMAT', `vorgangs_id \"${vid}\" ist ungültig`);\nif (e.aktion === 'aktualisieren') {\n\tconst unbekannt = Object.keys(daten).filter((k) => !datenTabellen.AENDERBAR.includes(k));\n\tif (unbekannt.length) throw fehler('UNGUELTIGES_FORMAT', `Nicht änderbare Felder: ${unbekannt.join(', ')}`);\n\tif (Object.keys(daten).length === 0) throw fehler('UNGUELTIGES_FORMAT', 'Keine Änderungen übergeben');\n\tif (!Number.isInteger(e.erwartete_version)) throw fehler('UNGUELTIGES_FORMAT', 'erwartete_version ist Pflicht beim Aktualisieren');\n\tif ('neue_message_ids' in daten && !Array.isArray(daten.neue_message_ids)) throw fehler('UNGUELTIGES_FORMAT', 'neue_message_ids muss eine Liste sein');\n}\nif (e.aktion === 'anlegen') {\n\tconst unbekannt = Object.keys(daten).filter((k) => !ANLEGBAR.includes(k));\n\tif (unbekannt.length) throw fehler('UNGUELTIGES_FORMAT', `Nicht anlegbare Felder: ${unbekannt.join(', ')}`);\n}\nconst lockSekunden = e.lock_sekunden === undefined || e.lock_sekunden === null ? 300 : Number(e.lock_sekunden);\nif (e.aktion === 'sperren' && (!Number.isInteger(lockSekunden) || lockSekunden < 10 || lockSekunden > 3600)) {\n\tthrow fehler('UNGUELTIGES_FORMAT', 'lock_sekunden muss zwischen 10 und 3600 liegen');\n}\nreturn [{ json: {\n\taktion: e.aktion,\n\tkunde_id: e.kunde_id.trim(),\n\tvorgangs_id: vid || null,\n\tdaten,\n\terwartete_version: Number.isInteger(e.erwartete_version) ? e.erwartete_version : null,\n\treferenz: e.referenz ? String(e.referenz) : String($execution.id),\n\tlock_sekunden: lockSekunden,\n} }];\n"
       },
       "id": "a0ef4f57-717c-4451-ad98-cb8e95ce866b",
       "name": "Eingabe prüfen",
@@ -241,143 +241,695 @@
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT (SELECT to_jsonb(v) FROM epa_vorgaenge v WHERE v.vorgangs_id = $1 AND v.kunde_id = $2) AS vorgang;",
-        "options": {
-          "queryReplacement": "={{ [ $json.vorgangs_id, $json.kunde_id ] }}"
-        }
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_vorgaenge"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "vorgangs_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Eingabe prüfen').first().json.vorgangs_id }}"
+            },
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Eingabe prüfen').first().json.kunde_id }}"
+            }
+          ]
+        },
+        "limit": 1
       },
       "id": "5ed8faa8-9b0e-4e98-a728-8a2c87f4dfb6",
       "name": "Vorgang lesen",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
       "position": [
         700,
-        -300
+        -480
       ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 3000,
-      "notes": "$1 vorgangs_id, $2 kunde_id"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "WITH d AS (SELECT $2::jsonb AS d),\nneu AS (\n    INSERT INTO epa_vorgaenge (\n        vorgangs_id, kunde_id, vorgangstyp, status, conversation_id, erste_message_id, letzte_message_id,\n        bekannte_message_ids, absender_adresse, absender_name, betreff, betreff_normalisiert,\n        spoofing_hinweis, loeschen_ab)\n    SELECT epa_naechste_vorgangs_id(), c.kunde_id, d.d->>'vorgangstyp', 'Neu', d.d->>'conversation_id',\n           d.d->>'erste_message_id', d.d->>'erste_message_id',\n           CASE WHEN d.d->>'erste_message_id' IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(d.d->>'erste_message_id') END,\n           lower(d.d->>'absender_adresse'), d.d->>'absender_name', d.d->>'betreff', d.d->>'betreff_normalisiert',\n           d.d->>'spoofing_hinweis', now() + make_interval(days => c.aufbewahrung_tage)\n    FROM d JOIN epa_config_allgemein c ON c.kunde_id = $1\n    RETURNING *\n), aud AS (\n    INSERT INTO epa_audit_log (kunde_id, vorgangs_id, typ, alt, neu, ausloeser, details, referenz)\n    SELECT kunde_id, vorgangs_id, 'STATUS', NULL, 'Neu', 'System', '{\"aktion\": \"anlegen\"}'::jsonb, $3\n    FROM neu\n    RETURNING id\n)\nSELECT (SELECT to_jsonb(neu) FROM neu) AS vorgang, (SELECT id FROM aud) AS audit_id;",
-        "options": {
-          "queryReplacement": "={{ [ $json.kunde_id, $json.daten, $json.referenz ] }}"
-        }
-      },
-      "id": "2fd3ad6e-f151-4ab6-aaf9-9bb92018da3b",
-      "name": "Vorgang anlegen",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        700,
-        -180
-      ],
-      "retryOnFail": false,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "notes": "$1 kunde_id, $2 daten (JSON), $3 referenz\nLegt einen Vorgang im Status \"Neu\" an (erlaubter Startübergang null -> Neu) und schreibt das Audit."
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "WITH a AS (SELECT $3::jsonb AS a),\nupd AS (\n    UPDATE epa_vorgaenge v SET\n        vorgangstyp           = CASE WHEN a.a ? 'vorgangstyp' THEN a.a->>'vorgangstyp' ELSE v.vorgangstyp END,\n        conversation_id       = CASE WHEN a.a ? 'conversation_id' THEN a.a->>'conversation_id' ELSE v.conversation_id END,\n        letzte_message_id     = CASE WHEN a.a ? 'letzte_message_id' THEN a.a->>'letzte_message_id' ELSE v.letzte_message_id END,\n        bekannte_message_ids  = CASE WHEN a.a ? 'neue_message_ids' THEN (\n                                    SELECT COALESCE(jsonb_agg(DISTINCT e), '[]'::jsonb)\n                                    FROM jsonb_array_elements(v.bekannte_message_ids || (a.a->'neue_message_ids')) e\n                                ) ELSE v.bekannte_message_ids END,\n        absender_name         = CASE WHEN a.a ? 'absender_name' THEN a.a->>'absender_name' ELSE v.absender_name END,\n        betreff               = CASE WHEN a.a ? 'betreff' THEN a.a->>'betreff' ELSE v.betreff END,\n        betreff_normalisiert  = CASE WHEN a.a ? 'betreff_normalisiert' THEN a.a->>'betreff_normalisiert' ELSE v.betreff_normalisiert END,\n        extrahierte_daten     = CASE WHEN a.a ? 'extrahierte_daten' THEN a.a->'extrahierte_daten' ELSE v.extrahierte_daten END,\n        fehlende_felder       = CASE WHEN a.a ? 'fehlende_felder' THEN a.a->'fehlende_felder' ELSE v.fehlende_felder END,\n        konflikte             = CASE WHEN a.a ? 'konflikte' THEN a.a->'konflikte' ELSE v.konflikte END,\n        rundenzaehler         = CASE WHEN a.a ? 'rundenzaehler' THEN (a.a->>'rundenzaehler')::int ELSE v.rundenzaehler END,\n        antwort_frist         = CASE WHEN a.a ? 'antwort_frist' THEN (a.a->>'antwort_frist')::timestamptz ELSE v.antwort_frist END,\n        erinnerungen_gesendet = CASE WHEN a.a ? 'erinnerungen_gesendet' THEN (a.a->>'erinnerungen_gesendet')::int ELSE v.erinnerungen_gesendet END,\n        bearbeiter            = CASE WHEN a.a ? 'bearbeiter' THEN a.a->>'bearbeiter' ELSE v.bearbeiter END,\n        freigabe_id_aktuell   = CASE WHEN a.a ? 'freigabe_id_aktuell' THEN (a.a->>'freigabe_id_aktuell')::uuid ELSE v.freigabe_id_aktuell END,\n        spoofing_hinweis      = CASE WHEN a.a ? 'spoofing_hinweis' THEN a.a->>'spoofing_hinweis' ELSE v.spoofing_hinweis END,\n        version               = v.version + 1,\n        geaendert_am          = now()\n    FROM a\n    WHERE v.vorgangs_id = $1 AND v.kunde_id = $2 AND v.version = $4::int\n    RETURNING v.*\n), aud AS (\n    INSERT INTO epa_audit_log (kunde_id, vorgangs_id, typ, alt, neu, ausloeser, details, referenz)\n    SELECT upd.kunde_id, upd.vorgangs_id, 'SYSTEM', NULL, NULL, 'System',\n           jsonb_build_object('aktion', 'aktualisieren', 'felder', (SELECT jsonb_agg(k ORDER BY k) FROM jsonb_object_keys(a.a) k)),\n           $5\n    FROM upd, a\n    RETURNING id\n)\nSELECT (SELECT to_jsonb(upd) FROM upd) AS vorgang,\n       (SELECT version FROM epa_vorgaenge WHERE vorgangs_id = $1 AND kunde_id = $2) AS version_vorher;",
-        "options": {
-          "queryReplacement": "={{ [ $json.vorgangs_id, $json.kunde_id, $json.daten, $json.erwartete_version, $json.referenz ] }}"
-        }
-      },
-      "id": "f61c54d9-5ca8-40e1-a8b3-23f272be375d",
-      "name": "Vorgang aktualisieren",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        700,
-        -60
-      ],
-      "retryOnFail": false,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "notes": "$1 vorgangs_id, $2 kunde_id, $3 aenderungen (JSON, nur Whitelist-Felder), $4 erwartete_version, $5 referenz\nStatus ist hier bewusst NICHT änderbar (nur über \"EPA SW Status setzen\")."
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "WITH k AS (SELECT $2::jsonb AS k)\nSELECT COALESCE(jsonb_agg(to_jsonb(t)), '[]'::jsonb) AS kandidaten\nFROM (\n    SELECT v.vorgangs_id, v.status, v.conversation_id, v.bekannte_message_ids, v.absender_adresse,\n           v.betreff_normalisiert, v.version, v.geaendert_am\n    FROM epa_vorgaenge v, k\n    WHERE v.kunde_id = $1\n      AND v.status NOT IN ('Abgeschlossen', 'Ignoriert')\n      AND (\n            v.bekannte_message_ids ?| ARRAY(SELECT jsonb_array_elements_text(COALESCE(k.k->'message_ids', '[]'::jsonb)))\n         OR (k.k->>'conversation_id' IS NOT NULL AND v.conversation_id = k.k->>'conversation_id')\n         OR (k.k->>'absender_adresse' IS NOT NULL AND lower(v.absender_adresse) = lower(k.k->>'absender_adresse'))\n         OR (k.k->>'betreff_normalisiert' IS NOT NULL AND v.betreff_normalisiert = k.k->>'betreff_normalisiert')\n         OR v.vorgangs_id IN (SELECT jsonb_array_elements_text(COALESCE(k.k->'vorgangs_ids', '[]'::jsonb)))\n      )\n    ORDER BY v.geaendert_am DESC\n    LIMIT 20\n) t;",
-        "options": {
-          "queryReplacement": "={{ [ $json.kunde_id, $json.daten ] }}"
-        }
-      },
-      "id": "21ad4872-b47e-43d4-a417-cfeab9d9e4f4",
-      "name": "Kandidaten suchen",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        700,
-        60
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "notes": "$1 kunde_id, $2 kriterien (JSON: message_ids[], conversation_id, absender_adresse, betreff_normalisiert, vorgangs_ids[])\nNur offene Vorgänge. Bewertung der Kandidaten erfolgt deterministisch im Code (Bauplan 5.2)."
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "WITH upd AS (\n    UPDATE epa_vorgaenge\n    SET lock_bis = now() + make_interval(secs => $4::int), lock_durch = $3\n    WHERE vorgangs_id = $1 AND kunde_id = $2\n      AND (lock_bis IS NULL OR lock_bis < now() OR lock_durch = $3)\n    RETURNING vorgangs_id, lock_bis, lock_durch, version\n)\nSELECT (SELECT to_jsonb(upd) FROM upd) AS sperre,\n       (SELECT jsonb_build_object('lock_bis', lock_bis, 'lock_durch', lock_durch)\n        FROM epa_vorgaenge WHERE vorgangs_id = $1 AND kunde_id = $2) AS vorher;",
-        "options": {
-          "queryReplacement": "={{ [ $json.vorgangs_id, $json.kunde_id, $json.referenz, $json.lock_sekunden ] }}"
-        }
-      },
-      "id": "fce333e1-31f0-47a0-a622-068b85a5ef57",
-      "name": "Vorgang sperren",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        700,
-        180
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "notes": "$1 vorgangs_id, $2 kunde_id, $3 lock_durch (z. B. Execution-ID), $4 sekunden\nSetzt die Sperre nur, wenn sie frei, abgelaufen oder bereits die eigene ist."
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "WITH upd AS (\n    UPDATE epa_vorgaenge SET lock_bis = NULL, lock_durch = NULL\n    WHERE vorgangs_id = $1 AND kunde_id = $2 AND lock_durch = $3\n    RETURNING vorgangs_id\n)\nSELECT EXISTS (SELECT 1 FROM upd) AS entsperrt;",
-        "options": {
-          "queryReplacement": "={{ [ $json.vorgangs_id, $json.kunde_id, $json.referenz ] }}"
-        }
-      },
-      "id": "d9cebb39-b55d-41f9-a8b8-237309cbc4e2",
-      "name": "Vorgang entsperren",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        700,
-        300
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "notes": "$1 vorgangs_id, $2 kunde_id, $3 lock_durch"
+      "alwaysOutputData": true
     },
     {
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId),\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst zeilen = [\n\t\t`<b>EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)}</b> (${escapeHtml(e.klasse)})`,\n\t\t`Workflow: ${escapeHtml(e.workflow_name || e.workflow_id || '?')}`,\n\t\t`Node: ${escapeHtml(e.node || '?')}`,\n\t\t`Vorgang: ${escapeHtml(e.vorgangs_id || '–')}`,\n\t\t`Meldung: ${escapeHtml(e.meldung || '–')}`,\n\t\te.retrybar ? 'Hinweis: vorübergehender Fehler, erneuter Versuch kann helfen.' : 'Hinweis: dauerhafter Fehler, bitte prüfen.',\n\t];\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n\n// ----- Node-Logik -----\nconst e = $('Eingabe prüfen').first().json;\nconst r = $input.first().json;\nconst fehler = (code, text) => fehlerklassen.epaFehler(code, e.vorgangs_id, text);\nswitch (e.aktion) {\n\tcase 'lesen':\n\t\tif (!r.vorgang) throw fehler('VORGANG_NICHT_GEFUNDEN', 'Vorgang existiert nicht für diesen Kunden');\n\t\treturn [{ json: { vorgang: r.vorgang } }];\n\tcase 'anlegen':\n\t\tif (!r.vorgang) throw fehlerklassen.epaFehler('KONFIG_NICHT_GEFUNDEN', null, `Kunde \"${e.kunde_id}\" hat keine Config, Vorgang nicht angelegt`);\n\t\treturn [{ json: { vorgang: r.vorgang, audit_id: r.audit_id } }];\n\tcase 'aktualisieren':\n\t\tif (r.vorgang) return [{ json: { vorgang: r.vorgang } }];\n\t\tif (r.version_vorher === null || r.version_vorher === undefined) throw fehler('VORGANG_NICHT_GEFUNDEN', 'Vorgang existiert nicht für diesen Kunden');\n\t\tthrow fehler('VERSIONSKONFLIKT', `erwartet Version ${e.erwartete_version}, aktuell ${r.version_vorher}`);\n\tcase 'kandidaten_suchen':\n\t\treturn [{ json: { kandidaten: r.kandidaten || [] } }];\n\tcase 'sperren':\n\t\tif (r.sperre) return [{ json: { gesperrt: true, sperre: r.sperre } }];\n\t\tif (!r.vorher) throw fehler('VORGANG_NICHT_GEFUNDEN', 'Vorgang existiert nicht für diesen Kunden');\n\t\treturn [{ json: { gesperrt: false, gesperrt_durch: r.vorher.lock_durch, gesperrt_bis: r.vorher.lock_bis } }];\n\tcase 'entsperren':\n\t\treturn [{ json: { entsperrt: r.entsperrt === true } }];\n}\nthrow fehler('UNGUELTIGES_FORMAT', `Aktion \"${e.aktion}\" ohne Auswertung`);\n"
+        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId),\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst zeilen = [\n\t\t`<b>EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)}</b> (${escapeHtml(e.klasse)})`,\n\t\t`Workflow: ${escapeHtml(e.workflow_name || e.workflow_id || '?')}`,\n\t\t`Node: ${escapeHtml(e.node || '?')}`,\n\t\t`Vorgang: ${escapeHtml(e.vorgangs_id || '–')}`,\n\t\t`Meldung: ${escapeHtml(e.meldung || '–')}`,\n\t\te.retrybar ? 'Hinweis: vorübergehender Fehler, erneuter Versuch kann helfen.' : 'Hinweis: dauerhafter Fehler, bitte prüfen.',\n\t];\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n// ===== eingebettet aus src/datenTabellen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst datenTabellen = (() => {\nconst module = { exports: {} };\n// Hilfsfunktionen für den Speicher-Adapter \"n8n Data Tables\".\n// Data Tables kennen nur string/number/boolean/date. JSON-Felder werden als Text gespeichert und hier\n// beim Lesen geparst bzw. beim Schreiben serialisiert. Der Data-Table-Node übernimmt im Modus\n// \"autoMapInputData\" genau die Felder des Eingabe-Items; deshalb erzeugen diese Funktionen nur\n// gültige Spalten (unbekannte Spalten würden den Node abbrechen lassen).\n\nconst SPALTEN = {\n\tepa_vorgaenge: [\n\t\t'vorgangs_id', 'kunde_id', 'vorgangstyp', 'status', 'conversation_id', 'erste_message_id', 'letzte_message_id',\n\t\t'bekannte_message_ids', 'absender_adresse', 'absender_name', 'betreff', 'betreff_normalisiert', 'extrahierte_daten',\n\t\t'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist', 'erinnerungen_gesendet', 'bearbeiter',\n\t\t'freigabe_id_aktuell', 'spoofing_hinweis', 'version', 'lock_bis', 'lock_durch', 'loeschen_ab',\n\t],\n\tepa_audit_log: ['kunde_id', 'vorgangs_id', 'typ', 'alt', 'neu', 'ausloeser', 'details', 'referenz'],\n};\n\nconst JSON_SPALTEN = {\n\tepa_vorgaenge: { bekannte_message_ids: [], extrahierte_daten: {}, fehlende_felder: [], konflikte: [] },\n\tepa_audit_log: { details: {} },\n};\n\nconst OFFEN_AUSGESCHLOSSEN = ['Abgeschlossen', 'Ignoriert'];\n\nfunction parseJsonSpalte(wert, standard) {\n\tif (wert === null || wert === undefined || wert === '') return Array.isArray(standard) ? [] : { ...standard };\n\tif (typeof wert === 'object') return wert;\n\ttry {\n\t\treturn JSON.parse(wert);\n\t} catch {\n\t\treturn Array.isArray(standard) ? [] : { ...standard };\n\t}\n}\n\n/** Item eines Data-Table-Lesezugriffs -> Objekt (oder null, wenn leer, z. B. bei alwaysOutputData). */\nfunction zeileLesen(row, tabelle) {\n\tif (!row || row.id === undefined || row.id === null) return null;\n\tconst out = { ...row };\n\tfor (const [spalte, standard] of Object.entries(JSON_SPALTEN[tabelle] || {})) out[spalte] = parseJsonSpalte(row[spalte], standard);\n\treturn out;\n}\n\n/** Objekt -> schreibbare Zeile (nur bekannte Spalten, JSON als Text, undefined entfernt). */\nfunction zeileSchreiben(obj, tabelle) {\n\tconst erlaubt = SPALTEN[tabelle];\n\tif (!erlaubt) throw new Error(`Unbekannte Tabelle ${tabelle}`);\n\tconst json = JSON_SPALTEN[tabelle] || {};\n\tconst out = {};\n\tfor (const [k, v] of Object.entries(obj || {})) {\n\t\tif (!erlaubt.includes(k)) throw new Error(`Spalte \"${k}\" gibt es in ${tabelle} nicht`);\n\t\tif (v === undefined) continue;\n\t\tout[k] = k in json && v !== null && typeof v !== 'string' ? JSON.stringify(v) : v;\n\t}\n\treturn out;\n}\n\n/** Kollisionsfreie Vorgangs-ID aus der fortlaufenden Zeilen-ID der Data Table. */\nfunction vorgangsIdAusZeile(zeilenId, jahr) {\n\tconst n = Number(zeilenId);\n\tif (!Number.isInteger(n) || n < 1) throw new Error(`Ungültige Zeilen-ID ${zeilenId}`);\n\treturn `V-${jahr}-${String(n).padStart(4, '0')}`;\n}\n\n/** Neuer Vorgang (Status \"Neu\") aus den erlaubten Anlage-Feldern. */\nfunction neuerVorgang(kundeId, daten, { aufbewahrungTage, jetzt, platzhalterId }) {\n\tconst d = daten || {};\n\tconst loeschen = new Date(new Date(jetzt).getTime() + Number(aufbewahrungTage) * 86400000).toISOString();\n\treturn zeileSchreiben({\n\t\tvorgangs_id: platzhalterId,\n\t\tkunde_id: kundeId,\n\t\tvorgangstyp: d.vorgangstyp ?? null,\n\t\tstatus: 'Neu',\n\t\tconversation_id: d.conversation_id ?? null,\n\t\terste_message_id: d.erste_message_id ?? null,\n\t\tletzte_message_id: d.erste_message_id ?? null,\n\t\tbekannte_message_ids: d.erste_message_id ? [d.erste_message_id] : [],\n\t\tabsender_adresse: d.absender_adresse ? String(d.absender_adresse).toLowerCase() : null,\n\t\tabsender_name: d.absender_name ?? null,\n\t\tbetreff: d.betreff ?? null,\n\t\tbetreff_normalisiert: d.betreff_normalisiert ?? null,\n\t\textrahierte_daten: {},\n\t\tfehlende_felder: [],\n\t\tkonflikte: [],\n\t\trundenzaehler: 0,\n\t\terinnerungen_gesendet: 0,\n\t\tspoofing_hinweis: d.spoofing_hinweis ?? null,\n\t\tversion: 1,\n\t\tloeschen_ab: loeschen,\n\t}, 'epa_vorgaenge');\n}\n\nconst AENDERBAR = ['vorgangstyp', 'conversation_id', 'letzte_message_id', 'neue_message_ids', 'absender_name', 'betreff',\n\t'betreff_normalisiert', 'extrahierte_daten', 'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist',\n\t'erinnerungen_gesendet', 'bearbeiter', 'freigabe_id_aktuell', 'spoofing_hinweis'];\n\n/**\n * Teil-Update eines Vorgangs. Gibt nur geänderte Spalten + neue Version zurück.\n * neue_message_ids werden an bekannte_message_ids angehängt (ohne Duplikate).\n */\nfunction aktualisierungBerechnen(vorgang, daten) {\n\tconst patch = {};\n\tfor (const [k, v] of Object.entries(daten || {})) {\n\t\tif (!AENDERBAR.includes(k)) throw new Error(`Feld \"${k}\" ist nicht änderbar`);\n\t\tif (k === 'neue_message_ids') {\n\t\t\tconst alle = [...(vorgang.bekannte_message_ids || []), ...(v || [])];\n\t\t\tpatch.bekannte_message_ids = [...new Set(alle)];\n\t\t} else {\n\t\t\tpatch[k] = v;\n\t\t}\n\t}\n\tpatch.version = Number(vorgang.version) + 1;\n\treturn zeileSchreiben(patch, 'epa_vorgaenge');\n}\n\n/** Filtert offene Vorgänge eines Kunden nach Zuordnungskriterien (wie die SQL-Variante). */\nfunction kandidatenFiltern(zeilen, kriterien) {\n\tconst k = kriterien || {};\n\tconst ids = new Set(k.message_ids || []);\n\tconst vids = new Set(k.vorgangs_ids || []);\n\tconst absender = k.absender_adresse ? String(k.absender_adresse).toLowerCase() : null;\n\treturn (zeilen || [])\n\t\t.map((z) => zeileLesen(z, 'epa_vorgaenge'))\n\t\t.filter((v) => v && !OFFEN_AUSGESCHLOSSEN.includes(v.status))\n\t\t.filter((v) =>\n\t\t\t(v.bekannte_message_ids || []).some((m) => ids.has(m)) ||\n\t\t\t(k.conversation_id && v.conversation_id === k.conversation_id) ||\n\t\t\t(absender && String(v.absender_adresse || '').toLowerCase() === absender) ||\n\t\t\t(k.betreff_normalisiert && v.betreff_normalisiert === k.betreff_normalisiert) ||\n\t\t\tvids.has(v.vorgangs_id))\n\t\t.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))\n\t\t.slice(0, 20)\n\t\t.map((v) => ({\n\t\t\tvorgangs_id: v.vorgangs_id, status: v.status, conversation_id: v.conversation_id,\n\t\t\tbekannte_message_ids: v.bekannte_message_ids, absender_adresse: v.absender_adresse,\n\t\t\tbetreff_normalisiert: v.betreff_normalisiert, version: v.version, geaendert_am: v.updatedAt,\n\t\t}));\n}\n\n/**\n * Entscheidet über eine Sperre. Ergebnis enthält die Werte für ein bedingtes Update\n * (Compare-and-Set auf lock_durch): Nur wenn lock_durch noch den gelesenen Wert hat, wird gesperrt.\n */\nfunction sperreEntscheiden(vorgang, wer, sekunden, jetzt) {\n\tconst t = new Date(jetzt).getTime();\n\tconst bis = vorgang.lock_bis ? new Date(vorgang.lock_bis).getTime() : null;\n\tconst frei = !vorgang.lock_durch || bis === null || bis < t || vorgang.lock_durch === wer;\n\treturn {\n\t\tmoeglich: frei,\n\t\tvorher_durch: vorgang.lock_durch || null,\n\t\tvorher_bis: vorgang.lock_bis || null,\n\t\tneu: { lock_durch: wer, lock_bis: new Date(t + sekunden * 1000).toISOString() },\n\t};\n}\n\nmodule.exports = {\n\tSPALTEN,\n\tJSON_SPALTEN,\n\tAENDERBAR,\n\tzeileLesen,\n\tzeileSchreiben,\n\tvorgangsIdAusZeile,\n\tneuerVorgang,\n\taktualisierungBerechnen,\n\tkandidatenFiltern,\n\tsperreEntscheiden,\n};\nreturn module.exports;\n})();\n// ===== Ende src/datenTabellen.js =====\n\n// ----- Node-Logik -----\nconst e = $('Eingabe prüfen').first().json;\nconst v = datenTabellen.zeileLesen($input.first().json, 'epa_vorgaenge');\nif (!v) throw fehlerklassen.epaFehler('VORGANG_NICHT_GEFUNDEN', e.vorgangs_id, 'Vorgang existiert nicht für diesen Kunden');\nreturn [{ json: { vorgang: v } }];\n"
       },
-      "id": "c6ba0ab0-b499-439b-ad32-79c62297cd9d",
-      "name": "Ergebnis auswerten",
+      "id": "bb5e32e3-c07a-45fc-accb-d6216cc7f35d",
+      "name": "Lesen auswerten",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        960,
+        920,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_config_allgemein"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Eingabe prüfen').first().json.kunde_id }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "id": "d7865322-16e1-4064-afe2-0e457466ca49",
+      "name": "Kunde prüfen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        700,
+        -320
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId),\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst zeilen = [\n\t\t`<b>EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)}</b> (${escapeHtml(e.klasse)})`,\n\t\t`Workflow: ${escapeHtml(e.workflow_name || e.workflow_id || '?')}`,\n\t\t`Node: ${escapeHtml(e.node || '?')}`,\n\t\t`Vorgang: ${escapeHtml(e.vorgangs_id || '–')}`,\n\t\t`Meldung: ${escapeHtml(e.meldung || '–')}`,\n\t\te.retrybar ? 'Hinweis: vorübergehender Fehler, erneuter Versuch kann helfen.' : 'Hinweis: dauerhafter Fehler, bitte prüfen.',\n\t];\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n// ===== eingebettet aus src/datenTabellen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst datenTabellen = (() => {\nconst module = { exports: {} };\n// Hilfsfunktionen für den Speicher-Adapter \"n8n Data Tables\".\n// Data Tables kennen nur string/number/boolean/date. JSON-Felder werden als Text gespeichert und hier\n// beim Lesen geparst bzw. beim Schreiben serialisiert. Der Data-Table-Node übernimmt im Modus\n// \"autoMapInputData\" genau die Felder des Eingabe-Items; deshalb erzeugen diese Funktionen nur\n// gültige Spalten (unbekannte Spalten würden den Node abbrechen lassen).\n\nconst SPALTEN = {\n\tepa_vorgaenge: [\n\t\t'vorgangs_id', 'kunde_id', 'vorgangstyp', 'status', 'conversation_id', 'erste_message_id', 'letzte_message_id',\n\t\t'bekannte_message_ids', 'absender_adresse', 'absender_name', 'betreff', 'betreff_normalisiert', 'extrahierte_daten',\n\t\t'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist', 'erinnerungen_gesendet', 'bearbeiter',\n\t\t'freigabe_id_aktuell', 'spoofing_hinweis', 'version', 'lock_bis', 'lock_durch', 'loeschen_ab',\n\t],\n\tepa_audit_log: ['kunde_id', 'vorgangs_id', 'typ', 'alt', 'neu', 'ausloeser', 'details', 'referenz'],\n};\n\nconst JSON_SPALTEN = {\n\tepa_vorgaenge: { bekannte_message_ids: [], extrahierte_daten: {}, fehlende_felder: [], konflikte: [] },\n\tepa_audit_log: { details: {} },\n};\n\nconst OFFEN_AUSGESCHLOSSEN = ['Abgeschlossen', 'Ignoriert'];\n\nfunction parseJsonSpalte(wert, standard) {\n\tif (wert === null || wert === undefined || wert === '') return Array.isArray(standard) ? [] : { ...standard };\n\tif (typeof wert === 'object') return wert;\n\ttry {\n\t\treturn JSON.parse(wert);\n\t} catch {\n\t\treturn Array.isArray(standard) ? [] : { ...standard };\n\t}\n}\n\n/** Item eines Data-Table-Lesezugriffs -> Objekt (oder null, wenn leer, z. B. bei alwaysOutputData). */\nfunction zeileLesen(row, tabelle) {\n\tif (!row || row.id === undefined || row.id === null) return null;\n\tconst out = { ...row };\n\tfor (const [spalte, standard] of Object.entries(JSON_SPALTEN[tabelle] || {})) out[spalte] = parseJsonSpalte(row[spalte], standard);\n\treturn out;\n}\n\n/** Objekt -> schreibbare Zeile (nur bekannte Spalten, JSON als Text, undefined entfernt). */\nfunction zeileSchreiben(obj, tabelle) {\n\tconst erlaubt = SPALTEN[tabelle];\n\tif (!erlaubt) throw new Error(`Unbekannte Tabelle ${tabelle}`);\n\tconst json = JSON_SPALTEN[tabelle] || {};\n\tconst out = {};\n\tfor (const [k, v] of Object.entries(obj || {})) {\n\t\tif (!erlaubt.includes(k)) throw new Error(`Spalte \"${k}\" gibt es in ${tabelle} nicht`);\n\t\tif (v === undefined) continue;\n\t\tout[k] = k in json && v !== null && typeof v !== 'string' ? JSON.stringify(v) : v;\n\t}\n\treturn out;\n}\n\n/** Kollisionsfreie Vorgangs-ID aus der fortlaufenden Zeilen-ID der Data Table. */\nfunction vorgangsIdAusZeile(zeilenId, jahr) {\n\tconst n = Number(zeilenId);\n\tif (!Number.isInteger(n) || n < 1) throw new Error(`Ungültige Zeilen-ID ${zeilenId}`);\n\treturn `V-${jahr}-${String(n).padStart(4, '0')}`;\n}\n\n/** Neuer Vorgang (Status \"Neu\") aus den erlaubten Anlage-Feldern. */\nfunction neuerVorgang(kundeId, daten, { aufbewahrungTage, jetzt, platzhalterId }) {\n\tconst d = daten || {};\n\tconst loeschen = new Date(new Date(jetzt).getTime() + Number(aufbewahrungTage) * 86400000).toISOString();\n\treturn zeileSchreiben({\n\t\tvorgangs_id: platzhalterId,\n\t\tkunde_id: kundeId,\n\t\tvorgangstyp: d.vorgangstyp ?? null,\n\t\tstatus: 'Neu',\n\t\tconversation_id: d.conversation_id ?? null,\n\t\terste_message_id: d.erste_message_id ?? null,\n\t\tletzte_message_id: d.erste_message_id ?? null,\n\t\tbekannte_message_ids: d.erste_message_id ? [d.erste_message_id] : [],\n\t\tabsender_adresse: d.absender_adresse ? String(d.absender_adresse).toLowerCase() : null,\n\t\tabsender_name: d.absender_name ?? null,\n\t\tbetreff: d.betreff ?? null,\n\t\tbetreff_normalisiert: d.betreff_normalisiert ?? null,\n\t\textrahierte_daten: {},\n\t\tfehlende_felder: [],\n\t\tkonflikte: [],\n\t\trundenzaehler: 0,\n\t\terinnerungen_gesendet: 0,\n\t\tspoofing_hinweis: d.spoofing_hinweis ?? null,\n\t\tversion: 1,\n\t\tloeschen_ab: loeschen,\n\t}, 'epa_vorgaenge');\n}\n\nconst AENDERBAR = ['vorgangstyp', 'conversation_id', 'letzte_message_id', 'neue_message_ids', 'absender_name', 'betreff',\n\t'betreff_normalisiert', 'extrahierte_daten', 'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist',\n\t'erinnerungen_gesendet', 'bearbeiter', 'freigabe_id_aktuell', 'spoofing_hinweis'];\n\n/**\n * Teil-Update eines Vorgangs. Gibt nur geänderte Spalten + neue Version zurück.\n * neue_message_ids werden an bekannte_message_ids angehängt (ohne Duplikate).\n */\nfunction aktualisierungBerechnen(vorgang, daten) {\n\tconst patch = {};\n\tfor (const [k, v] of Object.entries(daten || {})) {\n\t\tif (!AENDERBAR.includes(k)) throw new Error(`Feld \"${k}\" ist nicht änderbar`);\n\t\tif (k === 'neue_message_ids') {\n\t\t\tconst alle = [...(vorgang.bekannte_message_ids || []), ...(v || [])];\n\t\t\tpatch.bekannte_message_ids = [...new Set(alle)];\n\t\t} else {\n\t\t\tpatch[k] = v;\n\t\t}\n\t}\n\tpatch.version = Number(vorgang.version) + 1;\n\treturn zeileSchreiben(patch, 'epa_vorgaenge');\n}\n\n/** Filtert offene Vorgänge eines Kunden nach Zuordnungskriterien (wie die SQL-Variante). */\nfunction kandidatenFiltern(zeilen, kriterien) {\n\tconst k = kriterien || {};\n\tconst ids = new Set(k.message_ids || []);\n\tconst vids = new Set(k.vorgangs_ids || []);\n\tconst absender = k.absender_adresse ? String(k.absender_adresse).toLowerCase() : null;\n\treturn (zeilen || [])\n\t\t.map((z) => zeileLesen(z, 'epa_vorgaenge'))\n\t\t.filter((v) => v && !OFFEN_AUSGESCHLOSSEN.includes(v.status))\n\t\t.filter((v) =>\n\t\t\t(v.bekannte_message_ids || []).some((m) => ids.has(m)) ||\n\t\t\t(k.conversation_id && v.conversation_id === k.conversation_id) ||\n\t\t\t(absender && String(v.absender_adresse || '').toLowerCase() === absender) ||\n\t\t\t(k.betreff_normalisiert && v.betreff_normalisiert === k.betreff_normalisiert) ||\n\t\t\tvids.has(v.vorgangs_id))\n\t\t.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))\n\t\t.slice(0, 20)\n\t\t.map((v) => ({\n\t\t\tvorgangs_id: v.vorgangs_id, status: v.status, conversation_id: v.conversation_id,\n\t\t\tbekannte_message_ids: v.bekannte_message_ids, absender_adresse: v.absender_adresse,\n\t\t\tbetreff_normalisiert: v.betreff_normalisiert, version: v.version, geaendert_am: v.updatedAt,\n\t\t}));\n}\n\n/**\n * Entscheidet über eine Sperre. Ergebnis enthält die Werte für ein bedingtes Update\n * (Compare-and-Set auf lock_durch): Nur wenn lock_durch noch den gelesenen Wert hat, wird gesperrt.\n */\nfunction sperreEntscheiden(vorgang, wer, sekunden, jetzt) {\n\tconst t = new Date(jetzt).getTime();\n\tconst bis = vorgang.lock_bis ? new Date(vorgang.lock_bis).getTime() : null;\n\tconst frei = !vorgang.lock_durch || bis === null || bis < t || vorgang.lock_durch === wer;\n\treturn {\n\t\tmoeglich: frei,\n\t\tvorher_durch: vorgang.lock_durch || null,\n\t\tvorher_bis: vorgang.lock_bis || null,\n\t\tneu: { lock_durch: wer, lock_bis: new Date(t + sekunden * 1000).toISOString() },\n\t};\n}\n\nmodule.exports = {\n\tSPALTEN,\n\tJSON_SPALTEN,\n\tAENDERBAR,\n\tzeileLesen,\n\tzeileSchreiben,\n\tvorgangsIdAusZeile,\n\tneuerVorgang,\n\taktualisierungBerechnen,\n\tkandidatenFiltern,\n\tsperreEntscheiden,\n};\nreturn module.exports;\n})();\n// ===== Ende src/datenTabellen.js =====\n\n// ----- Node-Logik -----\nconst e = $('Eingabe prüfen').first().json;\nconst k = $input.first().json;\nif (!k || k.id === undefined) throw fehlerklassen.epaFehler('KONFIG_NICHT_GEFUNDEN', null, `Kunde \"${e.kunde_id}\" hat keine Config, Vorgang nicht angelegt`);\nconst zeile = datenTabellen.neuerVorgang(e.kunde_id, e.daten, {\n\taufbewahrungTage: k.aufbewahrung_tage,\n\tjetzt: new Date().toISOString(),\n\tplatzhalterId: 'NEU-' + $execution.id + '-' + Math.random().toString(36).slice(2, 10),\n});\nreturn [{ json: zeile }];\n"
+      },
+      "id": "c267867a-bc32-4262-a4f0-80f3f1f9e380",
+      "name": "Neuen Vorgang vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_vorgaenge"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "326798ac-85b1-431f-a804-13f5fdf125ee",
+      "name": "Vorgang einfügen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1140,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/datenTabellen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst datenTabellen = (() => {\nconst module = { exports: {} };\n// Hilfsfunktionen für den Speicher-Adapter \"n8n Data Tables\".\n// Data Tables kennen nur string/number/boolean/date. JSON-Felder werden als Text gespeichert und hier\n// beim Lesen geparst bzw. beim Schreiben serialisiert. Der Data-Table-Node übernimmt im Modus\n// \"autoMapInputData\" genau die Felder des Eingabe-Items; deshalb erzeugen diese Funktionen nur\n// gültige Spalten (unbekannte Spalten würden den Node abbrechen lassen).\n\nconst SPALTEN = {\n\tepa_vorgaenge: [\n\t\t'vorgangs_id', 'kunde_id', 'vorgangstyp', 'status', 'conversation_id', 'erste_message_id', 'letzte_message_id',\n\t\t'bekannte_message_ids', 'absender_adresse', 'absender_name', 'betreff', 'betreff_normalisiert', 'extrahierte_daten',\n\t\t'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist', 'erinnerungen_gesendet', 'bearbeiter',\n\t\t'freigabe_id_aktuell', 'spoofing_hinweis', 'version', 'lock_bis', 'lock_durch', 'loeschen_ab',\n\t],\n\tepa_audit_log: ['kunde_id', 'vorgangs_id', 'typ', 'alt', 'neu', 'ausloeser', 'details', 'referenz'],\n};\n\nconst JSON_SPALTEN = {\n\tepa_vorgaenge: { bekannte_message_ids: [], extrahierte_daten: {}, fehlende_felder: [], konflikte: [] },\n\tepa_audit_log: { details: {} },\n};\n\nconst OFFEN_AUSGESCHLOSSEN = ['Abgeschlossen', 'Ignoriert'];\n\nfunction parseJsonSpalte(wert, standard) {\n\tif (wert === null || wert === undefined || wert === '') return Array.isArray(standard) ? [] : { ...standard };\n\tif (typeof wert === 'object') return wert;\n\ttry {\n\t\treturn JSON.parse(wert);\n\t} catch {\n\t\treturn Array.isArray(standard) ? [] : { ...standard };\n\t}\n}\n\n/** Item eines Data-Table-Lesezugriffs -> Objekt (oder null, wenn leer, z. B. bei alwaysOutputData). */\nfunction zeileLesen(row, tabelle) {\n\tif (!row || row.id === undefined || row.id === null) return null;\n\tconst out = { ...row };\n\tfor (const [spalte, standard] of Object.entries(JSON_SPALTEN[tabelle] || {})) out[spalte] = parseJsonSpalte(row[spalte], standard);\n\treturn out;\n}\n\n/** Objekt -> schreibbare Zeile (nur bekannte Spalten, JSON als Text, undefined entfernt). */\nfunction zeileSchreiben(obj, tabelle) {\n\tconst erlaubt = SPALTEN[tabelle];\n\tif (!erlaubt) throw new Error(`Unbekannte Tabelle ${tabelle}`);\n\tconst json = JSON_SPALTEN[tabelle] || {};\n\tconst out = {};\n\tfor (const [k, v] of Object.entries(obj || {})) {\n\t\tif (!erlaubt.includes(k)) throw new Error(`Spalte \"${k}\" gibt es in ${tabelle} nicht`);\n\t\tif (v === undefined) continue;\n\t\tout[k] = k in json && v !== null && typeof v !== 'string' ? JSON.stringify(v) : v;\n\t}\n\treturn out;\n}\n\n/** Kollisionsfreie Vorgangs-ID aus der fortlaufenden Zeilen-ID der Data Table. */\nfunction vorgangsIdAusZeile(zeilenId, jahr) {\n\tconst n = Number(zeilenId);\n\tif (!Number.isInteger(n) || n < 1) throw new Error(`Ungültige Zeilen-ID ${zeilenId}`);\n\treturn `V-${jahr}-${String(n).padStart(4, '0')}`;\n}\n\n/** Neuer Vorgang (Status \"Neu\") aus den erlaubten Anlage-Feldern. */\nfunction neuerVorgang(kundeId, daten, { aufbewahrungTage, jetzt, platzhalterId }) {\n\tconst d = daten || {};\n\tconst loeschen = new Date(new Date(jetzt).getTime() + Number(aufbewahrungTage) * 86400000).toISOString();\n\treturn zeileSchreiben({\n\t\tvorgangs_id: platzhalterId,\n\t\tkunde_id: kundeId,\n\t\tvorgangstyp: d.vorgangstyp ?? null,\n\t\tstatus: 'Neu',\n\t\tconversation_id: d.conversation_id ?? null,\n\t\terste_message_id: d.erste_message_id ?? null,\n\t\tletzte_message_id: d.erste_message_id ?? null,\n\t\tbekannte_message_ids: d.erste_message_id ? [d.erste_message_id] : [],\n\t\tabsender_adresse: d.absender_adresse ? String(d.absender_adresse).toLowerCase() : null,\n\t\tabsender_name: d.absender_name ?? null,\n\t\tbetreff: d.betreff ?? null,\n\t\tbetreff_normalisiert: d.betreff_normalisiert ?? null,\n\t\textrahierte_daten: {},\n\t\tfehlende_felder: [],\n\t\tkonflikte: [],\n\t\trundenzaehler: 0,\n\t\terinnerungen_gesendet: 0,\n\t\tspoofing_hinweis: d.spoofing_hinweis ?? null,\n\t\tversion: 1,\n\t\tloeschen_ab: loeschen,\n\t}, 'epa_vorgaenge');\n}\n\nconst AENDERBAR = ['vorgangstyp', 'conversation_id', 'letzte_message_id', 'neue_message_ids', 'absender_name', 'betreff',\n\t'betreff_normalisiert', 'extrahierte_daten', 'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist',\n\t'erinnerungen_gesendet', 'bearbeiter', 'freigabe_id_aktuell', 'spoofing_hinweis'];\n\n/**\n * Teil-Update eines Vorgangs. Gibt nur geänderte Spalten + neue Version zurück.\n * neue_message_ids werden an bekannte_message_ids angehängt (ohne Duplikate).\n */\nfunction aktualisierungBerechnen(vorgang, daten) {\n\tconst patch = {};\n\tfor (const [k, v] of Object.entries(daten || {})) {\n\t\tif (!AENDERBAR.includes(k)) throw new Error(`Feld \"${k}\" ist nicht änderbar`);\n\t\tif (k === 'neue_message_ids') {\n\t\t\tconst alle = [...(vorgang.bekannte_message_ids || []), ...(v || [])];\n\t\t\tpatch.bekannte_message_ids = [...new Set(alle)];\n\t\t} else {\n\t\t\tpatch[k] = v;\n\t\t}\n\t}\n\tpatch.version = Number(vorgang.version) + 1;\n\treturn zeileSchreiben(patch, 'epa_vorgaenge');\n}\n\n/** Filtert offene Vorgänge eines Kunden nach Zuordnungskriterien (wie die SQL-Variante). */\nfunction kandidatenFiltern(zeilen, kriterien) {\n\tconst k = kriterien || {};\n\tconst ids = new Set(k.message_ids || []);\n\tconst vids = new Set(k.vorgangs_ids || []);\n\tconst absender = k.absender_adresse ? String(k.absender_adresse).toLowerCase() : null;\n\treturn (zeilen || [])\n\t\t.map((z) => zeileLesen(z, 'epa_vorgaenge'))\n\t\t.filter((v) => v && !OFFEN_AUSGESCHLOSSEN.includes(v.status))\n\t\t.filter((v) =>\n\t\t\t(v.bekannte_message_ids || []).some((m) => ids.has(m)) ||\n\t\t\t(k.conversation_id && v.conversation_id === k.conversation_id) ||\n\t\t\t(absender && String(v.absender_adresse || '').toLowerCase() === absender) ||\n\t\t\t(k.betreff_normalisiert && v.betreff_normalisiert === k.betreff_normalisiert) ||\n\t\t\tvids.has(v.vorgangs_id))\n\t\t.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))\n\t\t.slice(0, 20)\n\t\t.map((v) => ({\n\t\t\tvorgangs_id: v.vorgangs_id, status: v.status, conversation_id: v.conversation_id,\n\t\t\tbekannte_message_ids: v.bekannte_message_ids, absender_adresse: v.absender_adresse,\n\t\t\tbetreff_normalisiert: v.betreff_normalisiert, version: v.version, geaendert_am: v.updatedAt,\n\t\t}));\n}\n\n/**\n * Entscheidet über eine Sperre. Ergebnis enthält die Werte für ein bedingtes Update\n * (Compare-and-Set auf lock_durch): Nur wenn lock_durch noch den gelesenen Wert hat, wird gesperrt.\n */\nfunction sperreEntscheiden(vorgang, wer, sekunden, jetzt) {\n\tconst t = new Date(jetzt).getTime();\n\tconst bis = vorgang.lock_bis ? new Date(vorgang.lock_bis).getTime() : null;\n\tconst frei = !vorgang.lock_durch || bis === null || bis < t || vorgang.lock_durch === wer;\n\treturn {\n\t\tmoeglich: frei,\n\t\tvorher_durch: vorgang.lock_durch || null,\n\t\tvorher_bis: vorgang.lock_bis || null,\n\t\tneu: { lock_durch: wer, lock_bis: new Date(t + sekunden * 1000).toISOString() },\n\t};\n}\n\nmodule.exports = {\n\tSPALTEN,\n\tJSON_SPALTEN,\n\tAENDERBAR,\n\tzeileLesen,\n\tzeileSchreiben,\n\tvorgangsIdAusZeile,\n\tneuerVorgang,\n\taktualisierungBerechnen,\n\tkandidatenFiltern,\n\tsperreEntscheiden,\n};\nreturn module.exports;\n})();\n// ===== Ende src/datenTabellen.js =====\n\n// ----- Node-Logik -----\nconst r = $input.first().json;\nconst jahr = DateTime.now().setZone('Europe/Berlin').year;\nreturn [{ json: { vorgangs_id: datenTabellen.vorgangsIdAusZeile(r.id, jahr) } }];\n"
+      },
+      "id": "8b25bb0b-f74d-462c-a657-67e29d7211f2",
+      "name": "Vorgangs-ID vergeben",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_vorgaenge"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Vorgang einfügen').first().json.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "f92373ac-c29d-4a04-a5f6-84aa45f8fbd4",
+      "name": "Vorgangs-ID schreiben",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1580,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Eingabe prüfen').first().json;\nconst v = $('Vorgangs-ID vergeben').first().json;\nreturn [{ json: {\n\tkunde_id: e.kunde_id,\n\tvorgangs_id: v.vorgangs_id,\n\ttyp: 'STATUS',\n\talt: null,\n\tneu: 'Neu',\n\tausloeser: 'System',\n\tdetails: JSON.stringify({ aktion: 'anlegen' }),\n\treferenz: e.referenz,\n} }];\n"
+      },
+      "id": "fdfa8c24-7b14-4eb3-a893-0728bae00e21",
+      "name": "Anlage-Audit vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_audit_log"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "c31bacce-442a-4305-a3aa-1e83205ba385",
+      "name": "Anlage-Audit schreiben",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2020,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/datenTabellen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst datenTabellen = (() => {\nconst module = { exports: {} };\n// Hilfsfunktionen für den Speicher-Adapter \"n8n Data Tables\".\n// Data Tables kennen nur string/number/boolean/date. JSON-Felder werden als Text gespeichert und hier\n// beim Lesen geparst bzw. beim Schreiben serialisiert. Der Data-Table-Node übernimmt im Modus\n// \"autoMapInputData\" genau die Felder des Eingabe-Items; deshalb erzeugen diese Funktionen nur\n// gültige Spalten (unbekannte Spalten würden den Node abbrechen lassen).\n\nconst SPALTEN = {\n\tepa_vorgaenge: [\n\t\t'vorgangs_id', 'kunde_id', 'vorgangstyp', 'status', 'conversation_id', 'erste_message_id', 'letzte_message_id',\n\t\t'bekannte_message_ids', 'absender_adresse', 'absender_name', 'betreff', 'betreff_normalisiert', 'extrahierte_daten',\n\t\t'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist', 'erinnerungen_gesendet', 'bearbeiter',\n\t\t'freigabe_id_aktuell', 'spoofing_hinweis', 'version', 'lock_bis', 'lock_durch', 'loeschen_ab',\n\t],\n\tepa_audit_log: ['kunde_id', 'vorgangs_id', 'typ', 'alt', 'neu', 'ausloeser', 'details', 'referenz'],\n};\n\nconst JSON_SPALTEN = {\n\tepa_vorgaenge: { bekannte_message_ids: [], extrahierte_daten: {}, fehlende_felder: [], konflikte: [] },\n\tepa_audit_log: { details: {} },\n};\n\nconst OFFEN_AUSGESCHLOSSEN = ['Abgeschlossen', 'Ignoriert'];\n\nfunction parseJsonSpalte(wert, standard) {\n\tif (wert === null || wert === undefined || wert === '') return Array.isArray(standard) ? [] : { ...standard };\n\tif (typeof wert === 'object') return wert;\n\ttry {\n\t\treturn JSON.parse(wert);\n\t} catch {\n\t\treturn Array.isArray(standard) ? [] : { ...standard };\n\t}\n}\n\n/** Item eines Data-Table-Lesezugriffs -> Objekt (oder null, wenn leer, z. B. bei alwaysOutputData). */\nfunction zeileLesen(row, tabelle) {\n\tif (!row || row.id === undefined || row.id === null) return null;\n\tconst out = { ...row };\n\tfor (const [spalte, standard] of Object.entries(JSON_SPALTEN[tabelle] || {})) out[spalte] = parseJsonSpalte(row[spalte], standard);\n\treturn out;\n}\n\n/** Objekt -> schreibbare Zeile (nur bekannte Spalten, JSON als Text, undefined entfernt). */\nfunction zeileSchreiben(obj, tabelle) {\n\tconst erlaubt = SPALTEN[tabelle];\n\tif (!erlaubt) throw new Error(`Unbekannte Tabelle ${tabelle}`);\n\tconst json = JSON_SPALTEN[tabelle] || {};\n\tconst out = {};\n\tfor (const [k, v] of Object.entries(obj || {})) {\n\t\tif (!erlaubt.includes(k)) throw new Error(`Spalte \"${k}\" gibt es in ${tabelle} nicht`);\n\t\tif (v === undefined) continue;\n\t\tout[k] = k in json && v !== null && typeof v !== 'string' ? JSON.stringify(v) : v;\n\t}\n\treturn out;\n}\n\n/** Kollisionsfreie Vorgangs-ID aus der fortlaufenden Zeilen-ID der Data Table. */\nfunction vorgangsIdAusZeile(zeilenId, jahr) {\n\tconst n = Number(zeilenId);\n\tif (!Number.isInteger(n) || n < 1) throw new Error(`Ungültige Zeilen-ID ${zeilenId}`);\n\treturn `V-${jahr}-${String(n).padStart(4, '0')}`;\n}\n\n/** Neuer Vorgang (Status \"Neu\") aus den erlaubten Anlage-Feldern. */\nfunction neuerVorgang(kundeId, daten, { aufbewahrungTage, jetzt, platzhalterId }) {\n\tconst d = daten || {};\n\tconst loeschen = new Date(new Date(jetzt).getTime() + Number(aufbewahrungTage) * 86400000).toISOString();\n\treturn zeileSchreiben({\n\t\tvorgangs_id: platzhalterId,\n\t\tkunde_id: kundeId,\n\t\tvorgangstyp: d.vorgangstyp ?? null,\n\t\tstatus: 'Neu',\n\t\tconversation_id: d.conversation_id ?? null,\n\t\terste_message_id: d.erste_message_id ?? null,\n\t\tletzte_message_id: d.erste_message_id ?? null,\n\t\tbekannte_message_ids: d.erste_message_id ? [d.erste_message_id] : [],\n\t\tabsender_adresse: d.absender_adresse ? String(d.absender_adresse).toLowerCase() : null,\n\t\tabsender_name: d.absender_name ?? null,\n\t\tbetreff: d.betreff ?? null,\n\t\tbetreff_normalisiert: d.betreff_normalisiert ?? null,\n\t\textrahierte_daten: {},\n\t\tfehlende_felder: [],\n\t\tkonflikte: [],\n\t\trundenzaehler: 0,\n\t\terinnerungen_gesendet: 0,\n\t\tspoofing_hinweis: d.spoofing_hinweis ?? null,\n\t\tversion: 1,\n\t\tloeschen_ab: loeschen,\n\t}, 'epa_vorgaenge');\n}\n\nconst AENDERBAR = ['vorgangstyp', 'conversation_id', 'letzte_message_id', 'neue_message_ids', 'absender_name', 'betreff',\n\t'betreff_normalisiert', 'extrahierte_daten', 'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist',\n\t'erinnerungen_gesendet', 'bearbeiter', 'freigabe_id_aktuell', 'spoofing_hinweis'];\n\n/**\n * Teil-Update eines Vorgangs. Gibt nur geänderte Spalten + neue Version zurück.\n * neue_message_ids werden an bekannte_message_ids angehängt (ohne Duplikate).\n */\nfunction aktualisierungBerechnen(vorgang, daten) {\n\tconst patch = {};\n\tfor (const [k, v] of Object.entries(daten || {})) {\n\t\tif (!AENDERBAR.includes(k)) throw new Error(`Feld \"${k}\" ist nicht änderbar`);\n\t\tif (k === 'neue_message_ids') {\n\t\t\tconst alle = [...(vorgang.bekannte_message_ids || []), ...(v || [])];\n\t\t\tpatch.bekannte_message_ids = [...new Set(alle)];\n\t\t} else {\n\t\t\tpatch[k] = v;\n\t\t}\n\t}\n\tpatch.version = Number(vorgang.version) + 1;\n\treturn zeileSchreiben(patch, 'epa_vorgaenge');\n}\n\n/** Filtert offene Vorgänge eines Kunden nach Zuordnungskriterien (wie die SQL-Variante). */\nfunction kandidatenFiltern(zeilen, kriterien) {\n\tconst k = kriterien || {};\n\tconst ids = new Set(k.message_ids || []);\n\tconst vids = new Set(k.vorgangs_ids || []);\n\tconst absender = k.absender_adresse ? String(k.absender_adresse).toLowerCase() : null;\n\treturn (zeilen || [])\n\t\t.map((z) => zeileLesen(z, 'epa_vorgaenge'))\n\t\t.filter((v) => v && !OFFEN_AUSGESCHLOSSEN.includes(v.status))\n\t\t.filter((v) =>\n\t\t\t(v.bekannte_message_ids || []).some((m) => ids.has(m)) ||\n\t\t\t(k.conversation_id && v.conversation_id === k.conversation_id) ||\n\t\t\t(absender && String(v.absender_adresse || '').toLowerCase() === absender) ||\n\t\t\t(k.betreff_normalisiert && v.betreff_normalisiert === k.betreff_normalisiert) ||\n\t\t\tvids.has(v.vorgangs_id))\n\t\t.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))\n\t\t.slice(0, 20)\n\t\t.map((v) => ({\n\t\t\tvorgangs_id: v.vorgangs_id, status: v.status, conversation_id: v.conversation_id,\n\t\t\tbekannte_message_ids: v.bekannte_message_ids, absender_adresse: v.absender_adresse,\n\t\t\tbetreff_normalisiert: v.betreff_normalisiert, version: v.version, geaendert_am: v.updatedAt,\n\t\t}));\n}\n\n/**\n * Entscheidet über eine Sperre. Ergebnis enthält die Werte für ein bedingtes Update\n * (Compare-and-Set auf lock_durch): Nur wenn lock_durch noch den gelesenen Wert hat, wird gesperrt.\n */\nfunction sperreEntscheiden(vorgang, wer, sekunden, jetzt) {\n\tconst t = new Date(jetzt).getTime();\n\tconst bis = vorgang.lock_bis ? new Date(vorgang.lock_bis).getTime() : null;\n\tconst frei = !vorgang.lock_durch || bis === null || bis < t || vorgang.lock_durch === wer;\n\treturn {\n\t\tmoeglich: frei,\n\t\tvorher_durch: vorgang.lock_durch || null,\n\t\tvorher_bis: vorgang.lock_bis || null,\n\t\tneu: { lock_durch: wer, lock_bis: new Date(t + sekunden * 1000).toISOString() },\n\t};\n}\n\nmodule.exports = {\n\tSPALTEN,\n\tJSON_SPALTEN,\n\tAENDERBAR,\n\tzeileLesen,\n\tzeileSchreiben,\n\tvorgangsIdAusZeile,\n\tneuerVorgang,\n\taktualisierungBerechnen,\n\tkandidatenFiltern,\n\tsperreEntscheiden,\n};\nreturn module.exports;\n})();\n// ===== Ende src/datenTabellen.js =====\n\n// ----- Node-Logik -----\nconst zeile = $('Vorgangs-ID schreiben').first().json;\nreturn [{ json: { vorgang: datenTabellen.zeileLesen(zeile, 'epa_vorgaenge'), audit_id: $input.first().json.id } }];\n"
+      },
+      "id": "9132141a-a609-4644-a8d9-cf464514d0ff",
+      "name": "Anlegen auswerten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_vorgaenge"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "vorgangs_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Eingabe prüfen').first().json.vorgangs_id }}"
+            },
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Eingabe prüfen').first().json.kunde_id }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "id": "79db9ab8-a497-4c6b-aa94-aa2f810b5577",
+      "name": "Vorgang für Änderung lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        700,
+        -160
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId),\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst zeilen = [\n\t\t`<b>EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)}</b> (${escapeHtml(e.klasse)})`,\n\t\t`Workflow: ${escapeHtml(e.workflow_name || e.workflow_id || '?')}`,\n\t\t`Node: ${escapeHtml(e.node || '?')}`,\n\t\t`Vorgang: ${escapeHtml(e.vorgangs_id || '–')}`,\n\t\t`Meldung: ${escapeHtml(e.meldung || '–')}`,\n\t\te.retrybar ? 'Hinweis: vorübergehender Fehler, erneuter Versuch kann helfen.' : 'Hinweis: dauerhafter Fehler, bitte prüfen.',\n\t];\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n// ===== eingebettet aus src/datenTabellen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst datenTabellen = (() => {\nconst module = { exports: {} };\n// Hilfsfunktionen für den Speicher-Adapter \"n8n Data Tables\".\n// Data Tables kennen nur string/number/boolean/date. JSON-Felder werden als Text gespeichert und hier\n// beim Lesen geparst bzw. beim Schreiben serialisiert. Der Data-Table-Node übernimmt im Modus\n// \"autoMapInputData\" genau die Felder des Eingabe-Items; deshalb erzeugen diese Funktionen nur\n// gültige Spalten (unbekannte Spalten würden den Node abbrechen lassen).\n\nconst SPALTEN = {\n\tepa_vorgaenge: [\n\t\t'vorgangs_id', 'kunde_id', 'vorgangstyp', 'status', 'conversation_id', 'erste_message_id', 'letzte_message_id',\n\t\t'bekannte_message_ids', 'absender_adresse', 'absender_name', 'betreff', 'betreff_normalisiert', 'extrahierte_daten',\n\t\t'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist', 'erinnerungen_gesendet', 'bearbeiter',\n\t\t'freigabe_id_aktuell', 'spoofing_hinweis', 'version', 'lock_bis', 'lock_durch', 'loeschen_ab',\n\t],\n\tepa_audit_log: ['kunde_id', 'vorgangs_id', 'typ', 'alt', 'neu', 'ausloeser', 'details', 'referenz'],\n};\n\nconst JSON_SPALTEN = {\n\tepa_vorgaenge: { bekannte_message_ids: [], extrahierte_daten: {}, fehlende_felder: [], konflikte: [] },\n\tepa_audit_log: { details: {} },\n};\n\nconst OFFEN_AUSGESCHLOSSEN = ['Abgeschlossen', 'Ignoriert'];\n\nfunction parseJsonSpalte(wert, standard) {\n\tif (wert === null || wert === undefined || wert === '') return Array.isArray(standard) ? [] : { ...standard };\n\tif (typeof wert === 'object') return wert;\n\ttry {\n\t\treturn JSON.parse(wert);\n\t} catch {\n\t\treturn Array.isArray(standard) ? [] : { ...standard };\n\t}\n}\n\n/** Item eines Data-Table-Lesezugriffs -> Objekt (oder null, wenn leer, z. B. bei alwaysOutputData). */\nfunction zeileLesen(row, tabelle) {\n\tif (!row || row.id === undefined || row.id === null) return null;\n\tconst out = { ...row };\n\tfor (const [spalte, standard] of Object.entries(JSON_SPALTEN[tabelle] || {})) out[spalte] = parseJsonSpalte(row[spalte], standard);\n\treturn out;\n}\n\n/** Objekt -> schreibbare Zeile (nur bekannte Spalten, JSON als Text, undefined entfernt). */\nfunction zeileSchreiben(obj, tabelle) {\n\tconst erlaubt = SPALTEN[tabelle];\n\tif (!erlaubt) throw new Error(`Unbekannte Tabelle ${tabelle}`);\n\tconst json = JSON_SPALTEN[tabelle] || {};\n\tconst out = {};\n\tfor (const [k, v] of Object.entries(obj || {})) {\n\t\tif (!erlaubt.includes(k)) throw new Error(`Spalte \"${k}\" gibt es in ${tabelle} nicht`);\n\t\tif (v === undefined) continue;\n\t\tout[k] = k in json && v !== null && typeof v !== 'string' ? JSON.stringify(v) : v;\n\t}\n\treturn out;\n}\n\n/** Kollisionsfreie Vorgangs-ID aus der fortlaufenden Zeilen-ID der Data Table. */\nfunction vorgangsIdAusZeile(zeilenId, jahr) {\n\tconst n = Number(zeilenId);\n\tif (!Number.isInteger(n) || n < 1) throw new Error(`Ungültige Zeilen-ID ${zeilenId}`);\n\treturn `V-${jahr}-${String(n).padStart(4, '0')}`;\n}\n\n/** Neuer Vorgang (Status \"Neu\") aus den erlaubten Anlage-Feldern. */\nfunction neuerVorgang(kundeId, daten, { aufbewahrungTage, jetzt, platzhalterId }) {\n\tconst d = daten || {};\n\tconst loeschen = new Date(new Date(jetzt).getTime() + Number(aufbewahrungTage) * 86400000).toISOString();\n\treturn zeileSchreiben({\n\t\tvorgangs_id: platzhalterId,\n\t\tkunde_id: kundeId,\n\t\tvorgangstyp: d.vorgangstyp ?? null,\n\t\tstatus: 'Neu',\n\t\tconversation_id: d.conversation_id ?? null,\n\t\terste_message_id: d.erste_message_id ?? null,\n\t\tletzte_message_id: d.erste_message_id ?? null,\n\t\tbekannte_message_ids: d.erste_message_id ? [d.erste_message_id] : [],\n\t\tabsender_adresse: d.absender_adresse ? String(d.absender_adresse).toLowerCase() : null,\n\t\tabsender_name: d.absender_name ?? null,\n\t\tbetreff: d.betreff ?? null,\n\t\tbetreff_normalisiert: d.betreff_normalisiert ?? null,\n\t\textrahierte_daten: {},\n\t\tfehlende_felder: [],\n\t\tkonflikte: [],\n\t\trundenzaehler: 0,\n\t\terinnerungen_gesendet: 0,\n\t\tspoofing_hinweis: d.spoofing_hinweis ?? null,\n\t\tversion: 1,\n\t\tloeschen_ab: loeschen,\n\t}, 'epa_vorgaenge');\n}\n\nconst AENDERBAR = ['vorgangstyp', 'conversation_id', 'letzte_message_id', 'neue_message_ids', 'absender_name', 'betreff',\n\t'betreff_normalisiert', 'extrahierte_daten', 'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist',\n\t'erinnerungen_gesendet', 'bearbeiter', 'freigabe_id_aktuell', 'spoofing_hinweis'];\n\n/**\n * Teil-Update eines Vorgangs. Gibt nur geänderte Spalten + neue Version zurück.\n * neue_message_ids werden an bekannte_message_ids angehängt (ohne Duplikate).\n */\nfunction aktualisierungBerechnen(vorgang, daten) {\n\tconst patch = {};\n\tfor (const [k, v] of Object.entries(daten || {})) {\n\t\tif (!AENDERBAR.includes(k)) throw new Error(`Feld \"${k}\" ist nicht änderbar`);\n\t\tif (k === 'neue_message_ids') {\n\t\t\tconst alle = [...(vorgang.bekannte_message_ids || []), ...(v || [])];\n\t\t\tpatch.bekannte_message_ids = [...new Set(alle)];\n\t\t} else {\n\t\t\tpatch[k] = v;\n\t\t}\n\t}\n\tpatch.version = Number(vorgang.version) + 1;\n\treturn zeileSchreiben(patch, 'epa_vorgaenge');\n}\n\n/** Filtert offene Vorgänge eines Kunden nach Zuordnungskriterien (wie die SQL-Variante). */\nfunction kandidatenFiltern(zeilen, kriterien) {\n\tconst k = kriterien || {};\n\tconst ids = new Set(k.message_ids || []);\n\tconst vids = new Set(k.vorgangs_ids || []);\n\tconst absender = k.absender_adresse ? String(k.absender_adresse).toLowerCase() : null;\n\treturn (zeilen || [])\n\t\t.map((z) => zeileLesen(z, 'epa_vorgaenge'))\n\t\t.filter((v) => v && !OFFEN_AUSGESCHLOSSEN.includes(v.status))\n\t\t.filter((v) =>\n\t\t\t(v.bekannte_message_ids || []).some((m) => ids.has(m)) ||\n\t\t\t(k.conversation_id && v.conversation_id === k.conversation_id) ||\n\t\t\t(absender && String(v.absender_adresse || '').toLowerCase() === absender) ||\n\t\t\t(k.betreff_normalisiert && v.betreff_normalisiert === k.betreff_normalisiert) ||\n\t\t\tvids.has(v.vorgangs_id))\n\t\t.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))\n\t\t.slice(0, 20)\n\t\t.map((v) => ({\n\t\t\tvorgangs_id: v.vorgangs_id, status: v.status, conversation_id: v.conversation_id,\n\t\t\tbekannte_message_ids: v.bekannte_message_ids, absender_adresse: v.absender_adresse,\n\t\t\tbetreff_normalisiert: v.betreff_normalisiert, version: v.version, geaendert_am: v.updatedAt,\n\t\t}));\n}\n\n/**\n * Entscheidet über eine Sperre. Ergebnis enthält die Werte für ein bedingtes Update\n * (Compare-and-Set auf lock_durch): Nur wenn lock_durch noch den gelesenen Wert hat, wird gesperrt.\n */\nfunction sperreEntscheiden(vorgang, wer, sekunden, jetzt) {\n\tconst t = new Date(jetzt).getTime();\n\tconst bis = vorgang.lock_bis ? new Date(vorgang.lock_bis).getTime() : null;\n\tconst frei = !vorgang.lock_durch || bis === null || bis < t || vorgang.lock_durch === wer;\n\treturn {\n\t\tmoeglich: frei,\n\t\tvorher_durch: vorgang.lock_durch || null,\n\t\tvorher_bis: vorgang.lock_bis || null,\n\t\tneu: { lock_durch: wer, lock_bis: new Date(t + sekunden * 1000).toISOString() },\n\t};\n}\n\nmodule.exports = {\n\tSPALTEN,\n\tJSON_SPALTEN,\n\tAENDERBAR,\n\tzeileLesen,\n\tzeileSchreiben,\n\tvorgangsIdAusZeile,\n\tneuerVorgang,\n\taktualisierungBerechnen,\n\tkandidatenFiltern,\n\tsperreEntscheiden,\n};\nreturn module.exports;\n})();\n// ===== Ende src/datenTabellen.js =====\n\n// ----- Node-Logik -----\nconst e = $('Eingabe prüfen').first().json;\nconst v = datenTabellen.zeileLesen($input.first().json, 'epa_vorgaenge');\nif (!v) throw fehlerklassen.epaFehler('VORGANG_NICHT_GEFUNDEN', e.vorgangs_id, 'Vorgang existiert nicht für diesen Kunden');\nif (v.version !== e.erwartete_version) {\n\tthrow fehlerklassen.epaFehler('VERSIONSKONFLIKT', e.vorgangs_id, `erwartet Version ${e.erwartete_version}, aktuell ${v.version}`);\n}\nreturn [{ json: datenTabellen.aktualisierungBerechnen(v, e.daten) }];\n"
+      },
+      "id": "dbaef6f0-43bd-492e-ac01-2ec1d05c53af",
+      "name": "Änderung berechnen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_vorgaenge"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "vorgangs_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Eingabe prüfen').first().json.vorgangs_id }}"
+            },
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Eingabe prüfen').first().json.kunde_id }}"
+            },
+            {
+              "keyName": "version",
+              "condition": "eq",
+              "keyValue": "={{ $('Eingabe prüfen').first().json.erwartete_version }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "f61c54d9-5ca8-40e1-a8b3-23f272be375d",
+      "name": "Vorgang aktualisieren",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1140,
+        -160
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId),\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst zeilen = [\n\t\t`<b>EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)}</b> (${escapeHtml(e.klasse)})`,\n\t\t`Workflow: ${escapeHtml(e.workflow_name || e.workflow_id || '?')}`,\n\t\t`Node: ${escapeHtml(e.node || '?')}`,\n\t\t`Vorgang: ${escapeHtml(e.vorgangs_id || '–')}`,\n\t\t`Meldung: ${escapeHtml(e.meldung || '–')}`,\n\t\te.retrybar ? 'Hinweis: vorübergehender Fehler, erneuter Versuch kann helfen.' : 'Hinweis: dauerhafter Fehler, bitte prüfen.',\n\t];\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n\n// ----- Node-Logik -----\nconst e = $('Eingabe prüfen').first().json;\nconst r = $input.first().json;\nif (!r || r.id === undefined) throw fehlerklassen.epaFehler('VERSIONSKONFLIKT', e.vorgangs_id, `Vorgang wurde parallel geändert (erwartet Version ${e.erwartete_version})`);\nreturn [{ json: {\n\tkunde_id: e.kunde_id,\n\tvorgangs_id: e.vorgangs_id,\n\ttyp: 'SYSTEM',\n\talt: null,\n\tneu: null,\n\tausloeser: 'System',\n\tdetails: JSON.stringify({ aktion: 'aktualisieren', felder: Object.keys(e.daten).sort() }),\n\treferenz: e.referenz,\n} }];\n"
+      },
+      "id": "96ae49ce-2619-4d6d-a59a-50b6459b4a1c",
+      "name": "Aktualisierung prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_audit_log"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "750eafa7-336f-439e-adf8-5764fa82b5eb",
+      "name": "Änderungs-Audit schreiben",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1580,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/datenTabellen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst datenTabellen = (() => {\nconst module = { exports: {} };\n// Hilfsfunktionen für den Speicher-Adapter \"n8n Data Tables\".\n// Data Tables kennen nur string/number/boolean/date. JSON-Felder werden als Text gespeichert und hier\n// beim Lesen geparst bzw. beim Schreiben serialisiert. Der Data-Table-Node übernimmt im Modus\n// \"autoMapInputData\" genau die Felder des Eingabe-Items; deshalb erzeugen diese Funktionen nur\n// gültige Spalten (unbekannte Spalten würden den Node abbrechen lassen).\n\nconst SPALTEN = {\n\tepa_vorgaenge: [\n\t\t'vorgangs_id', 'kunde_id', 'vorgangstyp', 'status', 'conversation_id', 'erste_message_id', 'letzte_message_id',\n\t\t'bekannte_message_ids', 'absender_adresse', 'absender_name', 'betreff', 'betreff_normalisiert', 'extrahierte_daten',\n\t\t'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist', 'erinnerungen_gesendet', 'bearbeiter',\n\t\t'freigabe_id_aktuell', 'spoofing_hinweis', 'version', 'lock_bis', 'lock_durch', 'loeschen_ab',\n\t],\n\tepa_audit_log: ['kunde_id', 'vorgangs_id', 'typ', 'alt', 'neu', 'ausloeser', 'details', 'referenz'],\n};\n\nconst JSON_SPALTEN = {\n\tepa_vorgaenge: { bekannte_message_ids: [], extrahierte_daten: {}, fehlende_felder: [], konflikte: [] },\n\tepa_audit_log: { details: {} },\n};\n\nconst OFFEN_AUSGESCHLOSSEN = ['Abgeschlossen', 'Ignoriert'];\n\nfunction parseJsonSpalte(wert, standard) {\n\tif (wert === null || wert === undefined || wert === '') return Array.isArray(standard) ? [] : { ...standard };\n\tif (typeof wert === 'object') return wert;\n\ttry {\n\t\treturn JSON.parse(wert);\n\t} catch {\n\t\treturn Array.isArray(standard) ? [] : { ...standard };\n\t}\n}\n\n/** Item eines Data-Table-Lesezugriffs -> Objekt (oder null, wenn leer, z. B. bei alwaysOutputData). */\nfunction zeileLesen(row, tabelle) {\n\tif (!row || row.id === undefined || row.id === null) return null;\n\tconst out = { ...row };\n\tfor (const [spalte, standard] of Object.entries(JSON_SPALTEN[tabelle] || {})) out[spalte] = parseJsonSpalte(row[spalte], standard);\n\treturn out;\n}\n\n/** Objekt -> schreibbare Zeile (nur bekannte Spalten, JSON als Text, undefined entfernt). */\nfunction zeileSchreiben(obj, tabelle) {\n\tconst erlaubt = SPALTEN[tabelle];\n\tif (!erlaubt) throw new Error(`Unbekannte Tabelle ${tabelle}`);\n\tconst json = JSON_SPALTEN[tabelle] || {};\n\tconst out = {};\n\tfor (const [k, v] of Object.entries(obj || {})) {\n\t\tif (!erlaubt.includes(k)) throw new Error(`Spalte \"${k}\" gibt es in ${tabelle} nicht`);\n\t\tif (v === undefined) continue;\n\t\tout[k] = k in json && v !== null && typeof v !== 'string' ? JSON.stringify(v) : v;\n\t}\n\treturn out;\n}\n\n/** Kollisionsfreie Vorgangs-ID aus der fortlaufenden Zeilen-ID der Data Table. */\nfunction vorgangsIdAusZeile(zeilenId, jahr) {\n\tconst n = Number(zeilenId);\n\tif (!Number.isInteger(n) || n < 1) throw new Error(`Ungültige Zeilen-ID ${zeilenId}`);\n\treturn `V-${jahr}-${String(n).padStart(4, '0')}`;\n}\n\n/** Neuer Vorgang (Status \"Neu\") aus den erlaubten Anlage-Feldern. */\nfunction neuerVorgang(kundeId, daten, { aufbewahrungTage, jetzt, platzhalterId }) {\n\tconst d = daten || {};\n\tconst loeschen = new Date(new Date(jetzt).getTime() + Number(aufbewahrungTage) * 86400000).toISOString();\n\treturn zeileSchreiben({\n\t\tvorgangs_id: platzhalterId,\n\t\tkunde_id: kundeId,\n\t\tvorgangstyp: d.vorgangstyp ?? null,\n\t\tstatus: 'Neu',\n\t\tconversation_id: d.conversation_id ?? null,\n\t\terste_message_id: d.erste_message_id ?? null,\n\t\tletzte_message_id: d.erste_message_id ?? null,\n\t\tbekannte_message_ids: d.erste_message_id ? [d.erste_message_id] : [],\n\t\tabsender_adresse: d.absender_adresse ? String(d.absender_adresse).toLowerCase() : null,\n\t\tabsender_name: d.absender_name ?? null,\n\t\tbetreff: d.betreff ?? null,\n\t\tbetreff_normalisiert: d.betreff_normalisiert ?? null,\n\t\textrahierte_daten: {},\n\t\tfehlende_felder: [],\n\t\tkonflikte: [],\n\t\trundenzaehler: 0,\n\t\terinnerungen_gesendet: 0,\n\t\tspoofing_hinweis: d.spoofing_hinweis ?? null,\n\t\tversion: 1,\n\t\tloeschen_ab: loeschen,\n\t}, 'epa_vorgaenge');\n}\n\nconst AENDERBAR = ['vorgangstyp', 'conversation_id', 'letzte_message_id', 'neue_message_ids', 'absender_name', 'betreff',\n\t'betreff_normalisiert', 'extrahierte_daten', 'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist',\n\t'erinnerungen_gesendet', 'bearbeiter', 'freigabe_id_aktuell', 'spoofing_hinweis'];\n\n/**\n * Teil-Update eines Vorgangs. Gibt nur geänderte Spalten + neue Version zurück.\n * neue_message_ids werden an bekannte_message_ids angehängt (ohne Duplikate).\n */\nfunction aktualisierungBerechnen(vorgang, daten) {\n\tconst patch = {};\n\tfor (const [k, v] of Object.entries(daten || {})) {\n\t\tif (!AENDERBAR.includes(k)) throw new Error(`Feld \"${k}\" ist nicht änderbar`);\n\t\tif (k === 'neue_message_ids') {\n\t\t\tconst alle = [...(vorgang.bekannte_message_ids || []), ...(v || [])];\n\t\t\tpatch.bekannte_message_ids = [...new Set(alle)];\n\t\t} else {\n\t\t\tpatch[k] = v;\n\t\t}\n\t}\n\tpatch.version = Number(vorgang.version) + 1;\n\treturn zeileSchreiben(patch, 'epa_vorgaenge');\n}\n\n/** Filtert offene Vorgänge eines Kunden nach Zuordnungskriterien (wie die SQL-Variante). */\nfunction kandidatenFiltern(zeilen, kriterien) {\n\tconst k = kriterien || {};\n\tconst ids = new Set(k.message_ids || []);\n\tconst vids = new Set(k.vorgangs_ids || []);\n\tconst absender = k.absender_adresse ? String(k.absender_adresse).toLowerCase() : null;\n\treturn (zeilen || [])\n\t\t.map((z) => zeileLesen(z, 'epa_vorgaenge'))\n\t\t.filter((v) => v && !OFFEN_AUSGESCHLOSSEN.includes(v.status))\n\t\t.filter((v) =>\n\t\t\t(v.bekannte_message_ids || []).some((m) => ids.has(m)) ||\n\t\t\t(k.conversation_id && v.conversation_id === k.conversation_id) ||\n\t\t\t(absender && String(v.absender_adresse || '').toLowerCase() === absender) ||\n\t\t\t(k.betreff_normalisiert && v.betreff_normalisiert === k.betreff_normalisiert) ||\n\t\t\tvids.has(v.vorgangs_id))\n\t\t.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))\n\t\t.slice(0, 20)\n\t\t.map((v) => ({\n\t\t\tvorgangs_id: v.vorgangs_id, status: v.status, conversation_id: v.conversation_id,\n\t\t\tbekannte_message_ids: v.bekannte_message_ids, absender_adresse: v.absender_adresse,\n\t\t\tbetreff_normalisiert: v.betreff_normalisiert, version: v.version, geaendert_am: v.updatedAt,\n\t\t}));\n}\n\n/**\n * Entscheidet über eine Sperre. Ergebnis enthält die Werte für ein bedingtes Update\n * (Compare-and-Set auf lock_durch): Nur wenn lock_durch noch den gelesenen Wert hat, wird gesperrt.\n */\nfunction sperreEntscheiden(vorgang, wer, sekunden, jetzt) {\n\tconst t = new Date(jetzt).getTime();\n\tconst bis = vorgang.lock_bis ? new Date(vorgang.lock_bis).getTime() : null;\n\tconst frei = !vorgang.lock_durch || bis === null || bis < t || vorgang.lock_durch === wer;\n\treturn {\n\t\tmoeglich: frei,\n\t\tvorher_durch: vorgang.lock_durch || null,\n\t\tvorher_bis: vorgang.lock_bis || null,\n\t\tneu: { lock_durch: wer, lock_bis: new Date(t + sekunden * 1000).toISOString() },\n\t};\n}\n\nmodule.exports = {\n\tSPALTEN,\n\tJSON_SPALTEN,\n\tAENDERBAR,\n\tzeileLesen,\n\tzeileSchreiben,\n\tvorgangsIdAusZeile,\n\tneuerVorgang,\n\taktualisierungBerechnen,\n\tkandidatenFiltern,\n\tsperreEntscheiden,\n};\nreturn module.exports;\n})();\n// ===== Ende src/datenTabellen.js =====\n\n// ----- Node-Logik -----\nreturn [{ json: { vorgang: datenTabellen.zeileLesen($('Vorgang aktualisieren').first().json, 'epa_vorgaenge') } }];\n"
+      },
+      "id": "32238877-1910-4884-a68d-494fa43ab7dc",
+      "name": "Aktualisieren auswerten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_vorgaenge"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Eingabe prüfen').first().json.kunde_id }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "250a5e93-70ab-4aef-a89b-8e0480ae1e2b",
+      "name": "Vorgänge des Kunden lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        700,
         0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/datenTabellen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst datenTabellen = (() => {\nconst module = { exports: {} };\n// Hilfsfunktionen für den Speicher-Adapter \"n8n Data Tables\".\n// Data Tables kennen nur string/number/boolean/date. JSON-Felder werden als Text gespeichert und hier\n// beim Lesen geparst bzw. beim Schreiben serialisiert. Der Data-Table-Node übernimmt im Modus\n// \"autoMapInputData\" genau die Felder des Eingabe-Items; deshalb erzeugen diese Funktionen nur\n// gültige Spalten (unbekannte Spalten würden den Node abbrechen lassen).\n\nconst SPALTEN = {\n\tepa_vorgaenge: [\n\t\t'vorgangs_id', 'kunde_id', 'vorgangstyp', 'status', 'conversation_id', 'erste_message_id', 'letzte_message_id',\n\t\t'bekannte_message_ids', 'absender_adresse', 'absender_name', 'betreff', 'betreff_normalisiert', 'extrahierte_daten',\n\t\t'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist', 'erinnerungen_gesendet', 'bearbeiter',\n\t\t'freigabe_id_aktuell', 'spoofing_hinweis', 'version', 'lock_bis', 'lock_durch', 'loeschen_ab',\n\t],\n\tepa_audit_log: ['kunde_id', 'vorgangs_id', 'typ', 'alt', 'neu', 'ausloeser', 'details', 'referenz'],\n};\n\nconst JSON_SPALTEN = {\n\tepa_vorgaenge: { bekannte_message_ids: [], extrahierte_daten: {}, fehlende_felder: [], konflikte: [] },\n\tepa_audit_log: { details: {} },\n};\n\nconst OFFEN_AUSGESCHLOSSEN = ['Abgeschlossen', 'Ignoriert'];\n\nfunction parseJsonSpalte(wert, standard) {\n\tif (wert === null || wert === undefined || wert === '') return Array.isArray(standard) ? [] : { ...standard };\n\tif (typeof wert === 'object') return wert;\n\ttry {\n\t\treturn JSON.parse(wert);\n\t} catch {\n\t\treturn Array.isArray(standard) ? [] : { ...standard };\n\t}\n}\n\n/** Item eines Data-Table-Lesezugriffs -> Objekt (oder null, wenn leer, z. B. bei alwaysOutputData). */\nfunction zeileLesen(row, tabelle) {\n\tif (!row || row.id === undefined || row.id === null) return null;\n\tconst out = { ...row };\n\tfor (const [spalte, standard] of Object.entries(JSON_SPALTEN[tabelle] || {})) out[spalte] = parseJsonSpalte(row[spalte], standard);\n\treturn out;\n}\n\n/** Objekt -> schreibbare Zeile (nur bekannte Spalten, JSON als Text, undefined entfernt). */\nfunction zeileSchreiben(obj, tabelle) {\n\tconst erlaubt = SPALTEN[tabelle];\n\tif (!erlaubt) throw new Error(`Unbekannte Tabelle ${tabelle}`);\n\tconst json = JSON_SPALTEN[tabelle] || {};\n\tconst out = {};\n\tfor (const [k, v] of Object.entries(obj || {})) {\n\t\tif (!erlaubt.includes(k)) throw new Error(`Spalte \"${k}\" gibt es in ${tabelle} nicht`);\n\t\tif (v === undefined) continue;\n\t\tout[k] = k in json && v !== null && typeof v !== 'string' ? JSON.stringify(v) : v;\n\t}\n\treturn out;\n}\n\n/** Kollisionsfreie Vorgangs-ID aus der fortlaufenden Zeilen-ID der Data Table. */\nfunction vorgangsIdAusZeile(zeilenId, jahr) {\n\tconst n = Number(zeilenId);\n\tif (!Number.isInteger(n) || n < 1) throw new Error(`Ungültige Zeilen-ID ${zeilenId}`);\n\treturn `V-${jahr}-${String(n).padStart(4, '0')}`;\n}\n\n/** Neuer Vorgang (Status \"Neu\") aus den erlaubten Anlage-Feldern. */\nfunction neuerVorgang(kundeId, daten, { aufbewahrungTage, jetzt, platzhalterId }) {\n\tconst d = daten || {};\n\tconst loeschen = new Date(new Date(jetzt).getTime() + Number(aufbewahrungTage) * 86400000).toISOString();\n\treturn zeileSchreiben({\n\t\tvorgangs_id: platzhalterId,\n\t\tkunde_id: kundeId,\n\t\tvorgangstyp: d.vorgangstyp ?? null,\n\t\tstatus: 'Neu',\n\t\tconversation_id: d.conversation_id ?? null,\n\t\terste_message_id: d.erste_message_id ?? null,\n\t\tletzte_message_id: d.erste_message_id ?? null,\n\t\tbekannte_message_ids: d.erste_message_id ? [d.erste_message_id] : [],\n\t\tabsender_adresse: d.absender_adresse ? String(d.absender_adresse).toLowerCase() : null,\n\t\tabsender_name: d.absender_name ?? null,\n\t\tbetreff: d.betreff ?? null,\n\t\tbetreff_normalisiert: d.betreff_normalisiert ?? null,\n\t\textrahierte_daten: {},\n\t\tfehlende_felder: [],\n\t\tkonflikte: [],\n\t\trundenzaehler: 0,\n\t\terinnerungen_gesendet: 0,\n\t\tspoofing_hinweis: d.spoofing_hinweis ?? null,\n\t\tversion: 1,\n\t\tloeschen_ab: loeschen,\n\t}, 'epa_vorgaenge');\n}\n\nconst AENDERBAR = ['vorgangstyp', 'conversation_id', 'letzte_message_id', 'neue_message_ids', 'absender_name', 'betreff',\n\t'betreff_normalisiert', 'extrahierte_daten', 'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist',\n\t'erinnerungen_gesendet', 'bearbeiter', 'freigabe_id_aktuell', 'spoofing_hinweis'];\n\n/**\n * Teil-Update eines Vorgangs. Gibt nur geänderte Spalten + neue Version zurück.\n * neue_message_ids werden an bekannte_message_ids angehängt (ohne Duplikate).\n */\nfunction aktualisierungBerechnen(vorgang, daten) {\n\tconst patch = {};\n\tfor (const [k, v] of Object.entries(daten || {})) {\n\t\tif (!AENDERBAR.includes(k)) throw new Error(`Feld \"${k}\" ist nicht änderbar`);\n\t\tif (k === 'neue_message_ids') {\n\t\t\tconst alle = [...(vorgang.bekannte_message_ids || []), ...(v || [])];\n\t\t\tpatch.bekannte_message_ids = [...new Set(alle)];\n\t\t} else {\n\t\t\tpatch[k] = v;\n\t\t}\n\t}\n\tpatch.version = Number(vorgang.version) + 1;\n\treturn zeileSchreiben(patch, 'epa_vorgaenge');\n}\n\n/** Filtert offene Vorgänge eines Kunden nach Zuordnungskriterien (wie die SQL-Variante). */\nfunction kandidatenFiltern(zeilen, kriterien) {\n\tconst k = kriterien || {};\n\tconst ids = new Set(k.message_ids || []);\n\tconst vids = new Set(k.vorgangs_ids || []);\n\tconst absender = k.absender_adresse ? String(k.absender_adresse).toLowerCase() : null;\n\treturn (zeilen || [])\n\t\t.map((z) => zeileLesen(z, 'epa_vorgaenge'))\n\t\t.filter((v) => v && !OFFEN_AUSGESCHLOSSEN.includes(v.status))\n\t\t.filter((v) =>\n\t\t\t(v.bekannte_message_ids || []).some((m) => ids.has(m)) ||\n\t\t\t(k.conversation_id && v.conversation_id === k.conversation_id) ||\n\t\t\t(absender && String(v.absender_adresse || '').toLowerCase() === absender) ||\n\t\t\t(k.betreff_normalisiert && v.betreff_normalisiert === k.betreff_normalisiert) ||\n\t\t\tvids.has(v.vorgangs_id))\n\t\t.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))\n\t\t.slice(0, 20)\n\t\t.map((v) => ({\n\t\t\tvorgangs_id: v.vorgangs_id, status: v.status, conversation_id: v.conversation_id,\n\t\t\tbekannte_message_ids: v.bekannte_message_ids, absender_adresse: v.absender_adresse,\n\t\t\tbetreff_normalisiert: v.betreff_normalisiert, version: v.version, geaendert_am: v.updatedAt,\n\t\t}));\n}\n\n/**\n * Entscheidet über eine Sperre. Ergebnis enthält die Werte für ein bedingtes Update\n * (Compare-and-Set auf lock_durch): Nur wenn lock_durch noch den gelesenen Wert hat, wird gesperrt.\n */\nfunction sperreEntscheiden(vorgang, wer, sekunden, jetzt) {\n\tconst t = new Date(jetzt).getTime();\n\tconst bis = vorgang.lock_bis ? new Date(vorgang.lock_bis).getTime() : null;\n\tconst frei = !vorgang.lock_durch || bis === null || bis < t || vorgang.lock_durch === wer;\n\treturn {\n\t\tmoeglich: frei,\n\t\tvorher_durch: vorgang.lock_durch || null,\n\t\tvorher_bis: vorgang.lock_bis || null,\n\t\tneu: { lock_durch: wer, lock_bis: new Date(t + sekunden * 1000).toISOString() },\n\t};\n}\n\nmodule.exports = {\n\tSPALTEN,\n\tJSON_SPALTEN,\n\tAENDERBAR,\n\tzeileLesen,\n\tzeileSchreiben,\n\tvorgangsIdAusZeile,\n\tneuerVorgang,\n\taktualisierungBerechnen,\n\tkandidatenFiltern,\n\tsperreEntscheiden,\n};\nreturn module.exports;\n})();\n// ===== Ende src/datenTabellen.js =====\n\n// ----- Node-Logik -----\nconst e = $('Eingabe prüfen').first().json;\nconst zeilen = $input.all().map((i) => i.json);\nreturn [{ json: { kandidaten: datenTabellen.kandidatenFiltern(zeilen, e.daten) } }];\n"
+      },
+      "id": "0cc6a1d5-303e-47d7-a4bd-8d13ccf73cea",
+      "name": "Kandidaten filtern",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_vorgaenge"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "vorgangs_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Eingabe prüfen').first().json.vorgangs_id }}"
+            },
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Eingabe prüfen').first().json.kunde_id }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "id": "c273e68d-2f05-4f3a-a677-6299f666f59d",
+      "name": "Vorgang für Sperre lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        700,
+        160
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId),\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst zeilen = [\n\t\t`<b>EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)}</b> (${escapeHtml(e.klasse)})`,\n\t\t`Workflow: ${escapeHtml(e.workflow_name || e.workflow_id || '?')}`,\n\t\t`Node: ${escapeHtml(e.node || '?')}`,\n\t\t`Vorgang: ${escapeHtml(e.vorgangs_id || '–')}`,\n\t\t`Meldung: ${escapeHtml(e.meldung || '–')}`,\n\t\te.retrybar ? 'Hinweis: vorübergehender Fehler, erneuter Versuch kann helfen.' : 'Hinweis: dauerhafter Fehler, bitte prüfen.',\n\t];\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n// ===== eingebettet aus src/datenTabellen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst datenTabellen = (() => {\nconst module = { exports: {} };\n// Hilfsfunktionen für den Speicher-Adapter \"n8n Data Tables\".\n// Data Tables kennen nur string/number/boolean/date. JSON-Felder werden als Text gespeichert und hier\n// beim Lesen geparst bzw. beim Schreiben serialisiert. Der Data-Table-Node übernimmt im Modus\n// \"autoMapInputData\" genau die Felder des Eingabe-Items; deshalb erzeugen diese Funktionen nur\n// gültige Spalten (unbekannte Spalten würden den Node abbrechen lassen).\n\nconst SPALTEN = {\n\tepa_vorgaenge: [\n\t\t'vorgangs_id', 'kunde_id', 'vorgangstyp', 'status', 'conversation_id', 'erste_message_id', 'letzte_message_id',\n\t\t'bekannte_message_ids', 'absender_adresse', 'absender_name', 'betreff', 'betreff_normalisiert', 'extrahierte_daten',\n\t\t'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist', 'erinnerungen_gesendet', 'bearbeiter',\n\t\t'freigabe_id_aktuell', 'spoofing_hinweis', 'version', 'lock_bis', 'lock_durch', 'loeschen_ab',\n\t],\n\tepa_audit_log: ['kunde_id', 'vorgangs_id', 'typ', 'alt', 'neu', 'ausloeser', 'details', 'referenz'],\n};\n\nconst JSON_SPALTEN = {\n\tepa_vorgaenge: { bekannte_message_ids: [], extrahierte_daten: {}, fehlende_felder: [], konflikte: [] },\n\tepa_audit_log: { details: {} },\n};\n\nconst OFFEN_AUSGESCHLOSSEN = ['Abgeschlossen', 'Ignoriert'];\n\nfunction parseJsonSpalte(wert, standard) {\n\tif (wert === null || wert === undefined || wert === '') return Array.isArray(standard) ? [] : { ...standard };\n\tif (typeof wert === 'object') return wert;\n\ttry {\n\t\treturn JSON.parse(wert);\n\t} catch {\n\t\treturn Array.isArray(standard) ? [] : { ...standard };\n\t}\n}\n\n/** Item eines Data-Table-Lesezugriffs -> Objekt (oder null, wenn leer, z. B. bei alwaysOutputData). */\nfunction zeileLesen(row, tabelle) {\n\tif (!row || row.id === undefined || row.id === null) return null;\n\tconst out = { ...row };\n\tfor (const [spalte, standard] of Object.entries(JSON_SPALTEN[tabelle] || {})) out[spalte] = parseJsonSpalte(row[spalte], standard);\n\treturn out;\n}\n\n/** Objekt -> schreibbare Zeile (nur bekannte Spalten, JSON als Text, undefined entfernt). */\nfunction zeileSchreiben(obj, tabelle) {\n\tconst erlaubt = SPALTEN[tabelle];\n\tif (!erlaubt) throw new Error(`Unbekannte Tabelle ${tabelle}`);\n\tconst json = JSON_SPALTEN[tabelle] || {};\n\tconst out = {};\n\tfor (const [k, v] of Object.entries(obj || {})) {\n\t\tif (!erlaubt.includes(k)) throw new Error(`Spalte \"${k}\" gibt es in ${tabelle} nicht`);\n\t\tif (v === undefined) continue;\n\t\tout[k] = k in json && v !== null && typeof v !== 'string' ? JSON.stringify(v) : v;\n\t}\n\treturn out;\n}\n\n/** Kollisionsfreie Vorgangs-ID aus der fortlaufenden Zeilen-ID der Data Table. */\nfunction vorgangsIdAusZeile(zeilenId, jahr) {\n\tconst n = Number(zeilenId);\n\tif (!Number.isInteger(n) || n < 1) throw new Error(`Ungültige Zeilen-ID ${zeilenId}`);\n\treturn `V-${jahr}-${String(n).padStart(4, '0')}`;\n}\n\n/** Neuer Vorgang (Status \"Neu\") aus den erlaubten Anlage-Feldern. */\nfunction neuerVorgang(kundeId, daten, { aufbewahrungTage, jetzt, platzhalterId }) {\n\tconst d = daten || {};\n\tconst loeschen = new Date(new Date(jetzt).getTime() + Number(aufbewahrungTage) * 86400000).toISOString();\n\treturn zeileSchreiben({\n\t\tvorgangs_id: platzhalterId,\n\t\tkunde_id: kundeId,\n\t\tvorgangstyp: d.vorgangstyp ?? null,\n\t\tstatus: 'Neu',\n\t\tconversation_id: d.conversation_id ?? null,\n\t\terste_message_id: d.erste_message_id ?? null,\n\t\tletzte_message_id: d.erste_message_id ?? null,\n\t\tbekannte_message_ids: d.erste_message_id ? [d.erste_message_id] : [],\n\t\tabsender_adresse: d.absender_adresse ? String(d.absender_adresse).toLowerCase() : null,\n\t\tabsender_name: d.absender_name ?? null,\n\t\tbetreff: d.betreff ?? null,\n\t\tbetreff_normalisiert: d.betreff_normalisiert ?? null,\n\t\textrahierte_daten: {},\n\t\tfehlende_felder: [],\n\t\tkonflikte: [],\n\t\trundenzaehler: 0,\n\t\terinnerungen_gesendet: 0,\n\t\tspoofing_hinweis: d.spoofing_hinweis ?? null,\n\t\tversion: 1,\n\t\tloeschen_ab: loeschen,\n\t}, 'epa_vorgaenge');\n}\n\nconst AENDERBAR = ['vorgangstyp', 'conversation_id', 'letzte_message_id', 'neue_message_ids', 'absender_name', 'betreff',\n\t'betreff_normalisiert', 'extrahierte_daten', 'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist',\n\t'erinnerungen_gesendet', 'bearbeiter', 'freigabe_id_aktuell', 'spoofing_hinweis'];\n\n/**\n * Teil-Update eines Vorgangs. Gibt nur geänderte Spalten + neue Version zurück.\n * neue_message_ids werden an bekannte_message_ids angehängt (ohne Duplikate).\n */\nfunction aktualisierungBerechnen(vorgang, daten) {\n\tconst patch = {};\n\tfor (const [k, v] of Object.entries(daten || {})) {\n\t\tif (!AENDERBAR.includes(k)) throw new Error(`Feld \"${k}\" ist nicht änderbar`);\n\t\tif (k === 'neue_message_ids') {\n\t\t\tconst alle = [...(vorgang.bekannte_message_ids || []), ...(v || [])];\n\t\t\tpatch.bekannte_message_ids = [...new Set(alle)];\n\t\t} else {\n\t\t\tpatch[k] = v;\n\t\t}\n\t}\n\tpatch.version = Number(vorgang.version) + 1;\n\treturn zeileSchreiben(patch, 'epa_vorgaenge');\n}\n\n/** Filtert offene Vorgänge eines Kunden nach Zuordnungskriterien (wie die SQL-Variante). */\nfunction kandidatenFiltern(zeilen, kriterien) {\n\tconst k = kriterien || {};\n\tconst ids = new Set(k.message_ids || []);\n\tconst vids = new Set(k.vorgangs_ids || []);\n\tconst absender = k.absender_adresse ? String(k.absender_adresse).toLowerCase() : null;\n\treturn (zeilen || [])\n\t\t.map((z) => zeileLesen(z, 'epa_vorgaenge'))\n\t\t.filter((v) => v && !OFFEN_AUSGESCHLOSSEN.includes(v.status))\n\t\t.filter((v) =>\n\t\t\t(v.bekannte_message_ids || []).some((m) => ids.has(m)) ||\n\t\t\t(k.conversation_id && v.conversation_id === k.conversation_id) ||\n\t\t\t(absender && String(v.absender_adresse || '').toLowerCase() === absender) ||\n\t\t\t(k.betreff_normalisiert && v.betreff_normalisiert === k.betreff_normalisiert) ||\n\t\t\tvids.has(v.vorgangs_id))\n\t\t.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))\n\t\t.slice(0, 20)\n\t\t.map((v) => ({\n\t\t\tvorgangs_id: v.vorgangs_id, status: v.status, conversation_id: v.conversation_id,\n\t\t\tbekannte_message_ids: v.bekannte_message_ids, absender_adresse: v.absender_adresse,\n\t\t\tbetreff_normalisiert: v.betreff_normalisiert, version: v.version, geaendert_am: v.updatedAt,\n\t\t}));\n}\n\n/**\n * Entscheidet über eine Sperre. Ergebnis enthält die Werte für ein bedingtes Update\n * (Compare-and-Set auf lock_durch): Nur wenn lock_durch noch den gelesenen Wert hat, wird gesperrt.\n */\nfunction sperreEntscheiden(vorgang, wer, sekunden, jetzt) {\n\tconst t = new Date(jetzt).getTime();\n\tconst bis = vorgang.lock_bis ? new Date(vorgang.lock_bis).getTime() : null;\n\tconst frei = !vorgang.lock_durch || bis === null || bis < t || vorgang.lock_durch === wer;\n\treturn {\n\t\tmoeglich: frei,\n\t\tvorher_durch: vorgang.lock_durch || null,\n\t\tvorher_bis: vorgang.lock_bis || null,\n\t\tneu: { lock_durch: wer, lock_bis: new Date(t + sekunden * 1000).toISOString() },\n\t};\n}\n\nmodule.exports = {\n\tSPALTEN,\n\tJSON_SPALTEN,\n\tAENDERBAR,\n\tzeileLesen,\n\tzeileSchreiben,\n\tvorgangsIdAusZeile,\n\tneuerVorgang,\n\taktualisierungBerechnen,\n\tkandidatenFiltern,\n\tsperreEntscheiden,\n};\nreturn module.exports;\n})();\n// ===== Ende src/datenTabellen.js =====\n\n// ----- Node-Logik -----\nconst e = $('Eingabe prüfen').first().json;\nconst v = datenTabellen.zeileLesen($input.first().json, 'epa_vorgaenge');\nif (!v) throw fehlerklassen.epaFehler('VORGANG_NICHT_GEFUNDEN', e.vorgangs_id, 'Vorgang existiert nicht für diesen Kunden');\nconst s = datenTabellen.sperreEntscheiden(v, e.referenz, e.lock_sekunden, new Date().toISOString());\nreturn [{ json: { ...s, zeilen_id: v.id } }];\n"
+      },
+      "id": "7c0c9df3-c15d-4804-ac61-53171d7fb86d",
+      "name": "Sperre prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8d050aab-763c-4dbb-a12f-c60f76959e0f",
+              "leftValue": "={{ $json.moeglich }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c8bb9ce9-8572-4283-a6b3-df7ac25aa454",
+      "name": "Sperre möglich?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1140,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: $input.first().json.neu }];\n"
+      },
+      "id": "5470f2fe-940d-45c3-a21d-b4b87b9ddc1f",
+      "name": "Sperre vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_vorgaenge"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Sperre prüfen').first().json.zeilen_id }}"
+            },
+            {
+              "keyName": "lock_durch",
+              "condition": "={{ $('Sperre prüfen').first().json.vorher_durch ? 'eq' : 'isEmpty' }}",
+              "keyValue": "={{ $('Sperre prüfen').first().json.vorher_durch ?? '' }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "fce333e1-31f0-47a0-a622-068b85a5ef57",
+      "name": "Vorgang sperren",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1580,
+        100
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst r = $input.first().json;\nconst s = $('Sperre prüfen').first().json;\nif (r && r.id !== undefined) return [{ json: { gesperrt: true, sperre: { vorgangs_id: r.vorgangs_id, lock_bis: r.lock_bis, lock_durch: r.lock_durch, version: r.version } } }];\nreturn [{ json: { gesperrt: false, gesperrt_durch: null, grund: 'Sperre wurde parallel vergeben' } }];\n"
+      },
+      "id": "0d3c8d0b-fd37-43be-acc5-75fa0a0d621b",
+      "name": "Sperre auswerten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst s = $input.first().json;\nreturn [{ json: { gesperrt: false, gesperrt_durch: s.vorher_durch, gesperrt_bis: s.vorher_bis } }];\n"
+      },
+      "id": "c1c85741-7035-49ac-a3c3-929749a61d53",
+      "name": "Sperre belegt melden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: { lock_durch: null, lock_bis: null } }];\n"
+      },
+      "id": "0ccd3248-92ee-4652-ae02-17fb7ee25f9c",
+      "name": "Entsperren vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_vorgaenge"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "vorgangs_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Eingabe prüfen').first().json.vorgangs_id }}"
+            },
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Eingabe prüfen').first().json.kunde_id }}"
+            },
+            {
+              "keyName": "lock_durch",
+              "condition": "eq",
+              "keyValue": "={{ $('Eingabe prüfen').first().json.referenz }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "d9cebb39-b55d-41f9-a8b8-237309cbc4e2",
+      "name": "Vorgang entsperren",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        920,
+        380
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst r = $input.first().json;\nreturn [{ json: { entsperrt: Boolean(r && r.id !== undefined) } }];\n"
+      },
+      "id": "c10b130c-f504-4654-a637-afda5e4fd895",
+      "name": "Entsperren auswerten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        380
       ]
     }
   ],
@@ -415,35 +967,35 @@
         ],
         [
           {
-            "node": "Vorgang anlegen",
+            "node": "Kunde prüfen",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Vorgang aktualisieren",
+            "node": "Vorgang für Änderung lesen",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Kandidaten suchen",
+            "node": "Vorgänge des Kunden lesen",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Vorgang sperren",
+            "node": "Vorgang für Sperre lesen",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Vorgang entsperren",
+            "node": "Entsperren vorbereiten",
             "type": "main",
             "index": 0
           }
@@ -454,18 +1006,106 @@
       "main": [
         [
           {
-            "node": "Ergebnis auswerten",
+            "node": "Lesen auswerten",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Vorgang anlegen": {
+    "Kunde prüfen": {
       "main": [
         [
           {
-            "node": "Ergebnis auswerten",
+            "node": "Neuen Vorgang vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Neuen Vorgang vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Vorgang einfügen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorgang einfügen": {
+      "main": [
+        [
+          {
+            "node": "Vorgangs-ID vergeben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorgangs-ID vergeben": {
+      "main": [
+        [
+          {
+            "node": "Vorgangs-ID schreiben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorgangs-ID schreiben": {
+      "main": [
+        [
+          {
+            "node": "Anlage-Audit vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anlage-Audit vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Anlage-Audit schreiben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anlage-Audit schreiben": {
+      "main": [
+        [
+          {
+            "node": "Anlegen auswerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorgang für Änderung lesen": {
+      "main": [
+        [
+          {
+            "node": "Änderung berechnen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Änderung berechnen": {
+      "main": [
+        [
+          {
+            "node": "Vorgang aktualisieren",
             "type": "main",
             "index": 0
           }
@@ -476,18 +1116,91 @@
       "main": [
         [
           {
-            "node": "Ergebnis auswerten",
+            "node": "Aktualisierung prüfen",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Kandidaten suchen": {
+    "Aktualisierung prüfen": {
       "main": [
         [
           {
-            "node": "Ergebnis auswerten",
+            "node": "Änderungs-Audit schreiben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Änderungs-Audit schreiben": {
+      "main": [
+        [
+          {
+            "node": "Aktualisieren auswerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorgänge des Kunden lesen": {
+      "main": [
+        [
+          {
+            "node": "Kandidaten filtern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorgang für Sperre lesen": {
+      "main": [
+        [
+          {
+            "node": "Sperre prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sperre prüfen": {
+      "main": [
+        [
+          {
+            "node": "Sperre möglich?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sperre möglich?": {
+      "main": [
+        [
+          {
+            "node": "Sperre vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sperre belegt melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sperre vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Vorgang sperren",
             "type": "main",
             "index": 0
           }
@@ -498,7 +1211,18 @@
       "main": [
         [
           {
-            "node": "Ergebnis auswerten",
+            "node": "Sperre auswerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entsperren vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Vorgang entsperren",
             "type": "main",
             "index": 0
           }
@@ -509,7 +1233,7 @@
       "main": [
         [
           {
-            "node": "Ergebnis auswerten",
+            "node": "Entsperren auswerten",
             "type": "main",
             "index": 0
           }

@@ -8,8 +8,8 @@ const { DateTime } = require('luxon');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 
-function workflow(datei) {
-	return JSON.parse(fs.readFileSync(path.join(ROOT, 'workflows', datei), 'utf8'));
+function workflow(datei, ordner = 'workflows') {
+	return JSON.parse(fs.readFileSync(path.join(ROOT, ordner, datei), 'utf8'));
 }
 
 function node(wf, name) {
