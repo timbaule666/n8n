@@ -114,7 +114,10 @@ Echtes Postfach, aber jede Rückfrage wird bewusst geprüft (das ist ohnehin Pfl
 | K2 | 2026-10-14 | Klassifizierung 15/15 (100 %); 9 von 10 Feldern 100 %, Ladungsart 60 %; keine falschen und keine erfundenen Werte | Lauf STUFE1-L2 nach den Korrekturen; Details unten |
 | K2 | 2026-10-14 | Klassifizierung 15/15; 9 von 10 Feldern 100 % (Ladungsart jetzt 5/5); Ansprechpartner 87,5 %, 1 erfundener Wert (S13) | Lauf STUFE1-L3 mit geschärftem Hinweis Ladungsart; Details unten |
 | K2 | 2026-10-14 | 3 Läufe hintereinander: jeweils Klassifizierung 15/15 und alle 10 Felder 100 %, keine falschen oder erfundenen Werte | Läufe STUFE1-L4 bis L6 mit Regel `person`; **Stufe 1 bestanden** |
-| E1–E12 | 2026-10-14 | gestartet | Testkunde `epa-test`, Postfach-Kopie aktiv, Meldungen und Freigabe-Links per Telegram |
+| E1 | 2026-10-14 | ok | „Transportanfrage Köln – München“ → V-2026-0001 „Bereit zur Bearbeitung“, alle 10 Felder korrekt (u. a. 3 Paletten → Palette, 0221 1234567 → 02211234567), keine Mail an den Kunden |
+| E2 | 2026-10-14 | ok, ein Befund | „Transport nach Berlin“ → V-2026-0002 „Freigabe ausstehend“, Entwurf im Ordner Entwürfe (Betreff mit Vorgangs-ID), Rückfrage nach PLZ Start/Ziel, Datum, Telefon; Freigabe offen, Link per Telegram. **Befund:** Ansprechpartner „Max“ (nur Vorname aus „Gruß Max“) gilt als vorhanden – zu entscheiden, ob ein Vorname reicht |
+| Hinweis | 2026-10-14 | – | Beide Testmails landeten bei Outlook in **Junk-E-Mail**; der Agent liest nur den Posteingang. Für den Test in den Posteingang verschoben und direkt an die Postfach-Kopie übergeben. Absender als „Kein Junk“ markieren. |
+| E3–E12 | | | |
 
 ## Lauf STUFE1-L1 (2026-10-14): Auswertung
 Kunde `epa-ki-test` (reiner Prüfstand-Kunde, Beispiel-Config Transport), 15 synthetische Fälle, 27 KI-Aufrufe, Dauer ca. 1 Minute, keine technischen Fehler.
