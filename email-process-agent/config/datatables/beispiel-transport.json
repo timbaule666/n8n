@@ -160,7 +160,7 @@
    "pflicht": true,
    "validierungsregel": "{\"min_laenge\": 2, \"max_laenge\": 80}",
    "resolution_textbaustein": "Bitte nennen Sie uns einen Ansprechpartner für Rückfragen.",
-   "extraktions_hinweis": "Name der Kontaktperson beim Kunden",
+   "extraktions_hinweis": "Vor- und Nachname einer Person beim Kunden, ohne Anrede (Herr/Frau). Keine Firmen-, Abteilungs- oder Teamnamen; leer lassen, wenn keine Person genannt ist",
    "platzhalter_muster": "[]",
    "reihenfolge": 90,
    "aktiv": true

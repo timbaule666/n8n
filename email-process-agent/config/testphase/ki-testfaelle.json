@@ -25,7 +25,7 @@
   {"fall_id": "S08", "betreff": "Transportanfrage Stuttgart", "absender": "versand@schwaben-teile.example", "absender_name": "Schwaben Teile", "erwartete_klasse": "anfrage",
    "text": "Guten Tag,\nAbholung: 70173 Stuttgart\nZiel: 90402 Nürnberg\nDatum: 10.05.2027\nGewicht: k.A.\nPackstücke: 12 Pakete\nAnsprechpartner: Frau Lisa Probe, 0711 7654321\nMfG",
    "erwartete_felder": {"Start_PLZ": "70173", "Start_Ort": "Stuttgart", "Ziel_PLZ": "90402", "Ziel_Ort": "Nürnberg", "Abholdatum": "2027-05-10", "Gewicht_kg": null, "Packstuecke": "12", "Ladungsart": "Paket", "Ansprechpartner": "Lisa Probe", "Telefon": "0711 7654321"}},
-  {"fall_id": "S09", "betreff": "AW: Ihre Rückfrage zur Transportanfrage", "absender": "dispo@beispiel-handel.example", "absender_name": "Jana Beispiel", "erwartete_klasse": "anfrage",
+  {"fall_id": "S09", "betreff": "AW: Ihre Rückfrage zur Transportanfrage", "absender": "dispo@beispiel-handel.example", "absender_name": "Jana Beispiel", "erwartete_klasse": "unklar",
    "text": "Hallo,\ndas Gewicht liegt bei 850 kg.\n\nGruß Jana\n\n-----Ursprüngliche Nachricht-----\nVon: Dispo\nGesendet: Montag\nBetreff: Ihre Rückfrage\nBitte nennen Sie uns das ungefähre Gesamtgewicht der Sendung in Kilogramm.\n> Abholung in 50667 Köln, Ziel 80331 München",
    "erwartete_felder": {"Gewicht_kg": "850"}},
   {"fall_id": "S10", "betreff": "Dringend: Transport", "absender": "a.test@baustoffe-test.example", "absender_name": "Anna Test", "erwartete_klasse": "anfrage",

@@ -127,8 +127,16 @@ function feldPruefen(feld, roh, { heute } = {}) {
 			return { ok: true, wert: (s.startsWith('+') ? '+' : '') + ziffern };
 		}
 		case 'enum': {
-			const s = String(roh).trim().toLowerCase();
-			const treffer = (regel.werte || []).find((w) => String(w).toLowerCase() === s);
+			// Tolerant gegenüber Groß-/Kleinschreibung und einfacher Mehrzahl bzw. Beugung
+			// ("Paletten" -> "Palette", "Pakete" -> "Paket"), aber nur mit eindeutigem Treffer.
+			const s = String(roh).trim().toLowerCase().replace(/\s+/g, ' ');
+			const werte = regel.werte || [];
+			const ENDUNGEN = ['', 'n', 'en', 'e', 's', 'er'];
+			let treffer = werte.find((w) => String(w).toLowerCase() === s);
+			if (!treffer) {
+				const kandidaten = werte.filter((w) => ENDUNGEN.some((e) => String(w).toLowerCase() + e === s));
+				if (kandidaten.length === 1) treffer = kandidaten[0];
+			}
 			if (!treffer) return fehler(`nicht in der Werteliste (${(regel.werte || []).join(', ')})`);
 			return { ok: true, wert: treffer };
 		}

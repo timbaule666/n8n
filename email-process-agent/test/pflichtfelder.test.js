@@ -94,6 +94,20 @@ test('Telefon, E-Mail, Text, Enum', () => {
 	assert.deepEqual(pf.feldPruefen(feld('Ladungsart'), 'STÜCKGUT'), { ok: true, wert: 'Stückgut' });
 });
 
+test('Enum: Mehrzahl und Beugung nur bei eindeutigem Treffer', () => {
+	const l = (w) => pf.feldPruefen(feld('Ladungsart'), w);
+	assert.deepEqual(l('Paletten'), { ok: true, wert: 'Palette' });
+	assert.deepEqual(l('Pakete'), { ok: true, wert: 'Paket' });
+	assert.deepEqual(l('PALETTE'), { ok: true, wert: 'Palette' });
+	assert.deepEqual(l('  paletten '), { ok: true, wert: 'Palette' });
+	assert.equal(l('Container').ok, false);
+	assert.equal(l('Pal').ok, false);
+	const mehrdeutig = { typ: 'enum', validierungsregel: { werte: ['Kiste', 'Kisten'] } };
+	assert.deepEqual(pf.feldPruefen(mehrdeutig, 'kisten'), { ok: true, wert: 'Kisten' });
+	const doppelt = { typ: 'enum', validierungsregel: { werte: ['Rolle', 'Roll'] } };
+	assert.equal(pf.feldPruefen(doppelt, 'Rollen').ok, false, 'zwei mögliche Grundformen: nicht raten');
+});
+
 test('Feldspezifische Platzhalter und geringe Konfidenz', () => {
 	const f = [{ ...feld('Start_Ort'), platzhalter_muster: ['Musterstadt'] }];
 	assert.equal(pf.pruefen(ex({ Start_Ort: 'musterstadt' }), f).fehlende[0].grund, 'Platzhalter statt Angabe');
