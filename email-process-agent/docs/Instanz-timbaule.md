@@ -91,3 +91,9 @@ Tims privates Microsoft-Konto hat keine Teams-Lizenz. Microsoft antwortet auf Gr
 | `epa_system_status` | Spalten `alarm_kanal`, `telegram_chat_id`, `telegram_workflow_id` ergänzt; Zeile `alarmierung` angelegt: alarm_kanal = telegram_test, Chat 8961899217, EPA-T2 |
 | Outlook- und Teams-Credential | HTTP-Request-Sperre aufgehoben (Allowed Domains: graph.microsoft.com); Outlook-Postfach per Graph lesbar |
 | Workflows | 17 Workflows auf Stand eb0411d, 0 Abweichungen; Sternchen und Credentials erhalten; vorher aktive neu veröffentlicht |
+
+## Stufe 0 (2026-10-14)
+- Testkunde `epa-test`: Postfach timbaule666@outlook.com, Freigeber Tim (Kennung timbaule666@gmail.com, Links per Telegram), Kanal telegram_test an Chat 8961899217, Felder aus dem Transport-Beispiel. Noch ohne Postfach-Kopie (EPA-00): Die würde sofort die vorhandenen Mails verarbeiten (Stufe 3).
+- `epa-ki-test` (Prüfstand) ebenfalls auf telegram_test, damit der Watchdog Teams nicht prüft.
+- EPA-05 und EPA-06 sind **veröffentlicht**. Ihre Teams-Nodes („Entwickler-Kanal alarmieren“, „Betriebskanal benachrichtigen“) sind nur in dieser Instanz deaktiviert, weil sie ohne Team-ID nicht veröffentlicht werden können. Ein erneutes Deploy aktiviert sie wieder; danach erneut deaktivieren oder Team-IDs eintragen.
+- Watchdog-Lauf: Meldung per Telegram zugestellt, einziger Befund CRON_NIE (EPA-04 noch aus).

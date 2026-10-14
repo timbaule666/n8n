@@ -107,8 +107,8 @@ Echtes Postfach, aber jede Rückfrage wird bewusst geprüft (das ist ohnehin Pfl
 ## Ergebnisse
 | Nr. | Datum | Ergebnis | Bemerkung |
 |---|---|---|---|
-| V1 | | | |
-| V2 | | | |
+| V1 | 2026-10-14 | ok | Testkunde `epa-test` (Testpostfach, Testkanal Telegram, Freigeber Tim) wird von „Config laden“ akzeptiert |
+| V2 | 2026-10-14 | ok mit erwartetem Hinweis | Watchdog über Telegram zugestellt; OpenAI ok; Outlook-Lesen vorher direkt geprüft (HTTP 200); Teams nicht geprüft (Testkanal, keine Lizenz); Hinweis CRON_NIE, weil EPA-04 noch nicht eingeschaltet ist |
 | V3 | | | |
 | K2 | 2026-10-14 | Klassifizierung 14/15 (93,3 %); 8 von 10 Feldern 100 %, Ansprechpartner 87,5 %, Ladungsart 20 %; keine falschen Werte, 1 erfundener Wert | Lauf STUFE1-L1, gpt-4o-mini-2024-07-18, Prompts v1; Details unten |
 | K2 | 2026-10-14 | Klassifizierung 15/15 (100 %); 9 von 10 Feldern 100 %, Ladungsart 60 %; keine falschen und keine erfundenen Werte | Lauf STUFE1-L2 nach den Korrekturen; Details unten |
