@@ -191,7 +191,8 @@ async function betriebSzenarien(ctx) {
 		const html = await res.text();
 		check('Status', 404, res.status);
 		check('X-Frame-Options', 'DENY', res.headers.get('x-frame-options'));
-		check('CSP frame-ancestors', 'ja', /frame-ancestors 'none'/.test(res.headers.get('content-security-policy') || '') ? 'ja' : 'nein');
+		check('n8n-Sandbox (CSP)', 'ja', /sandbox/.test(res.headers.get('content-security-policy') || '') ? 'ja' : 'nein');
+		check('nosniff', 'nosniff', res.headers.get('x-content-type-options'));
 		check('Cache-Control', 'no-store', res.headers.get('cache-control'));
 		check('noindex', 'ja', /noindex/.test(res.headers.get('x-robots-tag') || '') ? 'ja' : 'nein');
 		check('Keine internen Angaben', 'ja', !/V-20|epa_|stack|Error/.test(html) ? 'ja' : 'nein');

@@ -22,6 +22,6 @@ Das Mock-LLM liefert festgelegte Antworten, der Mock-Graph simuliert Postfach (E
 | F13 | KI für den Entwurf nicht erreichbar -> trotzdem Rückfrage mit Standardvorlage | Status: Freigabe ausstehend; Fallback: true; Links: 2 | Status: Freigabe ausstehend; Fallback: true; Links: 2 | ja |
 | F14 | Ein Freigeber per Teams nicht erreichbar: der andere bekommt den Link, Fehler im Log | Links: freigabe@spedition.example; Fehlerlog: 1; Fehlerlog ohne Link/Token: ja; Status: Freigabe ausstehend | Links: freigabe@spedition.example; Fehlerlog: 1; Fehlerlog ohne Link/Token: ja; Status: Freigabe ausstehend | ja |
 | F15 | Maximale Rundenzahl erreicht: keine weitere Rückfrage, Eskaliert / Manuell | Ergebnis: eskaliert_max_runden; Status: Eskaliert / Manuell; Kein neuer Entwurf: 0 | Ergebnis: eskaliert_max_runden; Status: Eskaliert / Manuell; Kein neuer Entwurf: 0 | ja |
-| F16 | Kunde antwortet auf die gesendete Rückfrage: eindeutig zugeordnet und ausgewertet | Ergebnis: antwort_bereit; Vorgang: V-2026-0184; Status: Bereit zur Bearbeitung | Ergebnis: antwort_bereit; Vorgang: V-2026-0184; Status: Bereit zur Bearbeitung | ja |
+| F16 | Kunde antwortet auf die gesendete Rückfrage: eindeutig zugeordnet und ausgewertet | Ergebnis: antwort_bereit; Vorgang: V-2026-0241; Status: Bereit zur Bearbeitung | Ergebnis: antwort_bereit; Vorgang: V-2026-0241; Status: Bereit zur Bearbeitung | ja |
 
 **Ergebnis:** 16 von 16 Szenarien bestanden.

@@ -9,8 +9,8 @@ const SEITE_HEADER = {
 		{ name: 'Referrer-Policy', value: 'no-referrer' },
 		{ name: 'X-Robots-Tag', value: 'noindex' },
 		// Härtung (M6): Freigabeseite darf nicht eingebettet werden (Clickjacking), kein MIME-Sniffing.
+		// Eine eigene Content-Security-Policy ist wirkungslos: n8n setzt für Webhook-Antworten seine Sandbox-CSP.
 		{ name: 'X-Frame-Options', value: 'DENY' },
-		{ name: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
 		{ name: 'X-Content-Type-Options', value: 'nosniff' },
 	],
 };

@@ -1519,10 +1519,6 @@
                 "value": "DENY"
               },
               {
-                "name": "Content-Security-Policy",
-                "value": "frame-ancestors 'none'"
-              },
-              {
                 "name": "X-Content-Type-Options",
                 "value": "nosniff"
               }

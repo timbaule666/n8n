@@ -9,7 +9,7 @@ Stand 2026-10-14. n8n 2.43.4, Data Tables.
 | Heartbeat | Ohne Befund kommt einmal täglich „Alles in Ordnung“. Bleibt diese Meldung aus, ist der Watchdog selbst ausgefallen. Das Ergebnis (nur Codes und Zähler) steht in `epa_system_status`, Zeile `watchdog`. |
 | EPA-08 Löschjob | Läuft täglich um 02:15. Gelöscht werden: abgeschlossene oder ignorierte Vorgänge nach `aufbewahrung_tage` samt Audit, Freigaben und Links; Dedupe-Einträge nach `aufbewahrung_tage`; Fehlerlog nach 90 Tagen; **ersetzte Rückfrage-Entwürfe im Postfach**. Gelöscht wird nur, was nachweislich ein Entwurf mit der passenden Freigabe-Kennung ist (neue EPA-00-Aktion `entwurf_loeschen`). Offene und eskalierte Vorgänge sowie eingegangene Mails werden nie gelöscht. Mit `probelauf = true` wird nur angezeigt. |
 | Sicherungen im Löschjob | Ein Vorgang wird nur gelöscht, wenn er seit der Frist unverändert ist (Bedingung direkt im Löschbefehl). Abhängige Daten werden nur für tatsächlich gelöschte Vorgänge entfernt. Liegt noch ein ersetzter Entwurf im Postfach, wird der Vorgang zurückgestellt, bis der Entwurf weg ist. Je Lauf höchstens 200 Vorgänge und 50 Entwürfe. |
-| Härtung | Workflows mit Klartext-Links (EPA-02, EPA-07, SW Freigabe senden, SW Nachfassen) speichern erfolgreiche Ausführungen nicht mehr. Die Freigabeseite sendet zusätzlich `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'` und `nosniff` (Schutz vor Clickjacking). Neue automatische Prüfungen beim Build: Suche nach Klartext-Secrets, öffentlicher Webhook nur in EPA-07, `callerPolicy` überall, Löschen nur mit „alle Bedingungen“. |
+| Härtung | Workflows mit Klartext-Links (EPA-02, EPA-07, SW Freigabe senden, SW Nachfassen) speichern erfolgreiche Ausführungen nicht mehr. Die Freigabeseite sendet zusätzlich `X-Frame-Options: DENY` und `nosniff` (Schutz vor Clickjacking). Eine eigene Content-Security-Policy überschreibt n8n mit seiner Sandbox-Policy; das ist im Test H01 festgehalten. Neue automatische Prüfungen beim Build: Suche nach Klartext-Secrets, öffentlicher Webhook nur in EPA-07, `callerPolicy` überall, Löschen nur mit „alle Bedingungen“. |
 | Dokumentation | `docs/Datenschutz-und-KI-Checkliste.md` (DSGVO, EU AI Act, minimale Microsoft-Rechte, offene Punkte vor Produktivstart), `docs/Betriebshandbuch.md` (Routine, alle Meldungen mit Maßnahmen, Notfall, Datenschutzanfragen), Inbetriebnahme Abschnitt 9. |
 | Config | Neu ist `stille_alarm_stunden` (optional, 0 = aus; Beispiel 24). |
 
@@ -50,3 +50,5 @@ Stand 2026-10-14. n8n 2.43.4, Data Tables.
 - **Leere Config-Vorlage und Verkaufs-Kurzbeschreibung** folgen in M7.
 
 ## Regression
+
+Gesamtlauf lokal: **81 Szenarien** (M2 36/36, M3 16/16, M4 9/9, M5 10/10, M6 10/10). Die M1-Regression ist grün. H01 war im ersten Gesamtlauf rot (eigene CSP von n8n überschrieben, siehe Testprotokoll-M6); nach der Korrektur wurde H01 zusammen mit F01–F03 erneut ausgeführt und bestanden.
