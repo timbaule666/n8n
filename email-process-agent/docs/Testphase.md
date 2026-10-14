@@ -61,6 +61,7 @@ Echtes Postfach, aber jede Rückfrage wird bewusst geprüft (das ist ohnehin Pfl
 | V2 | | | |
 | V3 | | | |
 | K2 | 2026-10-14 | Klassifizierung 14/15 (93,3 %); 8 von 10 Feldern 100 %, Ansprechpartner 87,5 %, Ladungsart 20 %; keine falschen Werte, 1 erfundener Wert | Lauf STUFE1-L1, gpt-4o-mini-2024-07-18, Prompts v1; Details unten |
+| K2 | 2026-10-14 | Klassifizierung 15/15 (100 %); 9 von 10 Feldern 100 %, Ladungsart 60 %; keine falschen und keine erfundenen Werte | Lauf STUFE1-L2 nach den Korrekturen; Details unten |
 | E1–E12 | | | |
 
 ## Lauf STUFE1-L1 (2026-10-14): Auswertung
@@ -79,3 +80,20 @@ Kunde `epa-ki-test` (reiner Prüfstand-Kunde, Beispiel-Config Transport), 15 syn
 - Newsletter, Danksagung und Rechnung wurden korrekt aussortiert.
 - Die Zielwerte für Pflichtfelder sind erreicht, bis auf den einen erfundenen Ansprechpartner.
 
+
+## Lauf STUFE1-L2 (2026-10-14): nach den Korrekturen
+Gleiche 15 Fälle, gleiches Modell, Prompts v1. Geändert (Commit 3f653d6): Auswahlfelder tolerant (Groß-/Kleinschreibung, Mehrzahl, nur bei eindeutigem Treffer), `extraktions_hinweis` für Ansprechpartner (Person, ohne Anrede, keine Firmen- oder Teamnamen), Sollwert S09 = „unklar“. Dauer ca. 1 Minute, keine technischen Fehler.
+
+| Kennzahl | L1 | L2 |
+|---|---|---|
+| Klassifizierung | 14/15 (93,3 %) | 15/15 (100 %) |
+| Ansprechpartner | 87,5 %, 1 erfunden (S13) | 100 %, S13 richtig leer, Anrede entfällt |
+| Ladungsart | 1/5 (20 %) | 3/5 (60 %) |
+| übrige 8 Felder | 100 % | 100 % |
+| falsch / zu viel (erfunden) | 0 / 1 | 0 / 0 |
+
+**Offen:** Die Ladungsart fehlt noch in S01 („3 Paletten“) und S08 („12 Pakete“). In beiden Fällen steht die Ladungsart zusammen mit der Anzahl im selben Satzteil. Ob die KI hier nichts liefert oder einen Wert mit Zahl, der die Prüfung nicht besteht, ist **zu verifizieren**: Erfolgreiche Läufe speichern keine Ausführungsdaten. Das Feld ist optional, es entsteht also keine Rückfrage.
+
+Möglicher nächster Schritt: `extraktions_hinweis` der Ladungsart schärfen, z. B. „Art der Ladung, auch wenn sie nur zusammen mit der Anzahl genannt ist (‚3 Paletten‘ → Palette)“. Danach Lauf L3.
+
+**Bewertung:** Die Zielwerte aus K3 sind für alle Pflichtfelder erreicht. Es gibt keine erfundenen Werte. Die Klassifizierung liegt bei 100 %. Stufe 1 ist bestanden; offen ist nur noch das optionale Feld Ladungsart.
