@@ -70,3 +70,14 @@ Hinweis: Vorgangs-IDs entstehen aus der fortlaufenden Zeilennummer. Gelöschte Z
 1. **Config ausfüllen** (Data Table `epa_config_allgemein`, Zeile `beispiel-transport`): `postfach`, `freigeber` (JSON-Liste), in `benachrichtigung` die Team- und Kanal-ID, in `signatur` die Telefonnummer. Solange Platzhalter drinstehen, lehnt „EPA SW Config laden“ die Config bewusst ab.
 2. **EPA-05**: Im Node „Entwickler-Kanal alarmieren“ Team (GUID) und Kanal eintragen und das Teams-Credential prüfen. Danach EPA-05 veröffentlichen und in den vier Sub-Workflows als Error Workflow eintragen. Das kann ich übernehmen, sobald die IDs da sind.
 3. Das Credential „n8n account“ hat eine ungültige Basis-URL („Invalid URL“), „n8n account 2“ funktioniert.
+
+## Credentials (Stand 2026-10-14)
+Angemeldet über „Connect my account“ von n8n Cloud, ohne eigene Entra-App.
+
+| Credential | Zugewiesen in |
+|---|---|
+| OpenAI account | EPA SW LLM aufrufen, EPA-06 („KI prüfen“) |
+| Microsoft Teams account | EPA-05, EPA-06 („Teams prüfen“, „Betriebskanal benachrichtigen“), EPA SW Benachrichtigen, EPA SW Freigabe senden (3 Nodes) |
+| Microsoft Outlook account | EPA-00 Postfach (Vorlage): Trigger und 15 Graph-Nodes. Kopien übernehmen das Credential. |
+
+Die Workflow-Namen tragen auf Wunsch weiterhin das „ *“. Veröffentlicht ist davon noch nichts. Offen sind Teams-IDs, Postfach-Adresse, Freigeber und die Rechte der n8n-App (Stufe 0).
