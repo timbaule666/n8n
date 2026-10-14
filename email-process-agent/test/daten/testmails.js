@@ -171,11 +171,11 @@ const FAELLE = [
 		erwartet: { ergebnis: 'duplikat', llm: { klassifizierung: 0, extraktion: 0 }, gleicherVorgangWie: 'T01' },
 	},
 	{
-		id: 'T15', szenario: 'Antwort im Thread auf Vorgang T02 -> eindeutig zugeordnet',
+		id: 'T15', szenario: 'Antwort im Thread auf Vorgang T02 -> eindeutig zugeordnet, Lücke gefüllt (Phase D)',
 		bezug: 'T02',
 		mail: mail('T15', { betreff: 'AW: Anfrage Stückgut Hamburg', von: 'eva@kunde-b.example', name: 'Eva Beispiel', text: 'Telefon: 040 987654\n\nAm 13.10.2026 schrieb Dispo:\n> Bitte Telefonnummer nennen' }),
-		llm: {},
-		erwartet: { ergebnis: 'zugeordnet', llm: { klassifizierung: 0, extraktion: 0 }, gleicherVorgangWie: 'T02' },
+		llm: { extraktion: [ex({ Telefon: '040 987654' })] },
+		erwartet: { ergebnis: 'antwort_bereit', status: 'Bereit zur Bearbeitung', llm: { klassifizierung: 0, extraktion: 1 }, gleicherVorgangWie: 'T02' },
 	},
 	{
 		id: 'T16', szenario: 'Zweiter offener Vorgang desselben Absenders, gleicher Betreff, ohne Thread -> unklar',
@@ -269,10 +269,10 @@ const FAELLE = [
 		erwartet: { fehler: { statuscode: 502, fehlercode: 'UPSTREAM_FEHLER' }, status: 'Eskaliert / Manuell', llm: { klassifizierung: 3, extraktion: 0 } },
 	},
 	{
-		id: 'T31', szenario: 'Erneute Verarbeitung von T30 nach Fehler: kein Duplikat, wird dem gesicherten Vorgang zugeordnet',
+		id: 'T31', szenario: 'Erneute Verarbeitung von T30 nach Fehler: kein Duplikat, dem eskalierten Vorgang zugeordnet und nur gemeldet',
 		wiederholung: 'T30',
 		llm: {},
-		erwartet: { ergebnis: 'zugeordnet', gleicherVorgangWie: 'T30', llm: { klassifizierung: 0, extraktion: 0 } },
+		erwartet: { ergebnis: 'antwort_gemeldet', gleicherVorgangWie: 'T30', llm: { klassifizierung: 0, extraktion: 0 } },
 	},
 	{
 		id: 'T32', szenario: 'LLM-Zugang ungültig (401) -> Fehlerpfad ohne Wiederholung',

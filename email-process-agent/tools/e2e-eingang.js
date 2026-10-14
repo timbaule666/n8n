@@ -18,6 +18,7 @@ const { deploy } = require('./deploy');
 const { bauen } = require('./build-workflows');
 const { POSTFACH, FAELLE } = require('../test/daten/testmails');
 const { freigabeSzenarien } = require('./lib/e2e-freigabe');
+const { antwortSzenarien } = require('./lib/e2e-antwort');
 
 const BASIS = (process.env.N8N_URL || '').replace(/\/+$/, '');
 const KEY = process.env.N8N_API_KEY;
@@ -178,6 +179,7 @@ async function main() {
 	const temp = [];
 	const zeilen = [];
 	const zeilenM3 = [];
+	const zeilenM4 = [];
 	try {
 		bauen();
 		const ids = await einrichten({ prompts: true, log: () => {} });
@@ -288,6 +290,10 @@ async function main() {
 			? await freigabeSzenarien({ mock, aufrufen, tabelle, api, ids, KUNDE, POSTFACH, FREIGEBER, nur: nur.filter((n) => /^F/.test(n)) })
 			: [];
 		zeilenM3.push(...freigabeZeilen);
+		// M4: Antworten des Kunden (Phase D)
+		if (!nur.length || nur.some((n) => /^A/.test(n))) {
+			zeilenM4.push(...await antwortSzenarien({ mock, aufrufen, tabelle, api, ids, KUNDE, POSTFACH, FREIGEBER, nur: nur.filter((n) => /^A/.test(n)) }));
+		}
 
 		// Teams-Versandfehler werden protokolliert (lokal gibt es nur ein Dummy-Credential)
 		const teamsFehler = (await tabelle('epa_fehler_log')).filter((z) => z.kunde_id === KUNDE && z.node === 'Teams-Nachricht senden');
@@ -297,12 +303,13 @@ async function main() {
 		for (const id of temp) await entfernen(id).catch((e) => console.error('Aufräumen:', e.message));
 		await mock.stoppen();
 	}
-	const alle = [...zeilen, ...zeilenM3];
+	const alle = [...zeilen, ...zeilenM3, ...zeilenM4];
 	const bestanden = alle.filter((z) => z.ok).length;
-	console.log(`\nM2: ${zeilen.filter((z) => z.ok).length}/${zeilen.length}, M3: ${zeilenM3.filter((z) => z.ok).length}/${zeilenM3.length} – gesamt ${bestanden}/${alle.length} Szenarien bestanden`);
+	console.log(`\nM2: ${zeilen.filter((z) => z.ok).length}/${zeilen.length}, M3: ${zeilenM3.filter((z) => z.ok).length}/${zeilenM3.length}, M4: ${zeilenM4.filter((z) => z.ok).length}/${zeilenM4.length} – gesamt ${bestanden}/${alle.length} Szenarien bestanden`);
 	if (!nur.length) {
 		protokoll(zeilen, 'M2', 'Eingang (EPA-00/EPA-01)', 'Testprotokoll-M2.md');
 		protokoll(zeilenM3, 'M3', 'Rückfrage und Freigabe (EPA-02/EPA-07)', 'Testprotokoll-M3.md');
+		protokoll(zeilenM4, 'M4', 'Antworten verarbeiten (EPA-03)', 'Testprotokoll-M4.md');
 	}
 	process.exit(bestanden === alle.length ? 0 : 1);
 }

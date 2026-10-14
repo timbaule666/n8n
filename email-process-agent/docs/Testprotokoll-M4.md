@@ -1,0 +1,20 @@
+# Testprotokoll M4: Antworten verarbeiten (EPA-03)
+
+Stand 2026-10-14. Lokale n8n-Instanz 2.43.4, Data Tables, Mock-LLM (skriptgesteuert) und Mock-Graph.
+Erzeugt von `tools/e2e-eingang.js` aus `test/daten/testmails.js`.
+
+Das Mock-LLM liefert festgelegte Antworten, der Mock-Graph simuliert Postfach (Entwürfe, Versand, Gesendete Elemente) und Teams-Chats. Geprüft wird damit die Verarbeitungskette, **nicht** die Qualität des echten Modells und nicht das Verhalten der echten Microsoft-APIs. Die Gegenprobe erfolgt in der Cloud-Instanz.
+
+| Nr. | Szenario | erwartet | tatsächlich | bestanden |
+|---|---|---|---|---|
+| A01 | Antwort ergänzt alle Lücken: übernommen, Audit MERGE, Bereit zur Bearbeitung | Ergebnis: antwort_bereit; Status: Bereit zur Bearbeitung; Lücken: –; Übernommen: 0221555123/800; Bekannte Werte unverändert: 50667; Audit MERGE (Feld, neu, Quelle): Gewicht_kg=800, Telefon=0221555123; Rundenzähler unverändert: 1; Extraktion: Hinweis offene Felder: ja | Ergebnis: antwort_bereit; Status: Bereit zur Bearbeitung; Lücken: –; Übernommen: 0221555123/800; Bekannte Werte unverändert: 50667; Audit MERGE (Feld, neu, Quelle): Gewicht_kg=800, Telefon=0221555123; Rundenzähler unverändert: 1; Extraktion: Hinweis offene Felder: ja | ja |
+| A02 | Teilantwort: Rest bleibt offen, Runde 2 mit neuer Freigabe, dann zweiter Versand | Ergebnis: antwort_luecken; Status: Freigabe ausstehend; Lücken: Telefon; Neue Freigabe Runde: 2; Neue Links: 2; Neuer Entwurf nur mit offenem Baustein: ja; Nach 2. Versand: Warten auf Kunde/2 | Ergebnis: antwort_luecken; Status: Freigabe ausstehend; Lücken: Telefon; Neue Freigabe Runde: 2; Neue Links: 2; Neuer Entwurf nur mit offenem Baustein: ja; Nach 2. Versand: Warten auf Kunde/2 | ja |
+| A03 | Widerspruch zu vorhandenen Daten: nicht übernommen, Konflikt gespeichert und protokolliert | Ergebnis: antwort_bereit; Alter Wert bleibt: 50667; Lücke gefüllt: 02211111111; Konflikt: Start_PLZ: 50667 -> 50668; Audit Konflikt: 50667 -> 50668 | Ergebnis: antwort_bereit; Alter Wert bleibt: 50667; Lücke gefüllt: 02211111111; Konflikt: Start_PLZ: 50667 -> 50668; Audit Konflikt: 50667 -> 50668 | ja |
+| A04 | Antwort ohne Angaben (Vertröstung): Status bleibt, Frist verlängert, Audit | Ergebnis: antwort_keine_daten; Status: Warten auf Kunde; Rundenzähler: 1; Frist verlängert: ja; Mail am Vorgang: ja; Audit: ja; Keine neue Rückfrage: 0 | Ergebnis: antwort_keine_daten; Status: Warten auf Kunde; Rundenzähler: 1; Frist verlängert: ja; Mail am Vorgang: ja; Audit: ja; Keine neue Rückfrage: 0 | ja |
+| A05 | Kunde antwortet, während die Rückfrage noch auf Freigabe wartet: Freigabe ersetzt, alter Link 409 | Ergebnis: antwort_bereit; Status: Bereit zur Bearbeitung; Alte Freigabe: ersetzt; Alter Link: 409; Nichts gesendet: ja | Ergebnis: antwort_bereit; Status: Bereit zur Bearbeitung; Alte Freigabe: ersetzt; Alter Link: 409; Nichts gesendet: ja | ja |
+| A06 | Nachtrag nach "Bereit zur Bearbeitung": optionale Angabe übernommen, wieder Bereit | Ergebnis: antwort_bereit; Status: Bereit zur Bearbeitung; Packstücke: 4; Statusfolge: In Prüfung -> Bereit zur Bearbeitung | Ergebnis: antwort_bereit; Status: Bereit zur Bearbeitung; Packstücke: 4; Statusfolge: In Prüfung -> Bereit zur Bearbeitung | ja |
+| A07 | Rundenlimit erreicht: weitere Teilantwort führt zur Eskalation statt neuer Rückfrage | Ergebnis: antwort_keine_daten; Ergebnis Teilantwort: antwort_luecken; Status: Eskaliert / Manuell; Kein neuer Link: 0 | Ergebnis: antwort_keine_daten; Ergebnis Teilantwort: antwort_luecken; Status: Eskaliert / Manuell; Kein neuer Link: 0 | ja |
+| A08 | Antwort zu eskaliertem Vorgang: nur angehängt und gemeldet, keine KI-Auswertung | Ergebnis: antwort_gemeldet; Extraktion: 0; Status: Eskaliert / Manuell; Mail am Vorgang: ja | Ergebnis: antwort_gemeldet; Extraktion: 0; Status: Eskaliert / Manuell; Mail am Vorgang: ja | ja |
+| A09 | Antwort mit zitiertem Verlauf: nur der neue Teil geht an die KI | Ergebnis: antwort_bereit; Zitat nicht an KI: ja; Bekannte Werte nicht an KI: ja | Ergebnis: antwort_bereit; Zitat nicht an KI: ja; Bekannte Werte nicht an KI: ja | ja |
+
+**Ergebnis:** 9 von 9 Szenarien bestanden.

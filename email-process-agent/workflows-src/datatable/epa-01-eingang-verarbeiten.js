@@ -31,8 +31,8 @@ module.exports = function () {
 		'**Zweck:** Verarbeitet eine eingegangene Mail: Config laden (B1), normalisieren, Schleifenschutz/Auto-Replies (A1), Dedupe (A2), Vorgangszuordnung nach Punkteliste (A3), Klassifizierung per KI (A4), Extraktion per KI (B2), deterministische Pflichtfeld-Prüfung (B3), Speichern mit Versionsprüfung (B4), Statusweiche und Mitarbeiter-Meldung (B5).',
 		'**Trigger:** Aufruf durch den Postfach-Workflow (EPA-00) mit der Graph-Message. Enthält selbst keine Microsoft-Zugänge, daher ohne Postfach testbar.',
 		'**Eingaben:** postfach, mail (Graph-Message inkl. internetMessageHeaders, webLink), anhaenge (Liste mit name, contentType, size, isInline, text, status, hinweis, bild_data_url), aufrufer_execution_id (damit EPA-05 den Eingang bei einem Fehler wieder freigeben kann).',
-		'**Ausgabe:** { ergebnis, vorgangs_id, archivieren, archivordner }. ergebnis: duplikat | ignoriert_<grund> | zugeordnet | zuordnung_unklar | klassifizierung_unklar | ignoriert | bereit | luecken | extraktion_fehlgeschlagen.',
-		'**Grenzen:** "zugeordnet" hängt die Mail nur an den Vorgang und meldet sie (Phase D folgt in M4). Bei "luecken" wird über EPA-02 die Rückfrage zur Freigabe vorbereitet (M3).',
+		'**Ausgabe:** { ergebnis, vorgangs_id, archivieren, archivordner }. ergebnis: duplikat | ignoriert_<grund> | antwort_<bereit|luecken|keine_daten|gemeldet|extraktion_fehlgeschlagen> | zuordnung_unklar | klassifizierung_unklar | ignoriert | bereit | luecken | extraktion_fehlgeschlagen.',
+		'**Weiterleitung:** Eindeutig zugeordnete Antworten verarbeitet EPA-03 (Phase D). Bei "luecken" bereitet EPA-02 die Rückfrage zur Freigabe vor.',
 	].join('\n'), { breite: 900, hoehe: 400 });
 
 	const trigger = wf.trigger('Bei Aufruf', [0, 0], [
@@ -144,17 +144,8 @@ return [{ json: zuordnung.zuordnen(mail, $input.first().json.kandidaten || [], c
 `);
 	const zWeiche = weiche(wf, 'Zuordnung', [2200, 0], '={{ $json.ergebnis }}', ['eindeutig', 'unklar', 'neu']);
 
-	// eindeutig: Mail an den Vorgang hängen, protokollieren, melden (Phase D folgt in M4)
-	const anhaengen = wf.aufruf('Nachricht anhängen', [2420, -240], 'EPA SW Vorgang verwalten', [
-		['aktion', 'string', 'aktualisieren'],
-		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
-		['vorgangs_id', 'string', `={{ ${Z}.vorgangs_id }}`],
-		['daten', 'object', `={{ { neue_message_ids: [${MID}], letzte_message_id: ${MID} } }}`],
-		['erwartete_version', 'number', `={{ ${Z}.bewertung[0].version }}`],
-		['referenz', 'string', `={{ ${MID} }}`],
-		['lock_sekunden', 'number', '={{ null }}'],
-	]);
-	const zAudit = wf.aufruf('Zuordnung protokollieren', [2640, -240], 'EPA SW Audit schreiben', [
+	// eindeutig: Zuordnung protokollieren, dann Phase D (EPA-03: Merge, Prüfung, ggf. neue Rückfrage, Meldung)
+	const zAudit = wf.aufruf('Zuordnung protokollieren', [2420, -240], 'EPA SW Audit schreiben', [
 		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
 		['vorgangs_id', 'string', `={{ ${Z}.vorgangs_id }}`],
 		['typ', 'string', 'ZUORDNUNG'],
@@ -164,16 +155,15 @@ return [{ json: zuordnung.zuordnen(mail, $input.first().json.kandidaten || [], c
 		['details', 'object', `={{ { ergebnis: ${Z}.ergebnis, grund: ${Z}.grund, bewertung: ${Z}.bewertung.slice(0, 3) } }}`],
 		['referenz', 'string', `={{ ${MID} }}`],
 	]);
-	const mZugeordnet = wf.code('Meldung: zugeordnet', [2860, -240], ['eingang'], `
-const z = $('Zuordnen').first().json;
-const mail = $('Mail normalisieren').first().json.mail;
-const v = $('Nachricht anhängen').first().json.vorgang;
-return [{ json: {
-	vorgangs_id: z.vorgangs_id,
-	anlass: 'zugeordnet',
-	nachricht_html: eingang.meldungZugeordnet(z.vorgangs_id, mail, v.status),
-	ergebnis: { ergebnis: 'zugeordnet', vorgangs_id: z.vorgangs_id },
-} }];
+	const antwortVerarbeiten = wf.aufruf('Antwort verarbeiten', [2640, -240], 'EPA-03 Antwort verarbeiten', [
+		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
+		['vorgangs_id', 'string', `={{ ${Z}.vorgangs_id }}`],
+		['mail', 'object', `={{ ${M} }}`],
+		['referenz', 'string', `={{ ${MID} }}`],
+	]);
+	const antwortErgebnis = wf.code('Ergebnis: Antwort', [2860, -240], [], `
+const r = $input.first().json;
+return [{ json: { ergebnis: 'antwort_' + r.ergebnis, vorgangs_id: r.vorgangs_id } }];
 `);
 
 	// unklar und neu: Vorgang anlegen (Status "Neu")
@@ -347,7 +337,7 @@ return [{ json: {
 `);
 
 	// ---------------------------------------------------------------- Meldung und Abschluss
-	const MELDUNGEN = ['Meldung: zugeordnet', 'Meldung: Zuordnung unklar', 'Meldung: Klassifizierung unklar', 'Meldung: geprüft'];
+	const MELDUNGEN = ['Meldung: Zuordnung unklar', 'Meldung: Klassifizierung unklar', 'Meldung: geprüft'];
 	const informieren = wf.aufruf('Mitarbeiter informieren', [5280, 0], 'EPA SW Benachrichtigen', [
 		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
 		['vorgangs_id', 'string', '={{ $json.vorgangs_id }}'],
@@ -387,10 +377,10 @@ return [{ json: {
 	wf.kette(dupAudit, dupErgebnis, abschluss);
 	wf.kette(ignAudit, ignErgebnis, abschluss);
 	wf.kette(kandidaten, zuordnen, zWeiche);
-	wf.verbinde(zWeiche, anhaengen, 0);
+	wf.verbinde(zWeiche, zAudit, 0);
 	wf.verbinde(zWeiche, anlegen, 1);
 	wf.verbinde(zWeiche, anlegen, 2);
-	wf.kette(anhaengen, zAudit, mZugeordnet, informieren);
+	wf.kette(zAudit, antwortVerarbeiten, antwortErgebnis, abschluss);
 	wf.kette(anlegen, unklarFrage);
 	wf.verbinde(unklarFrage, statusUnklar, 0);
 	wf.verbinde(unklarFrage, klassifizieren, 1);

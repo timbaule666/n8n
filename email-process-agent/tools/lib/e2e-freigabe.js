@@ -57,10 +57,10 @@ async function freigabeSzenarien(ctx) {
 	const fehlerMax = async () => Math.max(0, ...(await tabelle('epa_fehler_log')).map((z) => z.id));
 
 	/** Neue Mail mit Lücken (Telefon fehlt) -> EPA-01 -> EPA-02. Liefert Vorgang, Freigabe und Links je Freigeber. */
-	async function lueckenMail(id, { entwurf } = {}) {
+	async function lueckenMail(id, { entwurf, fehlt = ['Telefon'] } = {}) {
 		const m = mail(id, { betreff: `Transportanfrage ${id}`, von: `kunde-${id.toLowerCase()}@kunde-f.example`, name: 'Erika Mustermann', text: 'Bitte Angebot, Details folgen.' });
 		mock.zustand.graphMails.set(m.id, { mail: m, anhaenge: [] });
-		mock.fall({ klassifizierung: [kl('anfrage')], extraktion: [ex({ ...VOLL, Telefon: null })], ...(entwurf ? { entwurf } : {}) });
+		mock.fall({ klassifizierung: [kl('anfrage')], extraktion: [ex({ ...VOLL, ...Object.fromEntries(fehlt.map((f) => [f, null])) })], ...(entwurf ? { entwurf } : {}) });
 		const chatsVorher = mock.zustand.chats.length;
 		const r = await aufrufen('eingang', { postfach: POSTFACH, mail: m, anhaenge: [] });
 		const vid = r.json.vorgangs_id;
@@ -303,18 +303,19 @@ async function freigabeSzenarien(ctx) {
 		check('Kein neuer Entwurf', 0, mock.zustand.entwuerfe.size - entwuerfeVorher);
 	});
 
-	await zeile('F16', 'Kunde antwortet auf die gesendete Rückfrage: eindeutig zugeordnet', async (check) => {
+	await zeile('F16', 'Kunde antwortet auf die gesendete Rückfrage: eindeutig zugeordnet und ausgewertet', async (check) => {
 		const a = zustand.f01;
 		const d = mock.zustand.entwuerfe.get(a.freigabe.entwurf_id);
 		const m = mail('F16', { betreff: d.subject.replace(/^RE:/, 'AW:'), von: a.mail.from.emailAddress.address, text: 'Telefon: 0221 987654', headers: [{ name: 'In-Reply-To', value: d.internetMessageId }, { name: 'References', value: `${a.mail.internetMessageId} ${d.internetMessageId}` }], conversation: a.mail.conversationId });
 		mock.zustand.graphMails.set(m.id, { mail: m, anhaenge: [] });
-		mock.fall({});
+		mock.fall({ extraktion: [ex({ Telefon: '0221 987654' })] });
 		const r = await aufrufen('eingang', { postfach: POSTFACH, mail: m, anhaenge: [] });
-		check('Ergebnis', 'zugeordnet', r.json.ergebnis);
+		check('Ergebnis', 'antwort_bereit', r.json.ergebnis);
 		check('Vorgang', a.vid, r.json.vorgangs_id);
+		check('Status', 'Bereit zur Bearbeitung', (await vorgang(a.vid)).status);
 	});
 
 	return zeilen;
 }
 
-module.exports = { freigabeSzenarien };
+module.exports = { freigabeSzenarien, seite, tokenAus, unescapeHtml };
