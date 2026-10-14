@@ -46,7 +46,9 @@ module.exports = function () {
 const crypto = require('crypto');
 const j = $input.first().json;
 const body = j.body && typeof j.body === 'object' ? j.body : {};
-const post = Object.prototype.hasOwnProperty.call(body, 'aktion');
+// Abgeschicktes Formular: enthält immer das Token "t" (verstecktes Feld). Fehlt "aktion", meldet formularLesen
+// "Unbekannte Aktion" statt das Formular stillschweigend erneut anzuzeigen.
+const post = Object.prototype.hasOwnProperty.call(body, 'aktion') || Object.prototype.hasOwnProperty.call(body, 't');
 const token = String(post ? body.t || '' : (j.query || {}).t || '');
 const gueltig = freigabe.istGueltigesToken(token);
 return [{ json: {

@@ -101,7 +101,7 @@ function seiteFormular({ token, freigabe, vorgang, fehlende, text, abschluss }) 
 <dl><dt>An</dt><dd>${esc(freigabe.empfaenger)}</dd><dt>Betreff</dt><dd>${esc(freigabe.betreff)}</dd>
 <dt>Runde</dt><dd>${esc(Number(vorgang.rundenzaehler || 0) + 1)}</dd><dt>Gültig bis</dt><dd>${esc(new Date(freigabe.ablauf).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }))}</dd></dl>
 <p>Fehlende Angaben:</p><ul>${luecken}</ul>${freigabe.fallback ? '<p class="hinweis">Hinweis: Die KI-Formulierung hat die Prüfung nicht bestanden, es wird die Standardvorlage verwendet.</p>' : ''}</div>
-<form class="karte" method="post" onsubmit="for(const b of this.querySelectorAll('button'))b.disabled=true">
+<form class="karte" method="post" onsubmit="var f=this;setTimeout(function(){var b=f.querySelectorAll('button');for(var i=0;i<b.length;i++)b[i].disabled=true},0)">
 <input type="hidden" name="t" value="${esc(token)}">
 <label for="text"><b>Text der Mail</b> (bearbeitbar)</label>
 <textarea id="text" name="text">${esc(text)}</textarea>

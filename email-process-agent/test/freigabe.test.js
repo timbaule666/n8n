@@ -72,6 +72,9 @@ test('Formularseite: alles escaped, Token als Hidden-Feld, beide Aktionen', () =
 	assert.match(html, new RegExp(`name="t" value="${t}"`));
 	assert.match(html, /value="senden"/);
 	assert.match(html, /value="ablehnen"/);
+	// Ein sofort deaktivierter Knopf überträgt seinen Wert nicht: sperren erst nach dem Absenden.
+	assert.match(html, /onsubmit="var f=this;setTimeout\(/);
+	assert.doesNotMatch(html, /onsubmit="for\(/);
 	assert.match(html, /Standardvorlage/);
 	assert.match(html, /PLZ &lt;Abholort&gt;/);
 	assert.match(f.seiteMeldung('Gesendet', 'a<b'), /a&lt;b/);

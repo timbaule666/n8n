@@ -218,6 +218,20 @@ async function freigabeSzenarien(ctx) {
 		check('Manipulierter Token', 404, (await seite(`${basis}?t=${encodeURIComponent('<script>')}`)).status);
 	});
 
+	await zeile('F17', 'Formular ohne Knopfwert (Browser mit gesperrtem Knopf): klare Fehlermeldung, Link bleibt gültig, nichts gesendet', async (check) => {
+		const a = await lueckenMail('F17');
+		const link = a.links[FREIGEBER[0]];
+		const formular = (await seite(link)).html;
+		check('Knöpfe erst nach dem Absenden gesperrt', 'ja', /setTimeout\(function\(\)\{var b=f\.querySelectorAll\('button'\)/.test(formular) ? 'ja' : 'nein');
+		const gesendetVorher = mock.zustand.gesendet.length;
+		const s = await seite(link, { t: tokenAus(link), text: a.freigabe.entwurf_text, grund: '' });
+		check('Status', 400, s.status);
+		check('Meldung statt Formular', 'ja', /Unbekannte Aktion/.test(s.html) && s.text === null ? 'ja' : 'nein');
+		check('Nichts gesendet', 0, mock.zustand.gesendet.length - gesendetVorher);
+		const danach = await seite(link, { t: tokenAus(link), aktion: 'senden', text: a.freigabe.entwurf_text, grund: '' });
+		check('Danach mit Aktion gesendet', 200, danach.status);
+	});
+
 	// ---------------------------------------------------------------- F10–F11 Versandfehler
 	await zeile('F10', 'Versandfehler: nichts gesendet, Seite 502, Freigabe "fehler", EPA-05 sichert Vorgang', async (check) => {
 		const a = await lueckenMail('F10');
