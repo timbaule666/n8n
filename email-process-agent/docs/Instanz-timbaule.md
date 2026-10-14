@@ -81,3 +81,13 @@ Angemeldet über „Connect my account“ von n8n Cloud, ohne eigene Entra-App.
 | Microsoft Outlook account | EPA-00 Postfach (Vorlage): Trigger und 15 Graph-Nodes. Kopien übernehmen das Credential. |
 
 Die Workflow-Namen tragen auf Wunsch weiterhin das „ *“. Veröffentlicht ist davon noch nichts. Offen sind Teams-IDs, Postfach-Adresse, Freigeber und die Rechte der n8n-App (Stufe 0).
+
+## Interner Testkanal Telegram (Stand 2026-10-14)
+Tims privates Microsoft-Konto hat keine Teams-Lizenz. Microsoft antwortet auf Graph-Aufrufe für Teams mit 401 „requires a valid license“. Für Tests gehen Meldungen deshalb über Telegram (nicht für Kunden, siehe Testphase.md).
+
+| Was | Stand |
+|---|---|
+| EPA-T2 Telegram senden (Test) * | angelegt, ID `HSD3za9kE5L0IMyv`; Telegram-Credential fehlt, nicht veröffentlicht |
+| `epa_system_status` | Spalten `alarm_kanal`, `telegram_chat_id`, `telegram_workflow_id` ergänzt; Zeile `alarmierung` noch nicht angelegt |
+| Outlook- und Teams-Credential | HTTP-Request-Sperre aufgehoben (Allowed Domains: graph.microsoft.com); Outlook-Postfach per Graph lesbar |
+| Workflows | 17 Workflows auf Stand eb0411d, 0 Abweichungen; Sternchen und Credentials erhalten; vorher aktive neu veröffentlicht |
