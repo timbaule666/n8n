@@ -41,7 +41,7 @@ Danach Credentials zuweisen und in der richtigen Reihenfolge veröffentlichen: s
 | `prompts/v1/` | Systemprompts (Klassifizierung, Extraktion, Entwurf) |
 | `config/` | Data-Table-Schema, Beispiel-Config, leere Vorlage, CSV-Vorlagen |
 | `test/` | Unit-Tests (`npm test`) und Testmails |
-| `tools/` | Build, Prüfung, Deploy, Setup, End-to-End-Tests mit Mock-KI und Mock-Graph |
+| `tools/` | Build, Prüfung, Deploy, Setup, Import eigener KI-Testfälle (`testfaelle-import.js`), End-to-End-Tests mit Mock-KI und Mock-Graph |
 
 ## Grundregeln
 1. Keine Mail an Kunden ohne Freigabe durch einen Menschen.

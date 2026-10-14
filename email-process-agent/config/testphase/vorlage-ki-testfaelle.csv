@@ -1,0 +1,13 @@
+﻿fall_id;betreff;absender;absender_name;erwartete_klasse;text;soll_Start_PLZ;soll_Start_Ort;soll_Ziel_PLZ;soll_Ziel_Ort;soll_Abholdatum;soll_Gewicht_kg;soll_Packstuecke;soll_Ladungsart;soll_Ansprechpartner;soll_Telefon;notiz
+R-001;Anfrage Transport;einkauf@kunde-a.example;Erika Muster;anfrage;"Guten Tag,
+bitte um ein Angebot: Abholung 50667 Köln, Lieferung 80331 München, am 20.11.2026.
+2 Paletten, ca. 900 kg.
+Rückfragen gern an mich: Erika Muster, 0221 9876543
+
+Mit freundlichen Grüßen
+Erika Muster";50667;Köln;80331;München;20.11.2026;900;2;Palette;Erika Muster;0221 9876543;Beispiel: alle Angaben vorhanden
+R-002;Transport nächste Woche;info@kunde-b.example;;anfrage;"Hallo,
+wir müssen etwas von Hamburg nach Berlin bringen, Gewicht ca. 2 t.
+Gruß
+Ihr Logistik-Team";-;Hamburg;-;Berlin;-;2000;;;-;-;Beispiel: Lücken („-“ = steht nicht in der Mail)
+R-003;Newsletter Oktober;newsletter@anbieter.example;Anbieter;keine_anfrage;Unsere Angebote im Oktober …;;;;;;;;;;;Beispiel: keine Anfrage, keine Sollwerte

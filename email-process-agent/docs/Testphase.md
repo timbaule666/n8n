@@ -23,10 +23,29 @@ Voraussetzung: Credentials zugewiesen (Inbetriebnahme Abschnitt 4), Testkunde `e
 Der Prüfstand legt keine Vorgänge an und sendet nichts. Er vergleicht das, was ein Vorgang speichern würde, mit den Sollwerten.
 
 ## Stufe 2: KI-Qualität mit echten, anonymisierten Mails (50–100 Mails)
-1. Echte Anfragen der letzten Wochen auswählen (gemischt: vollständig, lückenhaft, Antworten, Newsletter, Englisch, mit PDF).
-2. **Anonymisieren:** Namen, Firmen, Telefonnummern, Adressen, E-Mail-Adressen durch erfundene, aber formal gültige Werte ersetzen (Struktur und Schreibweise erhalten, z. B. „0221/12 34 56“ bleibt eine Nummer in dieser Form).
-3. Je Mail eine Zeile in `epa_test_ki_faelle`: `fall_id` R-001 …, Betreff, Text, Absender (erfunden), `erwartete_klasse`, `erwartete_felder` als JSON (nur Felder, die ein Mensch eindeutig bestimmen kann; `null` = steht nicht drin). PDF-Inhalte vorerst als Text in die Mail übernehmen.
-4. EPA-T1 ausführen, Bericht bewerten wie K3. Häufige Fehlerbilder notieren (z. B. Ort statt PLZ, Gewicht in Tonnen).
+Vorlage: `config/testphase/vorlage-ki-testfaelle.csv`. Sie öffnet sich direkt in Excel und enthält drei erfundene Beispielzeilen. Für einen anderen Kunden passt man die Spalten so an: `node tools/testfaelle-import.js --vorlage --kunde=<kunde_id>`.
+
+1. **Auswählen:** Echte Anfragen der letzten Wochen nehmen, gemischt: vollständig, lückenhaft, Antworten, Newsletter, Englisch, mit PDF. PDF-Inhalte vorerst als Text in die Mail übernehmen.
+2. **Anonymisieren**, bevor die Mail in die Datei kommt:
+   - Namen, Firmen, Telefonnummern, Adressen und E-Mail-Adressen durch erfundene, aber formal gültige Werte ersetzen.
+   - Struktur und Schreibweise bleiben erhalten („0221/12 34 56“ bleibt eine Nummer in dieser Form).
+   - E-Mail-Adressen nur mit Test-Domains: `…@kunde-a.example`, `….test`.
+3. **Eine Zeile je Mail:**
+   - `fall_id` R-001, R-002 …
+   - Betreff, Absender, Mailtext (Zeilenumbrüche in der Zelle sind erlaubt)
+   - `erwartete_klasse`: anfrage, keine_anfrage oder unklar
+4. **Sollwerte in den Spalten `soll_<Feld>`**, so wie ein Mensch sie eindeutig aus der Mail liest:
+   - leer = Feld wird nicht bewertet
+   - `-` = steht nicht in der Mail (die KI soll nichts liefern)
+   - Sollwerte nur bei `anfrage`
+5. **Prüfen ohne Einspielen:** `N8N_URL=… N8N_API_KEY=… node tools/testfaelle-import.js faelle.csv --kunde=<kunde_id> --probelauf`
+   - Abgebrochen wird bei Formfehlern, bei doppelten `fall_id` und bei Hinweisen auf echte Daten: echte E-Mail-Adressen im Absender oder Text, IBAN.
+   - Ungültige Sollwerte erscheinen als Hinweis.
+6. **Einspielen:** derselbe Aufruf ohne `--probelauf`. Vorhandene Fälle werden nie überschrieben.
+7. **Auswerten:**
+   - Die synthetischen Fälle S01–S15 in `epa_test_ki_faelle` auf `aktiv = false` setzen, wenn nur die echten bewertet werden sollen.
+   - EPA-T1 mit dem Kunden ausführen und den Bericht bewerten wie in K3.
+   - Häufige Fehlerbilder notieren (z. B. Ort statt PLZ, Gewicht in Tonnen).
 
 ## Stufe 3: Ende-zu-Ende mit Testpostfach (ca. 1–2 Stunden)
 Testpostfach = EPA-00-Kopie mit dem Testpostfach, `aktiv = true`. Testmails von einer zweiten Adresse schicken.
