@@ -1,6 +1,6 @@
 # Stand in der Instanz timbaule.app.n8n.cloud
 
-Stand 2026-10-14 (M5). Speicher: **n8n Data Tables** (persönliches Projekt).
+Stand 2026-10-14 (M6). Speicher: **n8n Data Tables** (persönliches Projekt).
 
 ## Workflows
 | Workflow | ID | Nodes | Status |
@@ -13,15 +13,17 @@ Stand 2026-10-14 (M5). Speicher: **n8n Data Tables** (persönliches Projekt).
 | EPA SW LLM aufrufen | `VNTqDuobRAqqj4Y7` | 13 | Entwurf, OpenAI-Credential fehlt |
 | EPA SW Benachrichtigen | `KLzgK5VQCop0z9QA` | 9 | Entwurf, Teams-Credential fehlt |
 | EPA-01 Eingang verarbeiten | `W1j7GzjIxdjtQkVS` | 41 | Entwurf (veröffentlichbar nach EPA-02) |
-| EPA-00 Postfach (Vorlage) | `fi1VnvQ26qBQ8aMQ` | 36 | Vorlage, je Postfach duplizieren (enthält ab M3 die Postfach-Aktionen für Entwurf/Versand) |
+| EPA-00 Postfach (Vorlage) | `fi1VnvQ26qBQ8aMQ` | 43 | Vorlage, je Postfach duplizieren (enthält ab M3 die Postfach-Aktionen für Entwurf/Versand) |
 | EPA SW Freigabe senden | `41ZGdeyiNVWwrJfW` | 11 | Entwurf, Teams-Credential fehlt (3 Graph-Nodes) |
-| EPA-02 Rückfrage anfordern | `aSdEMSgPSxhnQKMi` | 25 | Entwurf (veröffentlichbar nach SW LLM, SW Benachrichtigen, SW Freigabe senden) |
+| EPA-02 Rückfrage anfordern | `aSdEMSgPSxhnQKMi` | 26 | Entwurf (veröffentlichbar nach SW LLM, SW Benachrichtigen, SW Freigabe senden) |
 | EPA-03 Antwort verarbeiten | `R83VDuvm7aML2HwH` | 32 | Entwurf (veröffentlichbar nach EPA-02) |
 | EPA SW Nachfassen | `XzWGKZPK0HGb6Si7` | 34 | Entwurf (veröffentlichbar nach EPA-02) |
 | EPA-04 Nachfassen und Eskalation | `OvSzCe83KeiTLnkN` | 24 | Entwurf (veröffentlichbar nach EPA SW Nachfassen; Zeitplan stündlich) |
+| EPA-06 Watchdog | `wkAkeJjhOwsTBJKd` | 23 | Entwurf: Teams-IDs (Betriebskanal) und Credentials (Teams, OpenAI) fehlen |
+| EPA-08 Löschjob | `SKBmXLzixbf2Unl4` | 30 | Entwurf, bewusst nicht veröffentlicht: erst nach Probelauf und Freigabe durch dich |
 | EPA-07 Freigabe-Endpunkt | `xj4e8E82vccdoiXl` | 41 | **veröffentlicht**, Link: `https://timbaule.app.n8n.cloud/webhook/epa-freigabe` (Probe: ungültiger Link → 404-Seite) |
 
-M5: eingespielt aus `workflows/` vom Commit `cf2bfa8` (M4: `8d36300`, M3: `1bccce8`, M2: `50f1cce`, M1: `b195eb6`), direkt von GitHub geladen. Danach wurde jeder Node mit der Quelle abgeglichen (Typ, Version, Parameter): 0 Abweichungen.
+M6: eingespielt aus `workflows/` vom Commit `f3a7fb3` (M5: `cf2bfa8`, M4: `8d36300`, M3: `1bccce8`, M2: `50f1cce`, M1: `b195eb6`), direkt von GitHub geladen. Danach wurde jeder Node mit der Quelle abgeglichen (Typ, Version, Parameter): 0 Abweichungen.
 
 ## Data Tables
 | Tabelle | ID | Inhalt |
@@ -33,11 +35,11 @@ M5: eingespielt aus `workflows/` vom Commit `cf2bfa8` (M4: `8d36300`, M3: `1bccc
 | epa_fehler_log | `p6qBzQhHBJFe4sT4` | leer |
 | epa_verarbeitete_mails | `Be0xzQpjxTlYWuOg` | leer (Dedupe, M2) |
 | epa_prompts | `RLIt1PFeEq9CJsST` | klassifizierung/v1, extraktion/v1, entwurf/v1 (Prüfsummen wie im Repo) |
-| epa_freigaben | `HDUhqBQV5ZxG6lzl` | leer (M3; ab M5 Spalten `erinnert_am`, `erneuert_am`) |
+| epa_freigaben | `HDUhqBQV5ZxG6lzl` | leer (M3; ab M5 Spalten `erinnert_am`, `erneuert_am`; ab M6 `entwurf_entfernt_am`) |
 | epa_freigabe_tokens | `y7kKOYkDuAo7r5lr` | leer (nur SHA-256-Hashes; ab M5 Spalte `ablauf`) |
 | epa_system_status | `PfrSmbclvoZa3zcN` | Lock-Zeile `epa04_lauf` (frei) (M5) |
 
-`epa_config_allgemein` hat neu die Spalten `postfach_workflow_id` (ID der EPA-00-Kopie des Kunden) und `freigabe_basis_url` (optional, sonst automatisch).
+`epa_config_allgemein` hat ab M6 zusätzlich `stille_alarm_stunden` (leer = aus). Seit M3 gibt es die Spalten `postfach_workflow_id` (ID der EPA-00-Kopie des Kunden) und `freigabe_basis_url` (optional, sonst automatisch).
 
 ## Kurztest in der Instanz (manuell ausgeführt, Testdaten danach gelöscht)
 | Fall | Ergebnis |
@@ -56,7 +58,7 @@ Hinweis: Vorgangs-IDs entstehen aus der fortlaufenden Zeilennummer. Gelöschte Z
 ## Offen
 0. **Reihenfolge zum Scharfschalten (M2+M3):**
    1. Credentials zuweisen: OpenAI in „EPA SW LLM aufrufen“ (Node „OpenAI aufrufen“); Teams (Dienstkonto) in „EPA SW Benachrichtigen“ und in den 3 Graph-Nodes von „EPA SW Freigabe senden“.
-   2. Veröffentlichen in dieser Reihenfolge: SW LLM aufrufen, SW Benachrichtigen, SW Freigabe senden → EPA-02 → EPA-03 → EPA-01, danach EPA SW Nachfassen → EPA-04.
+   2. Veröffentlichen in dieser Reihenfolge: SW LLM aufrufen, SW Benachrichtigen, SW Freigabe senden → EPA-02 → EPA-03 → EPA-01, danach EPA SW Nachfassen → EPA-04, EPA-06 (nach Eintrag des Betriebskanals). EPA-08 erst nach einem Probelauf.
    3. EPA-00 duplizieren, Postfach im Node „Postfach festlegen“ eintragen, Outlook-Credential in Trigger und allen Graph-Nodes zuweisen, Archivordner anlegen, veröffentlichen.
    4. Die ID dieser Kopie (aus der URL) in `epa_config_allgemein.postfach_workflow_id` eintragen.
    Erst danach läuft echte Post. Gesendet wird nie ohne Klick auf „Freigeben“.
