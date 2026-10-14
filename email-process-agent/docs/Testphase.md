@@ -62,6 +62,7 @@ Echtes Postfach, aber jede Rückfrage wird bewusst geprüft (das ist ohnehin Pfl
 | V3 | | | |
 | K2 | 2026-10-14 | Klassifizierung 14/15 (93,3 %); 8 von 10 Feldern 100 %, Ansprechpartner 87,5 %, Ladungsart 20 %; keine falschen Werte, 1 erfundener Wert | Lauf STUFE1-L1, gpt-4o-mini-2024-07-18, Prompts v1; Details unten |
 | K2 | 2026-10-14 | Klassifizierung 15/15 (100 %); 9 von 10 Feldern 100 %, Ladungsart 60 %; keine falschen und keine erfundenen Werte | Lauf STUFE1-L2 nach den Korrekturen; Details unten |
+| K2 | 2026-10-14 | Klassifizierung 15/15; 9 von 10 Feldern 100 % (Ladungsart jetzt 5/5); Ansprechpartner 87,5 %, 1 erfundener Wert (S13) | Lauf STUFE1-L3 mit geschärftem Hinweis Ladungsart; Details unten |
 | E1–E12 | | | |
 
 ## Lauf STUFE1-L1 (2026-10-14): Auswertung
@@ -97,3 +98,17 @@ Gleiche 15 Fälle, gleiches Modell, Prompts v1. Geändert (Commit 3f653d6): Ausw
 Möglicher nächster Schritt: `extraktions_hinweis` der Ladungsart schärfen, z. B. „Art der Ladung, auch wenn sie nur zusammen mit der Anzahl genannt ist (‚3 Paletten‘ → Palette)“. Danach Lauf L3.
 
 **Bewertung:** Die Zielwerte aus K3 sind für alle Pflichtfelder erreicht. Es gibt keine erfundenen Werte. Die Klassifizierung liegt bei 100 %. Stufe 1 ist bestanden; offen ist nur noch das optionale Feld Ladungsart.
+
+## Lauf STUFE1-L3 (2026-10-14): Hinweis Ladungsart geschärft
+Geändert: `extraktions_hinweis` der Ladungsart („Einzahl, auch wenn nur mit Anzahl genannt, ‚3 Paletten‘ → Palette“). Workflows und Prompts sind unverändert.
+
+| Kennzahl | L2 | L3 |
+|---|---|---|
+| Klassifizierung | 15/15 | 15/15 |
+| Ladungsart | 3/5 | **5/5** |
+| Ansprechpartner | 100 % | 87,5 %, S13 wieder „Team Kaffee Beispiel“ |
+| übrige 8 Felder | 100 % | 100 % |
+
+**Befund S13:** Hinweis und Mail sind in L2 und L3 gleich, das Ergebnis aber nicht. Die KI befolgt den Hinweis „keine Teamnamen“ also nicht zuverlässig. Bei einem Pflichtfeld ist das relevant: Ein erfundener Ansprechpartner unterdrückt die Rückfrage.
+
+**Vorschlag (noch nicht umgesetzt):** Eine feste Prüfung im Code (`src/pflichtfelder.js`) statt eines weiteren Hinweises. Feldtyp `person` oder eine Regel `keine_muster` für Text: Werte, die mit „Team“, „Abteilung“, „Firma“, „Ihr …“ beginnen oder eine Rechtsform enthalten (GmbH, AG, KG …), gelten als fehlend. Danach mehrere Läufe hintereinander, um die Schwankung zu messen.
