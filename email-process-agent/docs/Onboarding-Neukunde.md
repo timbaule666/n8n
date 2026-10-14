@@ -1,0 +1,55 @@
+# Onboarding eines neuen Kunden
+
+Stand 2026-10-14 (M7). Ein Workflow-Satz bedient alle Kunden. Pro Kunde kommen drei Dinge hinzu: eine Config-Zeile, die Pflichtfelder mit Textbausteinen und eine Kopie des Postfach-Workflows (EPA-00).
+
+**Aufwand (Erfahrungswert, zu verifizieren am ersten echten Kunden):**
+- Workshop mit dem Kunden (Felder, Textbausteine, Freigeber, Fristen): 1–2 Stunden
+- Technisches Einrichten: etwa 1 Stunde
+- Testphase mit Testpostfach: 1–2 Tage Laufzeit, davon etwa 1 Stunde Arbeit
+
+## 1. Vorab mit dem Kunden klären (Workshop)
+| Thema | Ergebnis | Config-Feld |
+|---|---|---|
+| Welches Postfach wird überwacht? Shared Mailbox empfohlen | Adresse | `postfach` |
+| Welche Vorgangsart(en)? Welche Angaben braucht der Kunde zwingend, welche optional? | Feldliste | `epa_config_pflichtfelder` |
+| Fester Satz je fehlender Angabe (wird wortgleich an den Kunden geschickt) | Textbausteine | `resolution_textbaustein` |
+| Wer darf Rückfragen freigeben? Vertretung? | Liste Microsoft-365-Konten | `freigeber`, `vertreter` |
+| Teams-Kanal für Meldungen | Team- und Kanal-ID | `benachrichtigung` |
+| Anrede (Sie/Du), Sprache, Signatur | Texte | `anrede_stil`, `sprache`, `signatur` |
+| KI-Hinweis in ausgehenden Mails (juristisch prüfen lassen) | Text | `ki_hinweistext` |
+| Antwortfrist, Anzahl/Abstand der Erinnerungen, max. Rückfragerunden | Zahlen | `frist_stunden`, `anzahl_erinnerungen`, `erinnerung_intervall_stunden`, `max_runden` |
+| Geschäftszeiten, Bundesland für Feiertage | Zeiten | `geschaeftszeiten`, `feiertage_region` |
+| Aufbewahrung der Vorgangsdaten | Tage | `aufbewahrung_tage` |
+| Absender, die nie bzw. immer als Anfrage gelten | Listen | `absender_blocklist`, `absender_allowlist` |
+| Datenschutz: AVV, Hinweise, Verzeichnis | erledigt? | siehe `Datenschutz-und-KI-Checkliste.md` |
+
+## 2. Microsoft 365 vorbereiten (Admin des Kunden)
+1. Dienstkonto für das Postfach (Vollzugriff nur auf die Shared Mailbox) und für Teams (Mitglied im Meldekanal). Berechtigungen siehe Checkliste, Abschnitt 6.
+2. Im Postfach einen Ordner `EPA-Archiv` auf oberster Ebene anlegen (oder Name aus `archivordner`).
+3. Teams-Kanal anlegen; Team-ID (GUID aus dem Link, `groupId=…`) und Kanal-ID (`19:…@thread.tacv2`) notieren.
+
+## 3. In n8n einrichten
+1. **Config anlegen:** `config/datatables/vorlage-leer.json` bzw. `config/vorlagen/epa_config_*_leer.csv` als Vorlage nehmen (Beispiel mit echten Werten: `beispiel-transport.json`). Alle `<Platzhalter>` ersetzen. `aktiv` zunächst auf `false` lassen.
+   - Zeile in `epa_config_allgemein` anlegen (über die Data-Table-Oberfläche oder per CSV-Import [zu verifizieren: CSV-Import in der Cloud-Oberfläche]).
+   - Je Pflichtfeld eine Zeile in `epa_config_pflichtfelder` (gleiche `kunde_id`).
+2. **Postfach-Workflow:** `EPA-00 Postfach (Vorlage)` duplizieren und z. B. „EPA-00 Postfach anfragen@kunde.de“ nennen. Im Node „Postfach festlegen“ die Adresse eintragen. Das Outlook-Credential des Dienstkontos im Trigger und in allen Graph-Nodes zuweisen. Die ID der Kopie (aus der URL) in `postfach_workflow_id` eintragen.
+3. **Config prüfen:** `EPA SW Config laden` manuell mit `{"kunde_id": "<kürzel>"}` ausführen. Erwartet: `config` ohne Fehler. Fehlermeldungen nennen das Feld.
+4. **Testphase:** Mit dem Testpostfach bzw. einem Testabsender 5–10 typische Mails schicken: vollständig, mit Lücken, Antwort, Newsletter, Abwesenheitsnotiz. Freigaben über die Links testen.
+5. **Scharf schalten:** `aktiv = true`, Postfach-Kopie veröffentlichen. EPA-04, EPA-06 und EPA-08 laufen für alle Kunden mit.
+
+## 4. Datentrennung zwischen Kunden
+- Jede Zeile in allen Tabellen trägt `kunde_id`. Die Sub-Workflows lesen und schreiben immer mit `kunde_id` im Filter (auch bei Vorgängen, Freigaben, Audit).
+- Die Config wird über das Postfach gefunden (eindeutig, sonst 409). Eine Mail aus Postfach A kann keinen Vorgang von Kunde B treffen.
+- Pro Kunde eigenes Outlook-Credential in der eigenen EPA-00-Kopie; Freigabe-Links sind an Personen aus der Config des jeweiligen Kunden gebunden.
+- Grenze: Alle Kunden liegen in denselben Data Tables einer n8n-Instanz. Wer n8n-Zugriff hat, sieht alle Kunden. Für strenge Trennung eine eigene n8n-Instanz bzw. ein eigenes Projekt je Kunde verwenden (Workflows einfach erneut ausrollen).
+
+## 5. Checkliste zum Abhaken
+- [ ] Workshop durchgeführt, Felder und Textbausteine abgestimmt
+- [ ] AVV und Datenschutzhinweise geklärt
+- [ ] Dienstkonten und Rechte eingerichtet, Archivordner angelegt
+- [ ] Config ohne Platzhalter, `EPA SW Config laden` ohne Fehler
+- [ ] EPA-00-Kopie mit Credential, ID in `postfach_workflow_id`
+- [ ] Freigeber haben einen Test-Link erhalten und geöffnet
+- [ ] Testmails durchgespielt (vollständig, Lücke, Antwort, Erinnerung, Spam)
+- [ ] `aktiv = true`, Postfach-Kopie veröffentlicht
+- [ ] Watchdog meldet „Alles in Ordnung“ am Folgetag

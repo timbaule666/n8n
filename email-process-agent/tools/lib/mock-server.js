@@ -20,6 +20,7 @@ function mockServer({ port = 0 } = {}) {
 		modelleFehler: null, // HTTP-Status für GET /v1/models (Watchdog: KI-Anbieter)
 		postfachFehler: null, // HTTP-Status für GET .../mailFolders/inbox (Watchdog: Outlook-Credential)
 		geloescht: [], // per DELETE entfernte Nachrichten-IDs
+		mailLadenFehler: null, // HTTP-Status für GET einer eingegangenen Mail (Graph nicht erreichbar / Token abgelaufen)
 		zaehler: 0,
 	};
 
@@ -40,6 +41,16 @@ function mockServer({ port = 0 } = {}) {
 		let a = liste[i];
 		// Ohne Skript: gültige Hülle für den Rückfrage-Entwurf (M2-Fälle mit Lücken lösen EPA-02 aus)
 		if (!a && aufgabe === 'entwurf' && !zustand.llmSkript.entwurf) a = { json: { anrede: 'Guten Tag,', einleitung: 'vielen Dank für Ihre Anfrage. Für die Bearbeitung fehlen uns noch folgende Angaben:', schluss: 'Vielen Dank für Ihre Rückmeldung.' } };
+		if (a && a.verzoegerung) {
+			// Langsame Antwort (Timeout-Test): danach normal antworten bzw. ins Leere, falls der Client abgebrochen hat
+			const { verzoegerung, ...rest } = a;
+			setTimeout(() => antworten(rest), verzoegerung);
+			return;
+		}
+		antworten(a);
+		return;
+
+		function antworten(a) {
 		if (!a) {
 			res.writeHead(500, { 'content-type': 'application/json' });
 			return res.end(JSON.stringify({ error: { message: `Mock: keine Antwort Nr. ${i + 1} für ${aufgabe}` } }));
@@ -56,6 +67,7 @@ function mockServer({ port = 0 } = {}) {
 			choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
 			usage: { prompt_tokens: Math.ceil(JSON.stringify(body.messages).length / 4), completion_tokens: Math.ceil(content.length / 4) },
 		}));
+		}
 	}
 
 	function teams(req, url, body, res, json) {
@@ -143,6 +155,7 @@ function mockServer({ port = 0 } = {}) {
 		}
 		const eintrag = zustand.graphMails.get(teile[6]);
 		if (teile[5] !== 'messages' || !eintrag) return json(404, { error: { code: 'ErrorItemNotFound', message: 'not found' } });
+		if (teile.length === 7 && req.method === 'GET' && zustand.mailLadenFehler) return json(zustand.mailLadenFehler, { error: { code: zustand.mailLadenFehler === 401 ? 'InvalidAuthenticationToken' : 'ServiceUnavailable', message: 'Mock' } });
 		if (teile.length === 7 && req.method === 'GET') return json(200, eintrag.mail);
 		if (teile.length === 7 && req.method === 'DELETE') {
 			zustand.geloescht.push(teile[6]);

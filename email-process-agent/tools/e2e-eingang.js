@@ -21,6 +21,7 @@ const { freigabeSzenarien } = require('./lib/e2e-freigabe');
 const { antwortSzenarien } = require('./lib/e2e-antwort');
 const { nachfassSzenarien } = require('./lib/e2e-nachfassen');
 const { betriebSzenarien } = require('./lib/e2e-betrieb');
+const { fehlerSzenarien } = require('./lib/e2e-fehler');
 
 const BASIS = (process.env.N8N_URL || '').replace(/\/+$/, '');
 const KEY = process.env.N8N_API_KEY;
@@ -207,6 +208,7 @@ async function main() {
 	const zeilenM4 = [];
 	const zeilenM5 = [];
 	const zeilenM6 = [];
+	const zeilenM7 = [];
 	try {
 		bauen();
 		const ids = await einrichten({ prompts: true, log: () => {} });
@@ -338,6 +340,11 @@ async function main() {
 			zeilenM5.push(...await nachfassSzenarien({ mock, aufrufen, tabelle, api, ids, KUNDE, POSTFACH, FREIGEBER, nur: nur.filter((n) => /^N/.test(n)) }));
 		}
 
+		// M7: weitere Fehlerfälle aus Masterprompt Abschnitt 10
+		if (!nur.length || nur.some((n) => /^G/.test(n))) {
+			zeilenM7.push(...await fehlerSzenarien({ mock, aufrufen, tabelle, api, ids, KUNDE, POSTFACH, FREIGEBER, nur: nur.filter((n) => /^G/.test(n)) }));
+		}
+
 		// M6: Betrieb (Watchdog, Löschjob) – zuletzt, weil der Löschjob Testdaten entfernt
 		if (!nur.length || nur.some((n) => /^[WLH]/.test(n))) {
 			zeilenM6.push(...await betriebSzenarien({ mock, aufrufen, tabelle, api, ids, KUNDE, POSTFACH, FREIGEBER, nur: nur.filter((n) => /^[WLH]/.test(n)) }));
@@ -351,17 +358,40 @@ async function main() {
 		for (const id of temp) await entfernen(id).catch((e) => console.error('Aufräumen:', e.message));
 		await mock.stoppen();
 	}
-	const alle = [...zeilen, ...zeilenM3, ...zeilenM4, ...zeilenM5, ...zeilenM6];
+	const alle = [...zeilen, ...zeilenM3, ...zeilenM4, ...zeilenM5, ...zeilenM6, ...zeilenM7];
 	const bestanden = alle.filter((z) => z.ok).length;
-	console.log(`\nM2: ${zeilen.filter((z) => z.ok).length}/${zeilen.length}, M3: ${zeilenM3.filter((z) => z.ok).length}/${zeilenM3.length}, M4: ${zeilenM4.filter((z) => z.ok).length}/${zeilenM4.length}, M5: ${zeilenM5.filter((z) => z.ok).length}/${zeilenM5.length}, M6: ${zeilenM6.filter((z) => z.ok).length}/${zeilenM6.length} – gesamt ${bestanden}/${alle.length} Szenarien bestanden`);
+	console.log(`\nM2: ${zeilen.filter((z) => z.ok).length}/${zeilen.length}, M3: ${zeilenM3.filter((z) => z.ok).length}/${zeilenM3.length}, M4: ${zeilenM4.filter((z) => z.ok).length}/${zeilenM4.length}, M5: ${zeilenM5.filter((z) => z.ok).length}/${zeilenM5.length}, M6: ${zeilenM6.filter((z) => z.ok).length}/${zeilenM6.length}, M7: ${zeilenM7.filter((z) => z.ok).length}/${zeilenM7.length} – gesamt ${bestanden}/${alle.length} Szenarien bestanden`);
 	if (!nur.length) {
 		protokoll(zeilen, 'M2', 'Eingang (EPA-00/EPA-01)', 'Testprotokoll-M2.md');
 		protokoll(zeilenM3, 'M3', 'Rückfrage und Freigabe (EPA-02/EPA-07)', 'Testprotokoll-M3.md');
 		protokoll(zeilenM4, 'M4', 'Antworten verarbeiten (EPA-03)', 'Testprotokoll-M4.md');
 		protokoll(zeilenM5, 'M5', 'Nachfassen und Eskalation (EPA-04)', 'Testprotokoll-M5.md');
 		protokoll(zeilenM6, 'M6', 'Betrieb: Watchdog (EPA-06) und Löschjob (EPA-08)', 'Testprotokoll-M6.md');
+		protokoll(zeilenM7, 'M7', 'Fehlerfälle (Graph, Token, KI-Timeout, Textbaustein)', 'Testprotokoll-M7.md');
+		gesamtprotokoll({ M2: zeilen, M3: zeilenM3, M4: zeilenM4, M5: zeilenM5, M6: zeilenM6, M7: zeilenM7 });
 	}
 	process.exit(bestanden === alle.length ? 0 : 1);
+}
+
+/** Kurzübersicht aller Läufe für die Abnahme (docs/Testprotokoll-Gesamt.md). */
+function gesamtprotokoll(teile) {
+	const alle = Object.values(teile).flat();
+	const md = [
+		'# Testprotokoll Gesamtlauf (Abnahme)',
+		'',
+		`Stand ${new Date().toISOString().slice(0, 10)}. Lokale n8n-Instanz 2.43.4, Data Tables, Mock-LLM und Mock-Graph. Erzeugt von \`tools/e2e-eingang.js\` in einem Lauf.`,
+		'',
+		'| Teil | bestanden | gesamt |',
+		'|---|---|---|',
+		...Object.entries(teile).map(([k, z]) => `| ${k} | ${z.filter((x) => x.ok).length} | ${z.length} |`),
+		`| **Summe** | **${alle.filter((x) => x.ok).length}** | **${alle.length}** |`,
+		'',
+		alle.every((x) => x.ok) ? 'Alle Szenarien bestanden.' : `Nicht bestanden: ${alle.filter((x) => !x.ok).map((x) => x.id).join(', ')}`,
+		'',
+		'Einzelheiten je Teil in `Testprotokoll-M2.md` bis `Testprotokoll-M7.md`.',
+		'',
+	].join('\n');
+	fs.writeFileSync(path.join(ROOT, 'docs', 'Testprotokoll-Gesamt.md'), md);
 }
 
 function protokoll(zeilen, m, titel, datei) {

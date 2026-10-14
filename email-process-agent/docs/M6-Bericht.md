@@ -51,4 +51,4 @@ Stand 2026-10-14. n8n 2.43.4, Data Tables.
 
 ## Regression
 
-Gesamtlauf lokal: **81 Szenarien** (M2 36/36, M3 16/16, M4 9/9, M5 10/10, M6 10/10). Die M1-Regression ist grün. H01 war im ersten Gesamtlauf rot (eigene CSP von n8n überschrieben, siehe Testprotokoll-M6); nach der Korrektur wurde H01 zusammen mit F01–F03 erneut ausgeführt und bestanden.
+Gesamtlauf lokal: **81 Szenarien** (M2 36/36, M3 16/16, M4 9/9, M5 10/10, M6 10/10). Die M1-Regression ist grün. H01 war im ersten Gesamtlauf rot (eigene CSP von n8n überschrieben); nach der Korrektur wurde H01 zusammen mit F01–F03 erneut ausgeführt und bestanden. Im Abnahme-Gesamtlauf (M7) ist H01 regulär grün.

@@ -11,7 +11,7 @@ Stand 2026-10-13. Zielversion n8n 2.43.4, PostgreSQL ≥ 13.
 | Sub-Workflows | `EPA SW Config laden`, `EPA SW Audit schreiben`, `EPA SW Status setzen`, `EPA SW Vorgang verwalten` (lesen, anlegen, aktualisieren, Kandidaten suchen, sperren, entsperren) |
 | Error-Handler | `EPA-05 Error-Handler`: Fehler klassifizieren, ins Fehlerlog schreiben, Vorgang auf „Eskaliert / Manuell“ sichern (nicht bei Versionskonflikt, Sperre, Duplikat), Teams-Alarm, Alarmstatus vermerken |
 | Werkzeuge | `npm run build` (bettet Module und SQL in die Workflows ein), `validate-workflows`, `deploy.js` (Public API, verknüpft und veröffentlicht), `e2e-test.js` |
-| Doku | `docs/Inbetriebnahme-M1.md` |
+| Doku | `docs/Inbetriebnahme.md` |
 
 ## Getestet
 1. **69 Unit- und Integrationstests** (`npm test`, davon 14 gegen echtes PostgreSQL 16). Sie prüfen die Statusmatrix, Fehlerklassen, Fristen und Feiertage, den Config-Validator und das Deploy-Skript. Außerdem jede SQL-Abfrage mit genau dem Parameterweg des Postgres-Nodes (pg-promise 11.9.1, wie in n8n-nodes-base 2.43.2). Dazu kommen die Code-Nodes aus den gebauten Workflow-JSONs, Mandantentrennung, SQL-Injection und parallele ID-Vergabe.

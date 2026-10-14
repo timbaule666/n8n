@@ -46,6 +46,8 @@ function bauen() {
 	// Prompts als Datei für den Import in die Data Table epa_prompts (Quelle bleibt prompts/<version>/*.md)
 	const { allePrompts } = require('./lib/prompts');
 	fs.writeFileSync(path.join(ROOT, 'config', 'datatables', 'prompts.json'), JSON.stringify(allePrompts(), null, 1) + '\n');
+	// Config-Vorlagen (leer und CSV) aus dem Schema
+	require('./vorlagen').vorlagenBauen();
 	return ergebnis;
 }
 
