@@ -164,6 +164,29 @@
       "letzter_start": "date",
       "letzter_lauf": "date",
       "letztes_ergebnis": "string"
+    },
+    "epa_test_ki_faelle": {
+      "fall_id": "string",
+      "betreff": "string",
+      "text": "string",
+      "absender": "string",
+      "absender_name": "string",
+      "erwartete_klasse": "string",
+      "erwartete_felder": "string",
+      "notiz": "string",
+      "aktiv": "boolean"
+    },
+    "epa_test_ki_ergebnisse": {
+      "lauf_id": "string",
+      "kunde_id": "string",
+      "fall_id": "string",
+      "klasse_soll": "string",
+      "klasse_ist": "string",
+      "klasse_ok": "boolean",
+      "felder": "string",
+      "modell": "string",
+      "prompt_version": "string",
+      "fehler": "string"
     }
   }
 }

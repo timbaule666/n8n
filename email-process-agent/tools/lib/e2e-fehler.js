@@ -7,7 +7,7 @@ async function fehlerSzenarien(ctx) {
 	const { mock, aufrufen, tabelle, api, ids, KUNDE, POSTFACH, nur } = ctx;
 	const zeilen = [];
 	const zeile = async (id, szenario, fn) => {
-		if (nur.length && !nur.includes(id) && !nur.includes('G')) return;
+		if (nur.length && !nur.includes(id) && !nur.includes(id[0])) return;
 		const soll = [];
 		const ist = [];
 		const pruef = [];
@@ -108,6 +108,31 @@ async function fehlerSzenarien(ctx) {
 		} finally {
 			await aktualisieren('epa_config_pflichtfelder', filter(['kunde_id', KUNDE], ['feldname', 'Telefon']), { resolution_textbaustein: feld.resolution_textbaustein });
 		}
+	});
+
+	// ---------------------------------------------------------------- Testphase: KI-Qualitäts-Prüfstand
+	await zeile('Q01', 'KI-Prüfstand (EPA-T1): Klassifizierung und Felder gegen Sollwerte, Ergebnisse gespeichert, keine Vorgänge/Mails', async (check) => {
+		for (const z of await tabelle('epa_test_ki_faelle')) {
+			await api('DELETE', `/data-tables/${ids.epa_test_ki_faelle}/rows/delete?filter=${encodeURIComponent(JSON.stringify(filter(['id', z.id])))}`);
+		}
+		await api('POST', `/data-tables/${ids.epa_test_ki_faelle}/rows`, { returnType: 'count', data: [
+			{ fall_id: 'Q-A', betreff: 'Transportanfrage', text: 'Bitte Transport von 50667 Köln nach 04109 Leipzig, 1200 kg, Tel. 0221 1234567.', absender: 'a@q.example', erwartete_klasse: 'anfrage', erwartete_felder: JSON.stringify({ Start_PLZ: '50667', Ziel_PLZ: '04109', Gewicht_kg: '1200', Telefon: '0221 1234567', Abholdatum: null }), aktiv: true },
+			{ fall_id: 'Q-B', betreff: 'Newsletter', text: 'Unser Newsletter mit Angeboten.', absender: 'news@q.example', erwartete_klasse: 'keine_anfrage', erwartete_felder: '{}', aktiv: true },
+			{ fall_id: 'Q-C', betreff: 'inaktiv', text: 'wird nicht geprüft', absender: 'x@q.example', erwartete_klasse: 'anfrage', erwartete_felder: '{}', aktiv: false },
+		] });
+		const vorgaengeVorher = (await tabelle('epa_vorgaenge')).length;
+		const gesendetVorher = mock.zustand.gesendet.length;
+		// Reihenfolge nach fall_id: Q-A, Q-B. Extraktion nur für Q-A: Gewicht falsch (1100), Telefon richtig, Ziel fehlt.
+		mock.fall({ klassifizierung: [kl('anfrage'), kl('keine_anfrage')], extraktion: [ex({ Start_PLZ: '50667', Ziel_PLZ: null, Gewicht_kg: '1100', Telefon: '0221/123 45 67', Abholdatum: null })] });
+		const r = await aufrufen('ki-qualitaet', { kunde_id: KUNDE, lauf_id: 'Q01-LAUF' });
+		const z = r.json.zusammenfassung || {};
+		check('Klassifizierung', '2/2', `${z.klassifizierung && z.klassifizierung.richtig}/${z.klassifizierung && z.klassifizierung.faelle}`);
+		const art = Object.fromEntries((z.felder || []).map((f) => [f.feldname, `${f.richtig}r/${f.richtig_leer}l/${f.falsch}f/${f.fehlend}m`]));
+		check('Felder', 'Start_PLZ 1r, Ziel_PLZ 1m, Gewicht 1f, Telefon 1r, Abholdatum 1l', `Start_PLZ ${art.Start_PLZ === '1r/0l/0f/0m' ? '1r' : art.Start_PLZ}, Ziel_PLZ ${art.Ziel_PLZ === '0r/0l/0f/1m' ? '1m' : art.Ziel_PLZ}, Gewicht ${art.Gewicht_kg === '0r/0l/1f/0m' ? '1f' : art.Gewicht_kg}, Telefon ${art.Telefon === '1r/0l/0f/0m' ? '1r' : art.Telefon}, Abholdatum ${art.Abholdatum === '0r/1l/0f/0m' ? '1l' : art.Abholdatum}`);
+		check('KI-Aufrufe (K/E)', '2/1', `${mock.zustand.llmAnfragen.filter((a) => a.aufgabe === 'klassifizierung').length}/${mock.zustand.llmAnfragen.filter((a) => a.aufgabe === 'extraktion').length}`);
+		check('Bericht', 'ja', /Klassifizierung: 2\/2 richtig/.test(r.json.bericht || '') ? 'ja' : 'nein');
+		check('Ergebnisse gespeichert', 2, (await tabelle('epa_test_ki_ergebnisse')).filter((e) => e.lauf_id === 'Q01-LAUF').length);
+		check('Keine Vorgänge, keine Mails', `${vorgaengeVorher}/${gesendetVorher}`, `${(await tabelle('epa_vorgaenge')).length}/${mock.zustand.gesendet.length}`);
 	});
 
 	return zeilen;

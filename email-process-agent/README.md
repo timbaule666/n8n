@@ -25,6 +25,7 @@ Danach Credentials zuweisen und in der richtigen Reihenfolge veröffentlichen: s
 | [Betriebshandbuch](docs/Betriebshandbuch.md) | Routine, alle Meldungen mit Maßnahme, Notfall, Datenschutzanfragen |
 | [Datenschutz-und-KI-Checkliste](docs/Datenschutz-und-KI-Checkliste.md) | DSGVO, EU AI Act, Microsoft-Rechte, offene Punkte |
 | [Grenzen-und-Risiken](docs/Grenzen-und-Risiken.md) | Was das System nicht kann, was noch zu prüfen ist |
+| [Testphase](docs/Testphase.md) | Drehbuch für die Tests mit den echten Diensten, KI-Prüfstand |
 | [Abnahme-Testmatrix](docs/Abnahme-Testmatrix.md) | Anforderungen aus dem Auftrag ↔ Testfälle |
 | [Testprotokoll-Gesamt](docs/Testprotokoll-Gesamt.md) | Ergebnis des letzten Gesamtlaufs (Details in Testprotokoll-M2 … M7) |
 | [M0-Bauplan](docs/M0-Bauplan.md) | Ursprünglicher Bauplan und Entscheidungen |

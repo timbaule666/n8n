@@ -1,0 +1,64 @@
+# Testphase: Drehbuch
+
+Stand 2026-10-14. Ziel: vor dem Produktivstart nachweisen, dass das System mit den **echten** Diensten (OpenAI, Outlook, Teams) so arbeitet wie in den simulierten Tests. Grundregel aus dem Auftrag: **nur mit Testpostfach und Testdaten, nie mit echten Kundendaten**. Echte Mails nur anonymisiert (Stufe 2).
+
+Ergebnisse je Schritt in die Tabelle am Ende eintragen (oder mir schicken, dann führe ich sie nach).
+
+## Stufe 0: Verbindungen (ohne Mails, ca. 30 Minuten)
+Voraussetzung: Credentials zugewiesen (Inbetriebnahme Abschnitt 4), Testkunde `epa-test` angelegt (Config ohne Platzhalter, `aktiv = true`), Teams-Kanäle eingetragen.
+
+| Nr. | Schritt | Erwartet |
+|---|---|---|
+| V1 | `EPA SW Config laden` manuell mit `{"kunde_id": "epa-test"}` | `config` ohne Fehler |
+| V2 | EPA-06 Watchdog manuell ausführen | Teams `/me` ok, OpenAI `/models` ok, Postfach ok → „Alles in Ordnung“ im Betriebskanal |
+| V3 | Absichtlich falsche Team-ID in der Config, dann eine Testmail (V4) | Fehler 4xx im Fehlerlog und Alarm von EPA-05 im Betriebskanal; danach Team-ID korrigieren |
+
+## Stufe 1: KI-Qualität, synthetisch (ohne Postfach, ca. 15 Minuten, 25–30 KI-Aufrufe)
+| Nr. | Schritt | Erwartet / Ziel |
+|---|---|---|
+| K1 | `tools/datatables-setup.js --testfaelle` (oder Cloud: schon eingespielt) | 15 synthetische Fälle in `epa_test_ki_faelle` |
+| K2 | `EPA-T1 KI-Qualität prüfen` mit `kunde_id = epa-test` ausführen | Bericht mit Trefferquoten; Ergebnisse in `epa_test_ki_ergebnisse` |
+| K3 | Bericht bewerten | **Zielwerte (Vorschlag):** Klassifizierung ≥ 90 %; Pflichtfelder je Feld ≥ 90 % Treffer, „zu viel“ (erfundene Werte) = 0. Darunter: Prompt- oder Feld-Hinweise schärfen (`extraktions_hinweis`, neue Prompt-Version), dann erneut K2. |
+
+Der Prüfstand legt keine Vorgänge an und sendet nichts. Er vergleicht das, was ein Vorgang speichern würde, mit den Sollwerten.
+
+## Stufe 2: KI-Qualität mit echten, anonymisierten Mails (50–100 Mails)
+1. Echte Anfragen der letzten Wochen auswählen (gemischt: vollständig, lückenhaft, Antworten, Newsletter, Englisch, mit PDF).
+2. **Anonymisieren:** Namen, Firmen, Telefonnummern, Adressen, E-Mail-Adressen durch erfundene, aber formal gültige Werte ersetzen (Struktur und Schreibweise erhalten, z. B. „0221/12 34 56“ bleibt eine Nummer in dieser Form).
+3. Je Mail eine Zeile in `epa_test_ki_faelle`: `fall_id` R-001 …, Betreff, Text, Absender (erfunden), `erwartete_klasse`, `erwartete_felder` als JSON (nur Felder, die ein Mensch eindeutig bestimmen kann; `null` = steht nicht drin). PDF-Inhalte vorerst als Text in die Mail übernehmen.
+4. EPA-T1 ausführen, Bericht bewerten wie K3. Häufige Fehlerbilder notieren (z. B. Ort statt PLZ, Gewicht in Tonnen).
+
+## Stufe 3: Ende-zu-Ende mit Testpostfach (ca. 1–2 Stunden)
+Testpostfach = EPA-00-Kopie mit dem Testpostfach, `aktiv = true`. Testmails von einer zweiten Adresse schicken.
+
+| Nr. | Szenario | Erwartet |
+|---|---|---|
+| E1 | Vollständige Anfrage | Vorgang „Bereit zur Bearbeitung“, Meldung im Kundenkanal |
+| E2 | Anfrage mit 2 Lücken | Entwurf im Ordner „Entwürfe“ (Betreff mit Vorgangs-ID), 1:1-Chat mit Freigabe-Link an jeden Freigeber |
+| E3 | Link öffnen, Text leicht ändern, freigeben | Mail im Thread beim Absender, Signatur und KI-Hinweis unten, Vorgang „Warten auf Kunde“, Audit „bearbeitet“ |
+| E4 | Gleichen Link nochmal öffnen | „Bereits bearbeitet“ (409), nichts doppelt gesendet |
+| E5 | Als Kunde antworten mit einer der fehlenden Angaben | Runde 2: neue Rückfrage nur zur restlichen Lücke |
+| E6 | Antwort mit allen Angaben | „Bereit zur Bearbeitung“ |
+| E7 | Anfrage mit Lücke, Freigabe **ablehnen** mit Grund | „Eskaliert / Manuell“, nichts gesendet |
+| E8 | Newsletter und Abwesenheitsnotiz | im Archivordner, kein Vorgang |
+| E9 | Kunde antwortet nicht: in `epa_vorgaenge` `antwort_frist` in die Vergangenheit setzen, EPA-04 manuell ausführen (während der Geschäftszeit) | Erinnerungsentwurf + Freigabe-Link; nach Freigabe Erinnerung im Thread |
+| E10 | Nach allen Erinnerungen erneut Frist vorziehen, EPA-04 | „Eskaliert / Manuell“, Teams: „bitte telefonisch kontaktieren“ |
+| E11 | Freigabe offen lassen; `ablauf` in `epa_freigaben` vorziehen, EPA-04 | alter Link 410, neuer Link im Chat |
+| E12 | EPA-08 mit `probelauf = true` | Liste ohne Löschung; ersetzte Entwürfe aus E5/E9 werden angezeigt. Danach ohne Probelauf: diese Entwürfe sind in „Gelöschte Elemente“, Kundenmails unberührt |
+
+## Stufe 4: Pilot (2–4 Wochen)
+Echtes Postfach, aber jede Rückfrage wird bewusst geprüft (das ist ohnehin Pflicht). Täglich Watchdog-Meldung lesen, wöchentlich EPA-T1 mit neuen anonymisierten Fällen. Kennzahlen notieren: Anteil vollständiger Anfragen, Rückfragen je Vorgang, Zeit bis „Bereit“, Anteil bearbeiteter Entwürfe.
+
+## Abbruchkriterien
+- Eine Mail wird ohne Freigabe gesendet → sofort stoppen (EPA-00-Kopien unveröffentlichen), Fehler analysieren.
+- Erfundene Werte („zu viel“) in Pflichtfeldern in Stufe 1/2 → Prompt überarbeiten, bevor Stufe 3 beginnt.
+- Wiederholte Fehler in EPA-05 ohne klare Ursache → Stufe nicht fortsetzen.
+
+## Ergebnisse
+| Nr. | Datum | Ergebnis | Bemerkung |
+|---|---|---|---|
+| V1 | | | |
+| V2 | | | |
+| V3 | | | |
+| K2 | | | |
+| E1–E12 | | | |

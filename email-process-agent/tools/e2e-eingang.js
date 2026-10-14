@@ -237,8 +237,9 @@ async function main() {
 		await graphUmleiten(wfIds['EPA-06 Watchdog'], port, ['Teams prüfen']);
 		const h5 = await api('POST', '/workflows', harness('EPA-TEST Watchdog', 'watchdog', wfIds['EPA-06 Watchdog'], 'EPA-06 Watchdog', [['jetzt', 'string']]));
 		const h6 = await api('POST', '/workflows', harness('EPA-TEST Löschjob', 'loeschjob', wfIds['EPA-08 Löschjob'], 'EPA-08 Löschjob', [['jetzt', 'string'], ['probelauf', 'boolean']]));
-		temp.push(h5.id, h6.id);
-		for (const h of [h1, h2, h3, h4, h5, h6]) await api('POST', `/workflows/${h.id}/activate`);
+		const h7 = await api('POST', '/workflows', harness('EPA-TEST KI-Qualität', 'ki-qualitaet', wfIds['EPA-T1 KI-Qualität prüfen'], 'EPA-T1 KI-Qualität prüfen', [['kunde_id', 'string'], ['lauf_id', 'string']]));
+		temp.push(h5.id, h6.id, h7.id);
+		for (const h of [h1, h2, h3, h4, h5, h6, h7]) await api('POST', `/workflows/${h.id}/activate`);
 		await warte(1000);
 
 		const tabelle = async (name) => alleZeilen(ids[name]);
@@ -341,8 +342,8 @@ async function main() {
 		}
 
 		// M7: weitere Fehlerfälle aus Masterprompt Abschnitt 10
-		if (!nur.length || nur.some((n) => /^G/.test(n))) {
-			zeilenM7.push(...await fehlerSzenarien({ mock, aufrufen, tabelle, api, ids, KUNDE, POSTFACH, FREIGEBER, nur: nur.filter((n) => /^G/.test(n)) }));
+		if (!nur.length || nur.some((n) => /^[GQ]/.test(n))) {
+			zeilenM7.push(...await fehlerSzenarien({ mock, aufrufen, tabelle, api, ids, KUNDE, POSTFACH, FREIGEBER, nur: nur.filter((n) => /^[GQ]/.test(n)) }));
 		}
 
 		// M6: Betrieb (Watchdog, Löschjob) – zuletzt, weil der Löschjob Testdaten entfernt

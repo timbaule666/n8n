@@ -4,8 +4,10 @@
 // Spalten werden ergänzt, nichts wird gelöscht), spielt optional die Beispiel-Config und die Prompts ein.
 //
 // Aufruf:
-//   N8N_URL=… N8N_API_KEY=… node tools/datatables-setup.js [--beispiel] [--postfach=a@b.de] [--freigeber=c@d.de] [--prompts]
+//   N8N_URL=… N8N_API_KEY=… node tools/datatables-setup.js [--beispiel] [--postfach=a@b.de] [--freigeber=c@d.de] [--prompts] [--testfaelle]
 //
+// --testfaelle spielt die synthetischen KI-Testfälle (config/testphase/ki-testfaelle.json) in epa_test_ki_faelle ein
+// (vorhandene fall_id werden nicht verändert).
 // --prompts überträgt prompts/<version>/*.md in epa_prompts. Eine vorhandene Version wird nie überschrieben:
 // Weicht der Inhalt ab, bricht das Skript ab (Prompt-Änderung = neue Version, z. B. prompts/v2).
 const fs = require('node:fs');
@@ -53,7 +55,7 @@ async function alleZeilen(tabellenId) {
 	return liste;
 }
 
-async function einrichten({ beispiel = false, postfach, freigeber, prompts = false, log = console.log } = {}) {
+async function einrichten({ beispiel = false, postfach, freigeber, prompts = false, testfaelle = false, log = console.log } = {}) {
 	const schema = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'datatables', 'schema.json'), 'utf8')).tabellen;
 	const vorhanden = await alleTabellen();
 	const ids = {};
@@ -98,6 +100,13 @@ async function einrichten({ beispiel = false, postfach, freigeber, prompts = fal
 			log(`Beispiel-Config "${kunde}" eingespielt (${daten.epa_config_pflichtfelder.length} Felder).`);
 		}
 	}
+	if (testfaelle) {
+		const daten = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'testphase', 'ki-testfaelle.json'), 'utf8')).faelle;
+		const da = new Set((await alleZeilen(ids.epa_test_ki_faelle)).map((z) => z.fall_id));
+		const neu = daten.filter((f) => !da.has(f.fall_id)).map((f) => ({ ...f, erwartete_felder: JSON.stringify(f.erwartete_felder), notiz: 'synthetisch', aktiv: true }));
+		if (neu.length) await api('POST', `/data-tables/${ids.epa_test_ki_faelle}/rows`, { data: neu, returnType: 'count' });
+		log(`KI-Testfälle: ${neu.length} neu, ${daten.length - neu.length} schon vorhanden.`);
+	}
 	if (prompts) {
 		const vorhanden = await alleZeilen(ids.epa_prompts);
 		const neu = [];
@@ -122,7 +131,7 @@ if (require.main === module) {
 		process.exit(2);
 	}
 	const arg = (n) => (process.argv.find((a) => a.startsWith(`--${n}=`)) || '').split('=').slice(1).join('=') || undefined;
-	einrichten({ beispiel: process.argv.includes('--beispiel'), postfach: arg('postfach'), freigeber: arg('freigeber'), prompts: process.argv.includes('--prompts') }).catch((e) => {
+	einrichten({ beispiel: process.argv.includes('--beispiel'), postfach: arg('postfach'), freigeber: arg('freigeber'), prompts: process.argv.includes('--prompts'), testfaelle: process.argv.includes('--testfaelle') }).catch((e) => {
 		console.error(e.message);
 		process.exit(1);
 	});
