@@ -1,6 +1,6 @@
 # Stand in der Instanz timbaule.app.n8n.cloud
 
-Stand 2026-10-13. Speicher: **n8n Data Tables** (persönliches Projekt).
+Stand 2026-10-14. Speicher: **n8n Data Tables** (persönliches Projekt).
 
 ## Workflows
 | Workflow | ID | Nodes | Status |
@@ -16,9 +16,10 @@ Stand 2026-10-13. Speicher: **n8n Data Tables** (persönliches Projekt).
 | EPA-00 Postfach (Vorlage) | `fi1VnvQ26qBQ8aMQ` | 36 | Vorlage, je Postfach duplizieren (enthält ab M3 die Postfach-Aktionen für Entwurf/Versand) |
 | EPA SW Freigabe senden | `41ZGdeyiNVWwrJfW` | 11 | Entwurf, Teams-Credential fehlt (3 Graph-Nodes) |
 | EPA-02 Rückfrage anfordern | `aSdEMSgPSxhnQKMi` | 25 | Entwurf (veröffentlichbar nach SW LLM, SW Benachrichtigen, SW Freigabe senden) |
+| EPA-03 Antwort verarbeiten | `R83VDuvm7aML2HwH` | 32 | Entwurf (veröffentlichbar nach EPA-02) |
 | EPA-07 Freigabe-Endpunkt | `xj4e8E82vccdoiXl` | 41 | **veröffentlicht**, Link: `https://timbaule.app.n8n.cloud/webhook/epa-freigabe` (Probe: ungültiger Link → 404-Seite) |
 
-M3: eingespielt aus `workflows/` vom Commit `1bccce8` (M2: `50f1cce`, M1: `b195eb6`), direkt von GitHub geladen. Danach wurde jeder Node mit der Quelle abgeglichen (Typ, Version, Parameter): 0 Abweichungen.
+M4: eingespielt aus `workflows/` vom Commit `8d36300` (M3: `1bccce8`, M2: `50f1cce`, M1: `b195eb6`), direkt von GitHub geladen. Danach wurde jeder Node mit der Quelle abgeglichen (Typ, Version, Parameter): 0 Abweichungen.
 
 ## Data Tables
 | Tabelle | ID | Inhalt |
@@ -52,7 +53,7 @@ Hinweis: Vorgangs-IDs entstehen aus der fortlaufenden Zeilennummer. Gelöschte Z
 ## Offen
 0. **Reihenfolge zum Scharfschalten (M2+M3):**
    1. Credentials zuweisen: OpenAI in „EPA SW LLM aufrufen“ (Node „OpenAI aufrufen“); Teams (Dienstkonto) in „EPA SW Benachrichtigen“ und in den 3 Graph-Nodes von „EPA SW Freigabe senden“.
-   2. Veröffentlichen in dieser Reihenfolge: SW LLM aufrufen, SW Benachrichtigen, SW Freigabe senden → EPA-02 → EPA-01.
+   2. Veröffentlichen in dieser Reihenfolge: SW LLM aufrufen, SW Benachrichtigen, SW Freigabe senden → EPA-02 → EPA-03 → EPA-01.
    3. EPA-00 duplizieren, Postfach im Node „Postfach festlegen“ eintragen, Outlook-Credential in Trigger und allen Graph-Nodes zuweisen, Archivordner anlegen, veröffentlichen.
    4. Die ID dieser Kopie (aus der URL) in `epa_config_allgemein.postfach_workflow_id` eintragen.
    Erst danach läuft echte Post. Gesendet wird nie ohne Klick auf „Freigeben“.
