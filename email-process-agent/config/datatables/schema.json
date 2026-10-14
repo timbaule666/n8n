@@ -163,7 +163,10 @@
       "lock_durch": "string",
       "letzter_start": "date",
       "letzter_lauf": "date",
-      "letztes_ergebnis": "string"
+      "letztes_ergebnis": "string",
+      "alarm_kanal": "string",
+      "telegram_chat_id": "string",
+      "telegram_workflow_id": "string"
     },
     "epa_test_ki_faelle": {
       "fall_id": "string",

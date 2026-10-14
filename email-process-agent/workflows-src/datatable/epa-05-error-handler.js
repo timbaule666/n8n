@@ -10,7 +10,7 @@ module.exports = function () {
 		'**Trigger:** Error Trigger. In **jedem** EPA-Workflow unter Settings -> Error workflow eintragen (macht tools/deploy.js automatisch). Muss veröffentlicht sein.',
 		'**Eingaben:** execution/workflow-Daten des fehlgeschlagenen Laufs.',
 		'**Ausgabe:** Teams-Nachricht; epa_fehler_log.alarmiert_am wird gesetzt. Bleibt alarmiert_am leer, meldet der Watchdog (M6) den Fehler erneut.',
-		'**Einrichten:** Im Node "Entwickler-Kanal alarmieren" Team (GUID) und Kanal auswählen bzw. eintragen und das Teams-Credential (Dienstkonto, OAuth2) zuweisen.',
+		'**Einrichten:** Im Node "Entwickler-Kanal alarmieren" Team (GUID) und Kanal auswählen bzw. eintragen und das Teams-Credential (Dienstkonto, OAuth2) zuweisen. Nur interne Tests: Zeile "alarmierung" in epa_system_status mit alarm_kanal = telegram_test leitet den Alarm über EPA-T2 an Telegram.',
 	].join('\n'), { breite: 700, hoehe: 340 });
 
 	const trigger = wf.node('Bei Workflow-Fehler', 'n8n-nodes-base.errorTrigger', [0, 0], {});
@@ -46,7 +46,12 @@ return [{ json: { status: 'fehler' } }];
 		bedingungen: [['vorgangs_id', 'eq', `={{ ${K}.vorgangs_id }}`]],
 	}, { onError: 'continueRegularOutput', alwaysOutputData: true });
 
-	const sichern = wf.aufruf('Vorgang sichern', [1980, -140], 'EPA SW Status setzen', [
+	// Nur sichern, was es gibt: ohne Vorgang (oder ohne kunde_id) würde "Status setzen" selbst fehlschlagen.
+	const gefunden = wf.node('Vorgang gefunden?', 'n8n-nodes-base.if', [1980, -140], {
+		conditions: bedingungen([bedingung('={{ $json.kunde_id }}', { type: 'string', operation: 'notEmpty', singleValue: true })]),
+		options: { looseTypeValidation: true },
+	});
+	const sichern = wf.aufruf('Vorgang sichern', [2200, -240], 'EPA SW Status setzen', [
 		['kunde_id', 'string', '={{ $json.kunde_id }}'],
 		['vorgangs_id', 'string', `={{ ${K}.vorgangs_id }}`],
 		['neuer_status', 'string', 'Eskaliert / Manuell'],
@@ -57,11 +62,11 @@ return [{ json: { status: 'fehler' } }];
 		['nur_wenn_erlaubt', 'boolean', '={{ true }}'],
 	], { onError: 'continueRegularOutput', alwaysOutputData: true });
 
-	const eskDaten = wf.code('Eskalation vorbereiten', [2200, -140], [], `
+	const eskDaten = wf.code('Eskalation vorbereiten', [2420, -240], [], `
 return [{ json: { eskaliert: $input.first().json.ok === true } }];
 `);
 	const P = "$('Fehler protokollieren').first().json";
-	const eskVermerken = wf.tabelle('Eskalation vermerken', [2420, -140], 'update', 'epa_fehler_log', {
+	const eskVermerken = wf.tabelle('Eskalation vermerken', [2640, -240], 'update', 'epa_fehler_log', {
 		bedingungen: [['id', 'eq', `={{ ${P}.id ?? -1 }}`]],
 	}, { onError: 'continueRegularOutput', alwaysOutputData: true });
 
@@ -71,7 +76,11 @@ const protokoll = ${P};
 let eskaliert = false;
 let hinweis = '';
 if (e.vorgangs_id && !e.eskalieren) {
-	hinweis = 'Vorgang bewusst nicht eskaliert (Konflikt mit parallel laufender Verarbeitung).';
+	hinweis = fehlerklassen.OHNE_SICHERUNG_AUS.includes(String(e.workflow_name || '').replace(/\\s*\\*$/, ''))
+		? 'Vorgang nicht automatisch gesichert (Fehler beim Statuswechsel selbst), bitte manuell prüfen.'
+		: 'Vorgang bewusst nicht eskaliert (Konflikt mit parallel laufender Verarbeitung).';
+} else if ($('Mandant ermitteln').isExecuted && !$('Vorgang sichern').isExecuted) {
+	hinweis = 'Vorgang nicht gefunden, daher nicht gesichert.';
 } else if ($('Vorgang sichern').isExecuted) {
 	const s = $('Vorgang sichern').first().json;
 	eskaliert = s.ok === true;
@@ -86,7 +95,7 @@ if (!fehlerId) html += '<br><b>Achtung:</b> Eintrag im Fehlerlog fehlgeschlagen 
 return [{ json: { fehler_id: fehlerId, eskaliert, alarm_html: html } }];
 `);
 
-	const teams = wf.node('Entwickler-Kanal alarmieren', 'n8n-nodes-base.microsoftTeams', [2860, 0], {
+	const teams = wf.node('Entwickler-Kanal alarmieren', 'n8n-nodes-base.microsoftTeams', [3520, 0], {
 		resource: 'channelMessage',
 		operation: 'create',
 		teamId: { __rl: true, mode: 'id', value: '<TEAM_ID_ENTWICKLER>' },
@@ -96,15 +105,42 @@ return [{ json: { fehler_id: fehlerId, eskaliert, alarm_html: html } }];
 		options: { includeLinkToWorkflow: false },
 	}, Workflow.retry());
 
+	// Alarmziel: Teams (Standard, Kunden). Nur für interne Tests kann die Zeile "alarmierung" in epa_system_status
+	// alarm_kanal = "telegram_test" mit telegram_chat_id und telegram_workflow_id (EPA-T2) setzen.
+	const zielLesen = wf.tabelle('Alarmziel lesen', [2860, -200], 'get', 'epa_system_status', {
+		bedingungen: [['schluessel', 'eq', 'alarmierung']],
+	}, { alwaysOutputData: true, onError: 'continueRegularOutput' });
+	const ziel = wf.code('Alarmziel', [3080, -200], ['telegram'], `
+const z = $input.all().map((i) => i.json).find((r) => r && r.schluessel === 'alarmierung') || {};
+const html = $('Alarm vorbereiten').first().json.alarm_html;
+const test = z.alarm_kanal === 'telegram_test' && telegram.istChatId(z.telegram_chat_id) && /^[A-Za-z0-9]{8,32}$/.test(String(z.telegram_workflow_id || ''));
+return [{ json: { kanal: test ? 'telegram_test' : 'teams', chat_id: test ? String(z.telegram_chat_id).trim() : '', telegram_workflow_id: test ? z.telegram_workflow_id : '', alarm_html: html } }];
+`);
+	const welcherKanal = wf.node('Testkanal Telegram?', 'n8n-nodes-base.if', [3300, -200], {
+		conditions: bedingungen([bedingung('={{ $json.kanal }}', { type: 'string', operation: 'equals' }, 'telegram_test')]),
+		options: {},
+	});
+	const telegramAlarm = wf.aufrufDynamisch('Alarm per Telegram (Test)', [3520, -300], '={{ $json.telegram_workflow_id }}', [
+		['chat_id', 'string', '={{ $json.chat_id }}'],
+		['nachricht_html', 'string', '={{ $json.alarm_html }}'],
+	]);
+	// Wie beim Teams-Node: Ein nicht zugestellter Alarm lässt EPA-05 fehlschlagen, alarmiert_am bleibt leer,
+	// der Watchdog meldet den Fehler erneut.
+	const telegramPruefen = wf.code('Telegram-Alarm prüfen', [3740, -300], [], `
+const r = $input.first().json || {};
+if (r.gesendet !== true) throw new Error('Alarm per Telegram nicht zugestellt: ' + String(r.meldung || 'unbekannt').slice(0, 200));
+return [{ json: { gesendet: true } }];
+`);
+
 	const A = "$('Alarm vorbereiten').first().json";
-	const vorhanden = wf.node('Fehler-ID vorhanden?', 'n8n-nodes-base.if', [3080, 0], {
+	const vorhanden = wf.node('Fehler-ID vorhanden?', 'n8n-nodes-base.if', [3960, 0], {
 		conditions: bedingungen([bedingung(`={{ ${A}.fehler_id }}`, { type: 'number', operation: 'exists', singleValue: true })]),
 		options: { looseTypeValidation: true },
 	});
-	const alarmDaten = wf.code('Alarmzeit vorbereiten', [3300, -80], [], `
+	const alarmDaten = wf.code('Alarmzeit vorbereiten', [4180, -80], [], `
 return [{ json: { alarmiert_am: new Date().toISOString() } }];
 `);
-	const alarmVermerken = wf.tabelle('Alarm vermerken', [3520, -80], 'update', 'epa_fehler_log', {
+	const alarmVermerken = wf.tabelle('Alarm vermerken', [4400, -80], 'update', 'epa_fehler_log', {
 		bedingungen: [['id', 'eq', `={{ ${A}.fehler_id }}`]],
 	});
 
@@ -123,8 +159,15 @@ return [{ json: $('Fehler klassifizieren').first().json }];
 	wf.kette(uebernehmen, protokollieren, noetig);
 	wf.verbinde(noetig, mandant, 0);
 	wf.verbinde(noetig, vorbereiten, 1);
-	wf.kette(mandant, sichern, eskDaten, eskVermerken, vorbereiten);
-	wf.kette(vorbereiten, teams, vorhanden);
+	wf.kette(mandant, gefunden);
+	wf.verbinde(gefunden, sichern, 0);
+	wf.verbinde(gefunden, vorbereiten, 1);
+	wf.kette(sichern, eskDaten, eskVermerken, vorbereiten);
+	wf.kette(vorbereiten, zielLesen, ziel, welcherKanal);
+	wf.verbinde(welcherKanal, telegramAlarm, 0);
+	wf.verbinde(welcherKanal, teams, 1);
+	wf.kette(telegramAlarm, telegramPruefen, vorhanden);
+	wf.kette(teams, vorhanden);
 	wf.verbinde(vorhanden, alarmDaten, 0);
 	wf.kette(alarmDaten, alarmVermerken);
 	return wf;

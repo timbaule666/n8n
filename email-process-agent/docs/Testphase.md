@@ -4,6 +4,37 @@ Stand 2026-10-14. Ziel: vor dem Produktivstart nachweisen, dass das System mit d
 
 Ergebnisse je Schritt in die Tabelle am Ende eintragen (oder mir schicken, dann führe ich sie nach).
 
+## Interner Testkanal Telegram (nur für Tests, nicht für Kunden)
+Ein privates Microsoft-Konto hat keine Teams-Lizenz. Microsoft antwortet dann mit 401 „Invoked API requires a valid license“. Für Tests ohne Microsoft-365-Geschäftskonto gehen Meldungen, Freigabe-Links und Alarme deshalb über einen Telegram-Bot statt über Teams.
+
+**Für Kunden ändert sich nichts:**
+- Kunden-Configs nutzen immer `"kanal": "teams"`.
+- Kein Kunden-Workflow enthält einen Telegram-Node.
+- Der Telegram-Versand steckt allein im Test-Workflow „EPA-T2 Telegram senden (Test)“. Er wird nur aufgerufen, wenn die Config bzw. das Alarmziel ausdrücklich `telegram_test` sagt.
+
+**Einrichtung:**
+1. **Bot anlegen:** In Telegram mit @BotFather `/newbot` ausführen. Das Bot-Token nur in n8n eintragen, nie in Dateien oder Chats.
+2. **Credential anlegen:** In n8n ein Credential vom Typ „Telegram API“ anlegen (Access Token = Bot-Token). Unter „Allowed HTTP Request Domains“ ist nichts nötig, weil der Telegram-Node selbst sendet.
+3. **Chat-ID ermitteln:** Dem Bot einmal schreiben, dann die eigene Chat-ID ermitteln, z. B. mit @userinfobot. Für Gruppen ist die ID negativ.
+4. **EPA-T2 vorbereiten:** Im Node „Telegram senden“ das Credential zuweisen und EPA-T2 veröffentlichen.
+5. **Testkunde:** In `epa_config_allgemein` den Wert `benachrichtigung` setzen auf
+   `{"kanal": "telegram_test", "chat_id": "<Chat-ID>", "telegram_workflow_id": "<ID von EPA-T2>"}`.
+   Optional erhalten Freigeber eigene Chats mit `"freigeber_chat_ids": {"freigeber@firma.de": "<Chat-ID>"}`. Ohne diese Zuordnung geht der Freigabe-Link an `chat_id`.
+6. **Alarme von EPA-05 und EPA-06:** In `epa_system_status` eine Zeile anlegen:
+   - `schluessel = alarmierung`
+   - `alarm_kanal = telegram_test`
+   - `telegram_chat_id = <Chat-ID>`
+   - `telegram_workflow_id = <ID von EPA-T2>`
+
+   Ohne diese Zeile alarmieren beide über Teams. Der Watchdog prüft Teams nur, wenn es jemand nutzt.
+
+**Gegenüber Teams anders:**
+- Die Freigabe-Links gehen als Telegram-Nachricht statt im persönlichen Teams-Chat. Wer den Chat sieht, kann freigeben, deshalb nur private Chats nutzen.
+- Formatierung: fett, kursiv und Links bleiben erhalten; Listen und Absätze werden zu Zeilen.
+- Nachrichten über 4096 Zeichen werden ohne Formatierung gekürzt.
+
+Lokal getestet: Szenarien K01–K06 in `Testprotokoll-Testkanal.md` (Mock statt echtem Telegram).
+
 ## Stufe 0: Verbindungen (ohne Mails, ca. 30 Minuten)
 Voraussetzung: Credentials zugewiesen (Inbetriebnahme Abschnitt 4), Testkunde `epa-test` angelegt (Config ohne Platzhalter, `aktiv = true`), Teams-Kanäle eingetragen.
 

@@ -26,6 +26,7 @@ const VERSIONEN = Object.freeze({
 	'n8n-nodes-base.microsoftOutlookTrigger': 1,
 	'n8n-nodes-base.scheduleTrigger': 1.2,
 	'n8n-nodes-base.manualTrigger': 1,
+	'n8n-nodes-base.telegram': 1.2, // nur EPA-T2 (interne Tests)
 });
 
 function uuid(...teile) {

@@ -111,7 +111,7 @@ return liste.length ? liste.map((x) => ({ json: { ...x, pruefen: true } })) : [{
 		['html', 'string', ''],
 	], { onError: 'continueRegularOutput', alwaysOutputData: true }, 'each');
 
-	const auswerten = wf.code('Auswerten', [3300, 0], ['configValidator', 'fristen', 'watchdog'], `
+	const auswerten = wf.code('Auswerten', [3300, 0], ['configValidator', 'fristen', 'watchdog', 'telegram'], `
 const l = $('Lauf vorbereiten').first().json;
 const zeilen = (n) => $(n).all().map((i) => i.json).filter((z) => z && z.id !== undefined);
 const sys = zeilen('Systemstatus lesen');
@@ -131,7 +131,12 @@ const test = (name, art, extra = {}) => {
 	const meldung = r.error ? String(r.error.message || r.error).slice(0, 160) : status && status !== 200 ? String((r.body && r.body.error && (r.body.error.code || r.body.error.message)) || '').slice(0, 160) : '';
 	return { art, ok: status === 200 && !r.error, status, meldung, ...extra };
 };
-const verbindungen = [test('Teams prüfen', 'teams')];
+// Alarmziel: Teams (Standard). Nur interne Tests: Zeile "alarmierung" mit alarm_kanal = telegram_test (über EPA-T2).
+const alarm = sys.find((z) => z.schluessel === 'alarmierung') || {};
+const alarmTest = alarm.alarm_kanal === 'telegram_test' && telegram.istChatId(alarm.telegram_chat_id) && /^[A-Za-z0-9]{8,32}$/.test(String(alarm.telegram_workflow_id || ''));
+// Teams nur prüfen, wenn es jemand nutzt (Alarmziel oder ein aktiver Kunde); im reinen Testbetrieb ohne Lizenz sonst täglich ein Fehlalarm.
+const teamsGenutzt = !alarmTest || Object.values(configs).some((c) => c.benachrichtigung && c.benachrichtigung.kanal === 'teams');
+const verbindungen = teamsGenutzt ? [test('Teams prüfen', 'teams')] : [];
 for (const it of $('KI prüfen').all()) {
 	const r = it.json || {};
 	const status = Number(r.statusCode) || null;
@@ -149,13 +154,21 @@ let letzteOk = null;
 try { letzteOk = eigen && eigen.letztes_ergebnis ? JSON.parse(eigen.letztes_ergebnis).ok_gemeldet_am || null : null; } catch (e) { letzteOk = null; }
 const melden = watchdog.meldenNoetig(ergebnis, letzteOk, l.jetzt, 'Europe/Berlin', DateTime);
 const zeitText = DateTime.fromISO(l.jetzt).setZone('Europe/Berlin').toFormat('dd.LL.yyyy, HH:mm');
-return [{ json: { ...ergebnis, melden, letzte_ok: letzteOk, nachricht_html: watchdog.nachricht(ergebnis, zeitText) } }];
+return [{ json: { ...ergebnis, melden, letzte_ok: letzteOk, nachricht_html: watchdog.nachricht(ergebnis, zeitText), kanal: alarmTest ? 'telegram_test' : 'teams', chat_id: alarmTest ? String(alarm.telegram_chat_id).trim() : '', telegram_workflow_id: alarmTest ? alarm.telegram_workflow_id : '' } }];
 `);
 	const melden = wf.node('Melden?', 'n8n-nodes-base.if', [3520, 0], {
 		conditions: bedingungen([bedingung('={{ $json.melden }}', { type: 'boolean', operation: 'true', singleValue: true })]),
 		options: {},
 	});
-	const kanal = wf.node('Betriebskanal benachrichtigen', 'n8n-nodes-base.microsoftTeams', [3740, -80], {
+	const welcherKanal = wf.node('Testkanal Telegram?', 'n8n-nodes-base.if', [3740, -80], {
+		conditions: bedingungen([bedingung('={{ $json.kanal }}', { type: 'string', operation: 'equals' }, 'telegram_test')]),
+		options: {},
+	});
+	const telegramBetrieb = wf.aufrufDynamisch('Betrieb per Telegram (Test)', [3960, -260], '={{ $json.telegram_workflow_id }}', [
+		['chat_id', 'string', '={{ $json.chat_id }}'],
+		['nachricht_html', 'string', '={{ $json.nachricht_html }}'],
+	], { onError: 'continueRegularOutput', alwaysOutputData: true });
+	const kanal = wf.node('Betriebskanal benachrichtigen', 'n8n-nodes-base.microsoftTeams', [3960, -80], {
 		resource: 'channelMessage',
 		operation: 'create',
 		teamId: { __rl: true, mode: 'id', value: '<TEAM_ID_ENTWICKLER>' },
@@ -164,10 +177,11 @@ return [{ json: { ...ergebnis, melden, letzte_ok: letzteOk, nachricht_html: watc
 		message: '={{ $json.nachricht_html }}',
 		options: { includeLinkToWorkflow: false },
 	}, { ...Workflow.retry(), onError: 'continueRegularOutput', alwaysOutputData: true });
-	const statusDaten = wf.code('Ergebnis vermerken (Daten)', [3960, 0], [], `
+	const statusDaten = wf.code('Ergebnis vermerken (Daten)', [4180, 0], [], `
 // Nur Codes und Zähler speichern (keine Mail-Inhalte). ok_gemeldet_am steuert den täglichen Heartbeat.
 const a = $('Auswerten').first().json;
-const gesendet = $('Betriebskanal benachrichtigen').isExecuted ? !($('Betriebskanal benachrichtigen').first().json || {}).error : false;
+const tg = $('Betrieb per Telegram (Test)').isExecuted ? ($('Betrieb per Telegram (Test)').first().json || {}) : null;
+const gesendet = tg ? tg.gesendet === true && !tg.error : $('Betriebskanal benachrichtigen').isExecuted ? !($('Betriebskanal benachrichtigen').first().json || {}).error : false;
 const jetzt = $('Lauf vorbereiten').first().json.jetzt;
 const okAm = a.gesamt === 'ok' && gesendet ? jetzt : a.letzte_ok;
 return [{ json: {
@@ -176,8 +190,8 @@ return [{ json: {
 	letztes_ergebnis: JSON.stringify({ gesamt: a.gesamt, befunde: a.befunde.map((b) => ({ code: b.code, schwere: b.schwere, kunde_id: b.kunde_id || null, vorgangs_id: b.vorgangs_id || null })), zaehler: a.zaehler, gemeldet: a.melden ? gesendet : null, ok_gemeldet_am: okAm }),
 } }];
 `);
-	const speichern = wf.tabelle('Ergebnis vermerken', [4180, 0], 'upsert', 'epa_system_status', { bedingungen: [['schluessel', 'eq', SCHLUESSEL]] });
-	const ergebnis = wf.code('Ergebnis melden', [4400, 0], [], `
+	const speichern = wf.tabelle('Ergebnis vermerken', [4400, 0], 'upsert', 'epa_system_status', { bedingungen: [['schluessel', 'eq', SCHLUESSEL]] });
+	const ergebnis = wf.code('Ergebnis melden', [4620, 0], [], `
 const a = $('Auswerten').first().json;
 const z = JSON.parse($('Ergebnis vermerken (Daten)').first().json.letztes_ergebnis);
 return [{ json: { ergebnis: 'watchdog_' + a.gesamt, befunde: a.befunde.map((b) => b.code), gemeldet: z.gemeldet, nachricht_html: a.nachricht_html } }];
@@ -189,8 +203,11 @@ return [{ json: { ergebnis: 'watchdog_' + a.gesamt, befunde: a.befunde.map((b) =
 	wf.verbinde(pruefenNoetig, postfach, 0);
 	wf.verbinde(pruefenNoetig, auswerten, 1);
 	wf.kette(postfach, auswerten, melden);
-	wf.verbinde(melden, kanal, 0);
+	wf.verbinde(melden, welcherKanal, 0);
 	wf.verbinde(melden, statusDaten, 1);
+	wf.verbinde(welcherKanal, telegramBetrieb, 0);
+	wf.verbinde(welcherKanal, kanal, 1);
+	wf.kette(telegramBetrieb, statusDaten);
 	wf.kette(kanal, statusDaten, speichern, ergebnis);
 	return wf;
 };

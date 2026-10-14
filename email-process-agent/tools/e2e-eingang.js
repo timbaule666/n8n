@@ -21,6 +21,7 @@ const { freigabeSzenarien } = require('./lib/e2e-freigabe');
 const { antwortSzenarien } = require('./lib/e2e-antwort');
 const { nachfassSzenarien } = require('./lib/e2e-nachfassen');
 const { betriebSzenarien } = require('./lib/e2e-betrieb');
+const { telegramSzenarien } = require('./lib/e2e-telegram');
 const { fehlerSzenarien } = require('./lib/e2e-fehler');
 
 const BASIS = (process.env.N8N_URL || '').replace(/\/+$/, '');
@@ -89,6 +90,12 @@ async function credentialsZuweisen(creds) {
 				n.parameters.teamId.value = TEAM;
 				n.parameters.channelId.value = KANAL;
 				geaendert = true;
+			}
+			// Testkanal: Telegram-Credential wird je Lauf neu angelegt (Base URL = Mock-Port) und immer gesetzt
+			if (n.type === 'n8n-nodes-base.telegram' && creds.telegramApi) {
+				n.credentials = { telegramApi: creds.telegramApi };
+				geaendert = true;
+				continue;
 			}
 			if (n.credentials) continue;
 			if (n.type === 'n8n-nodes-base.microsoftTeams') {
@@ -201,7 +208,10 @@ async function main() {
 
 	const mock = mockServer();
 	const port = await mock.starten();
-	console.log(`Mock (OpenAI + Graph) auf Port ${port}`);
+	console.log(`Mock (OpenAI + Graph + Telegram) auf Port ${port}`);
+	// Testkanal Telegram: Credential mit Base URL auf den Mock (Dummy-Token, kein echter Bot)
+	const tgCred = await api('POST', '/credentials', { name: 'EPA-TEST Telegram (Mock)', type: 'telegramApi', data: { accessToken: '123456:MOCK', baseUrl: `http://127.0.0.1:${port}/telegram` } });
+	creds.telegramApi = { id: tgCred.id, name: tgCred.name };
 	const temp = [];
 	const zeilen = [];
 	const zeilenM3 = [];
@@ -209,6 +219,7 @@ async function main() {
 	const zeilenM5 = [];
 	const zeilenM6 = [];
 	const zeilenM7 = [];
+	const zeilenTK = [];
 	try {
 		bauen();
 		const ids = await einrichten({ prompts: true, log: () => {} });
@@ -238,8 +249,10 @@ async function main() {
 		const h5 = await api('POST', '/workflows', harness('EPA-TEST Watchdog', 'watchdog', wfIds['EPA-06 Watchdog'], 'EPA-06 Watchdog', [['jetzt', 'string']]));
 		const h6 = await api('POST', '/workflows', harness('EPA-TEST Löschjob', 'loeschjob', wfIds['EPA-08 Löschjob'], 'EPA-08 Löschjob', [['jetzt', 'string'], ['probelauf', 'boolean']]));
 		const h7 = await api('POST', '/workflows', harness('EPA-TEST KI-Qualität', 'ki-qualitaet', wfIds['EPA-T1 KI-Qualität prüfen'], 'EPA-T1 KI-Qualität prüfen', [['kunde_id', 'string'], ['lauf_id', 'string']]));
-		temp.push(h5.id, h6.id, h7.id);
-		for (const h of [h1, h2, h3, h4, h5, h6, h7]) await api('POST', `/workflows/${h.id}/activate`);
+		const h8 = await api('POST', '/workflows', harness('EPA-TEST Benachrichtigen', 'benachrichtigen', wfIds['EPA SW Benachrichtigen'], 'EPA SW Benachrichtigen', [['kunde_id', 'string'], ['vorgangs_id', 'string'], ['team_id', 'string'], ['channel_id', 'string'], ['kanal', 'string'], ['chat_id', 'string'], ['telegram_workflow_id', 'string'], ['nachricht_html', 'string'], ['anlass', 'string']]));
+		const h9 = await api('POST', '/workflows', harness('EPA-TEST Freigabe senden', 'freigabesenden', wfIds['EPA SW Freigabe senden'], 'EPA SW Freigabe senden', [['kunde_id', 'string'], ['vorgangs_id', 'string'], ['freigeber', 'string'], ['kanal', 'string'], ['chat_id', 'string'], ['telegram_workflow_id', 'string'], ['nachricht_html', 'string']]));
+		temp.push(h5.id, h6.id, h7.id, h8.id, h9.id);
+		for (const h of [h1, h2, h3, h4, h5, h6, h7, h8, h9]) await api('POST', `/workflows/${h.id}/activate`);
 		await warte(1000);
 
 		const tabelle = async (name) => alleZeilen(ids[name]);
@@ -346,6 +359,11 @@ async function main() {
 			zeilenM7.push(...await fehlerSzenarien({ mock, aufrufen, tabelle, api, ids, KUNDE, POSTFACH, FREIGEBER, nur: nur.filter((n) => /^[GQ]/.test(n)) }));
 		}
 
+		// Interner Testkanal Telegram (nur Tests ohne Microsoft-365-Lizenz, Kunden nutzen Teams)
+		if (!nur.length || nur.some((n) => /^K/.test(n))) {
+			zeilenTK.push(...await telegramSzenarien({ mock, aufrufen, tabelle, api, ids, KUNDE, POSTFACH, FREIGEBER, telegramWorkflowId: wfIds['EPA-T2 Telegram senden (Test)'], nur: nur.filter((n) => /^K/.test(n)) }));
+		}
+
 		// M6: Betrieb (Watchdog, Löschjob) – zuletzt, weil der Löschjob Testdaten entfernt
 		if (!nur.length || nur.some((n) => /^[WLH]/.test(n))) {
 			zeilenM6.push(...await betriebSzenarien({ mock, aufrufen, tabelle, api, ids, KUNDE, POSTFACH, FREIGEBER, nur: nur.filter((n) => /^[WLH]/.test(n)) }));
@@ -357,11 +375,12 @@ async function main() {
 	} finally {
 		if (process.env.EPA_E2E_BEHALTEN) temp.length = 0;
 		for (const id of temp) await entfernen(id).catch((e) => console.error('Aufräumen:', e.message));
+		if (!process.env.EPA_E2E_BEHALTEN) await api('DELETE', `/credentials/${tgCred.id}`).catch((e) => console.error('Aufräumen Credential:', e.message));
 		await mock.stoppen();
 	}
-	const alle = [...zeilen, ...zeilenM3, ...zeilenM4, ...zeilenM5, ...zeilenM6, ...zeilenM7];
+	const alle = [...zeilen, ...zeilenM3, ...zeilenM4, ...zeilenM5, ...zeilenM6, ...zeilenM7, ...zeilenTK];
 	const bestanden = alle.filter((z) => z.ok).length;
-	console.log(`\nM2: ${zeilen.filter((z) => z.ok).length}/${zeilen.length}, M3: ${zeilenM3.filter((z) => z.ok).length}/${zeilenM3.length}, M4: ${zeilenM4.filter((z) => z.ok).length}/${zeilenM4.length}, M5: ${zeilenM5.filter((z) => z.ok).length}/${zeilenM5.length}, M6: ${zeilenM6.filter((z) => z.ok).length}/${zeilenM6.length}, M7: ${zeilenM7.filter((z) => z.ok).length}/${zeilenM7.length} – gesamt ${bestanden}/${alle.length} Szenarien bestanden`);
+	console.log(`\nM2: ${zeilen.filter((z) => z.ok).length}/${zeilen.length}, M3: ${zeilenM3.filter((z) => z.ok).length}/${zeilenM3.length}, M4: ${zeilenM4.filter((z) => z.ok).length}/${zeilenM4.length}, M5: ${zeilenM5.filter((z) => z.ok).length}/${zeilenM5.length}, M6: ${zeilenM6.filter((z) => z.ok).length}/${zeilenM6.length}, M7: ${zeilenM7.filter((z) => z.ok).length}/${zeilenM7.length}, Testkanal: ${zeilenTK.filter((z) => z.ok).length}/${zeilenTK.length} – gesamt ${bestanden}/${alle.length} Szenarien bestanden`);
 	if (!nur.length) {
 		protokoll(zeilen, 'M2', 'Eingang (EPA-00/EPA-01)', 'Testprotokoll-M2.md');
 		protokoll(zeilenM3, 'M3', 'Rückfrage und Freigabe (EPA-02/EPA-07)', 'Testprotokoll-M3.md');
@@ -369,7 +388,8 @@ async function main() {
 		protokoll(zeilenM5, 'M5', 'Nachfassen und Eskalation (EPA-04)', 'Testprotokoll-M5.md');
 		protokoll(zeilenM6, 'M6', 'Betrieb: Watchdog (EPA-06) und Löschjob (EPA-08)', 'Testprotokoll-M6.md');
 		protokoll(zeilenM7, 'M7', 'Fehlerfälle (Graph, Token, KI-Timeout, Textbaustein)', 'Testprotokoll-M7.md');
-		gesamtprotokoll({ M2: zeilen, M3: zeilenM3, M4: zeilenM4, M5: zeilenM5, M6: zeilenM6, M7: zeilenM7 });
+		protokoll(zeilenTK, 'Testkanal', 'Telegram statt Teams (nur interne Tests, nicht für Kunden)', 'Testprotokoll-Testkanal.md');
+		gesamtprotokoll({ M2: zeilen, M3: zeilenM3, M4: zeilenM4, M5: zeilenM5, M6: zeilenM6, M7: zeilenM7, Testkanal: zeilenTK });
 	}
 	process.exit(bestanden === alle.length ? 0 : 1);
 }
@@ -389,7 +409,7 @@ function gesamtprotokoll(teile) {
 		'',
 		alle.every((x) => x.ok) ? 'Alle Szenarien bestanden.' : `Nicht bestanden: ${alle.filter((x) => !x.ok).map((x) => x.id).join(', ')}`,
 		'',
-		'Einzelheiten je Teil in `Testprotokoll-M2.md` bis `Testprotokoll-M7.md`.',
+		'Einzelheiten je Teil in `Testprotokoll-M2.md` bis `Testprotokoll-M7.md` und `Testprotokoll-Testkanal.md`.',
 		'',
 	].join('\n');
 	fs.writeFileSync(path.join(ROOT, 'docs', 'Testprotokoll-Gesamt.md'), md);

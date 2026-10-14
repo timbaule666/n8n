@@ -1,5 +1,6 @@
 'use strict';
-// Mock für OpenAI (/v1/chat/completions) und Microsoft Graph (/graph/v1.0/...) für lokale E2E-Tests.
+// Mock für OpenAI (/v1/chat/completions), Microsoft Graph (/graph/v1.0/...) und die Telegram-Bot-API (/telegram/...,
+// nur Testkanal) für lokale E2E-Tests.
 // Antwortet nach Skript; protokolliert jede Anfrage. Nur für Tests, lauscht ausschließlich auf 127.0.0.1.
 const http = require('node:http');
 
@@ -21,6 +22,8 @@ function mockServer({ port = 0 } = {}) {
 		postfachFehler: null, // HTTP-Status für GET .../mailFolders/inbox (Watchdog: Outlook-Credential)
 		geloescht: [], // per DELETE entfernte Nachrichten-IDs
 		mailLadenFehler: null, // HTTP-Status für GET einer eingegangenen Mail (Graph nicht erreichbar / Token abgelaufen)
+		telegram: [], // Testkanal: { chat_id, text, parse_mode } je sendMessage
+		telegramFehler: null, // HTTP-Status für sendMessage (z. B. 400 "chat not found")
 		zaehler: 0,
 	};
 
@@ -202,6 +205,15 @@ function mockServer({ port = 0 } = {}) {
 				return res.end(JSON.stringify(zustand.modelleFehler ? { error: { message: 'Mock-Fehler' } } : { data: [{ id: 'mock-modell' }] }));
 			}
 			if (url.pathname.startsWith('/graph/v1.0/')) return graph(req, url, body, res);
+			// Telegram-Bot-API (nur Testkanal "telegram_test"): /telegram/bot<token>/sendMessage
+			const tg = url.pathname.match(/^\/telegram\/bot[^/]+\/(\w+)$/);
+			if (tg) {
+				res.writeHead(tg[1] === 'sendMessage' && zustand.telegramFehler ? zustand.telegramFehler : 200, { 'content-type': 'application/json' });
+				if (tg[1] !== 'sendMessage') return res.end(JSON.stringify({ ok: true, result: { id: 1, is_bot: true, username: 'epa_mock_bot' } }));
+				if (zustand.telegramFehler) return res.end(JSON.stringify({ ok: false, error_code: zustand.telegramFehler, description: 'Bad Request: chat not found' }));
+				zustand.telegram.push({ chat_id: String(body.chat_id), text: body.text, parse_mode: body.parse_mode });
+				return res.end(JSON.stringify({ ok: true, result: { message_id: zustand.telegram.length, chat: { id: body.chat_id }, text: body.text } }));
+			}
 			res.writeHead(404);
 			res.end();
 		});

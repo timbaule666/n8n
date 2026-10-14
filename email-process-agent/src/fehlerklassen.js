@@ -32,6 +32,10 @@ const FEHLERCODES = Object.freeze({
 // der Vorgang wird NICHT auf "Eskaliert / Manuell" gesetzt (sonst würde ein Parallellauf gestört).
 const OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);
 
+// Fehler aus diesen Workflows werden gemeldet, aber nicht durch "Vorgang sichern" eskaliert: EPA-05 sichert Vorgänge
+// selbst über "EPA SW Status setzen". Schlüge das fehl und würde erneut gesichert, entstünde eine Fehlerschleife.
+const OHNE_SICHERUNG_AUS = Object.freeze(['EPA SW Status setzen']);
+
 const EPA_MUSTER = /^\[EPA:(\d{3}):([A-Z_]+):([^\]]*)\]\s*([\s\S]*)$/;
 
 function formatEpaFehler(code, vorgangsId, meldung) {
@@ -145,12 +149,14 @@ function ausErrorTrigger(json) {
 	});
 	const node = (err.node && err.node.name) || exec.lastNodeExecuted || null;
 	const workflow = j.workflow || {};
+	// Markierung " *" (fehlende Credentials) gehört nicht zum Namen
+	const ausSicherung = OHNE_SICHERUNG_AUS.includes(String(workflow.name || '').replace(/\s*\*$/, ''));
 	return {
 		statuscode: k.statuscode,
 		fehlercode: k.fehlercode,
 		klasse: k.klasse,
 		retrybar: k.retrybar,
-		eskalieren: k.eskalieren && Boolean(k.vorgangsId),
+		eskalieren: k.eskalieren && Boolean(k.vorgangsId) && !ausSicherung,
 		workflow_id: workflow.id || null,
 		workflow_name: workflow.name || null,
 		node,
@@ -183,6 +189,7 @@ function alarmHtml(eintrag) {
 module.exports = {
 	FEHLERCODES,
 	OHNE_ESKALATION,
+	OHNE_SICHERUNG_AUS,
 	formatEpaFehler,
 	epaFehler,
 	parseEpaFehler,

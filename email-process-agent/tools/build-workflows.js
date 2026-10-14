@@ -29,6 +29,8 @@ const M2 = [
 	['epa-08-loeschjob', 'EPA-08_Loeschjob.json'],
 	// Testphase: KI-Qualitäts-Prüfstand (keine Nebenwirkungen)
 	['epa-t1-ki-qualitaet', 'EPA-T1_KI-Qualitaet_pruefen.json'],
+	// Nur interne Tests ohne Microsoft-365-Lizenz (Kunden nutzen Teams)
+	['epa-t2-telegram', 'EPA-T2_Telegram_senden_Test.json'],
 ];
 // Die Postgres-Variante bleibt auf dem Stand von M1 (Speicher-Standard sind Data Tables).
 const DATEIEN = { datatable: [...M1, ...M2], postgres: M1 }; // M2 enthält ab M3 auch EPA-02/EPA-07

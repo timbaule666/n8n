@@ -17,6 +17,8 @@ const REGEL_SCHLUESSEL = {
 
 const LLM_AUFGABEN = ['klassifizierung', 'extraktion', 'entwurf'];
 const EMAIL = /^[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/;
+// Telegram-Chat-ID: Zahl (Gruppen negativ) oder @kanalname (nur Testkanal telegram_test)
+const TELEGRAM_CHAT = /^(-?\d{3,20}|@[A-Za-z0-9_]{5,32})$/;
 const FELDNAME = /^[A-Za-z][A-Za-z0-9_]{0,62}$/;
 
 function parseJson(wert, name, fehler) {
@@ -210,10 +212,30 @@ function validiereConfig(allgemein, pflichtfelder, optionen = {}) {
 	if (!Array.isArray(zusaetzliche) || zusaetzliche.some((d) => typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d))) fehler.push('zusaetzliche_feiertage: Liste von Daten im Format JJJJ-MM-TT');
 
 	const benachrichtigung = parseJson(a.benachrichtigung, 'benachrichtigung', fehler);
-	if (!benachrichtigung || benachrichtigung.kanal !== 'teams') fehler.push('benachrichtigung.kanal: in v1 nur "teams"');
-	else {
+	// Kunden: immer Teams. "telegram_test" ist nur für interne Tests ohne Microsoft-365-Lizenz
+	// (Meldungen und Freigabe-Links per Telegram-Bot), nicht für Kunden-Configs.
+	if (!benachrichtigung || !['teams', 'telegram_test'].includes(benachrichtigung.kanal)) fehler.push('benachrichtigung.kanal: "teams" (Kunden) oder "telegram_test" (nur interne Tests)');
+	else if (benachrichtigung.kanal === 'teams') {
 		text(benachrichtigung.team_id, 'benachrichtigung.team_id', fehler);
 		text(benachrichtigung.channel_id, 'benachrichtigung.channel_id', fehler);
+	} else {
+		const chat = String(benachrichtigung.chat_id ?? '').trim();
+		if (/^<.*>$/.test(chat) || !TELEGRAM_CHAT.test(chat)) fehler.push('benachrichtigung.chat_id: Telegram-Chat-ID (Zahl) fehlt oder ist ungültig');
+		else benachrichtigung.chat_id = chat;
+		const twf = String(benachrichtigung.telegram_workflow_id ?? '').trim();
+		if (!/^[A-Za-z0-9]{8,32}$/.test(twf)) fehler.push('benachrichtigung.telegram_workflow_id: ID des Workflows "EPA-T2 Telegram senden (Test)" fehlt');
+		else benachrichtigung.telegram_workflow_id = twf;
+		const zuordnung = benachrichtigung.freigeber_chat_ids ?? {};
+		if (!zuordnung || typeof zuordnung !== 'object' || Array.isArray(zuordnung)) fehler.push('benachrichtigung.freigeber_chat_ids: muss ein Objekt { "freigeber@firma.de": "Chat-ID" } sein');
+		else {
+			const sauber = {};
+			for (const [mail, id] of Object.entries(zuordnung)) {
+				if (!EMAIL.test(mail)) fehler.push(`benachrichtigung.freigeber_chat_ids: "${mail}" ist keine E-Mail-Adresse`);
+				else if (!TELEGRAM_CHAT.test(String(id ?? '').trim())) fehler.push(`benachrichtigung.freigeber_chat_ids: Chat-ID für "${mail}" ist ungültig`);
+				else sauber[mail.toLowerCase()] = String(id).trim();
+			}
+			benachrichtigung.freigeber_chat_ids = sauber;
+		}
 	}
 
 	// Postfach-Workflow (EPA-00-Kopie) für Entwürfe und Versand; Pflicht erst für Rückfragen (EPA-02 prüft).

@@ -124,6 +124,9 @@ return [{ json: {
 		['vorgangs_id', 'string', `={{ ${E}.vorgangs_id }}`],
 		['team_id', 'string', `={{ ${C}.benachrichtigung.team_id }}`],
 		['channel_id', 'string', `={{ ${C}.benachrichtigung.channel_id }}`],
+		['kanal', 'string', `={{ ${C}.benachrichtigung.kanal }}`],
+		['chat_id', 'string', `={{ ${C}.benachrichtigung.chat_id || '' }}`],
+		['telegram_workflow_id', 'string', `={{ ${C}.benachrichtigung.telegram_workflow_id || '' }}`],
 		['nachricht_html', 'string', "={{ $('Meldung: keine Reaktion').first().json.nachricht_html }}"],
 		['anlass', 'string', 'keine_reaktion'],
 	]);
@@ -202,6 +205,9 @@ return a.tokens.map((t) => ({ json: {
 		['kunde_id', 'string', `={{ ${E}.kunde_id }}`],
 		['vorgangs_id', 'string', `={{ ${E}.vorgangs_id }}`],
 		['freigeber', 'string', '={{ $json.freigeber }}'],
+		['kanal', 'string', `={{ ${C}.benachrichtigung.kanal }}`],
+		['chat_id', 'string', `={{ (${C}.benachrichtigung.freigeber_chat_ids || {})[String($json.freigeber).toLowerCase()] || ${C}.benachrichtigung.chat_id || '' }}`],
+		['telegram_workflow_id', 'string', `={{ ${C}.benachrichtigung.telegram_workflow_id || '' }}`],
 		['nachricht_html', 'string', '={{ $json.nachricht_html }}'],
 	], {}, 'each');
 	const zustellung = wf.code('Zustellung auswerten', [3740, 40], ['entwurf'], `
@@ -219,6 +225,9 @@ return [{ json: { zugestellt, nachricht_html: html } }];
 		['vorgangs_id', 'string', `={{ ${E}.vorgangs_id }}`],
 		['team_id', 'string', `={{ ${C}.benachrichtigung.team_id }}`],
 		['channel_id', 'string', `={{ ${C}.benachrichtigung.channel_id }}`],
+		['kanal', 'string', `={{ ${C}.benachrichtigung.kanal }}`],
+		['chat_id', 'string', `={{ ${C}.benachrichtigung.chat_id || '' }}`],
+		['telegram_workflow_id', 'string', `={{ ${C}.benachrichtigung.telegram_workflow_id || '' }}`],
 		['nachricht_html', 'string', '={{ $json.nachricht_html }}'],
 		['anlass', 'string', 'freigabe_nicht_zugestellt'],
 	]);

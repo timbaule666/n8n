@@ -343,6 +343,9 @@ return [{ json: {
 		['vorgangs_id', 'string', '={{ $json.vorgangs_id }}'],
 		['team_id', 'string', `={{ ${C}.benachrichtigung.team_id }}`],
 		['channel_id', 'string', `={{ ${C}.benachrichtigung.channel_id }}`],
+		['kanal', 'string', `={{ ${C}.benachrichtigung.kanal }}`],
+		['chat_id', 'string', `={{ ${C}.benachrichtigung.chat_id || '' }}`],
+		['telegram_workflow_id', 'string', `={{ ${C}.benachrichtigung.telegram_workflow_id || '' }}`],
 		['nachricht_html', 'string', '={{ $json.nachricht_html }}'],
 		['anlass', 'string', '={{ $json.anlass }}'],
 	]);

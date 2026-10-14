@@ -130,7 +130,13 @@ test('allgemeine Felder werden geprüft', () => {
 		[{ geschaeftszeiten: { tage: [1], von: '18:00', bis: '08:00' } }, /"bis" muss nach "von"/],
 		[{ geschaeftszeiten: { tage: [8], von: '08:00', bis: '17:00' } }, /geschaeftszeiten.tage/],
 		[{ feiertage_region: 'NRW' }, /Bundesland-Kürzel/],
-		[{ benachrichtigung: { kanal: 'slack' } }, /in v1 nur "teams"/],
+		[{ benachrichtigung: { kanal: 'slack' } }, /"teams" \(Kunden\) oder "telegram_test"/],
+		[{ benachrichtigung: { kanal: 'telegram' } }, /"teams" \(Kunden\) oder "telegram_test"/],
+		[{ benachrichtigung: { kanal: 'telegram_test', chat_id: '<CHAT_ID>' } }, /chat_id: Telegram-Chat-ID/],
+		[{ benachrichtigung: { kanal: 'telegram_test', chat_id: 'abc' } }, /chat_id: Telegram-Chat-ID/],
+		[{ benachrichtigung: { kanal: 'telegram_test', chat_id: '12345' } }, /telegram_workflow_id: ID des Workflows/],
+		[{ benachrichtigung: { kanal: 'telegram_test', chat_id: '12345', freigeber_chat_ids: { 'x': '1' } } }, /"x" ist keine E-Mail/],
+		[{ benachrichtigung: { kanal: 'telegram_test', chat_id: '12345', freigeber_chat_ids: { 'a@b.de': 'nein' } } }, /Chat-ID für "a@b.de" ist ungültig/],
 		[{ benachrichtigung: { kanal: 'teams', team_id: 't' } }, /channel_id: fehlt/],
 		[{ konfidenz_schwelle: 1.5 }, /konfidenz_schwelle/],
 		[{ llm_profil: { klassifizierung: { modell: 'x', temperatur: 2, timeout_ms: 1000, max_tokens: 10 } } }, /temperatur[\s\S]*max_tokens[\s\S]*extraktion: fehlt/],
@@ -155,4 +161,10 @@ test('Platzhalter aus der Vorlage gelten nicht als E-Mail-Adresse', () => {
 	const r = validiereConfig(allgemein({ postfach: '<anfragen-test@ihre-domain.de>', freigeber: ['<freigeber@ihre-domain.de>'] }), [feld()]);
 	assert.match(fehlerText(r), /postfach/);
 	assert.match(fehlerText(r), /freigeber/);
+});
+
+test('Testkanal telegram_test: Chat-ID und Zuordnung je Freigeber werden normalisiert', () => {
+	const r = validiereConfig(allgemein({ benachrichtigung: { kanal: 'telegram_test', chat_id: ' 123456789 ', telegram_workflow_id: 'AbCdEf123456', freigeber_chat_ids: { 'Chef@Firma.de': -100200300 } } }), [feld()]);
+	assert.equal(r.gueltig, true, fehlerText(r));
+	assert.deepEqual(r.config.benachrichtigung, { kanal: 'telegram_test', chat_id: '123456789', telegram_workflow_id: 'AbCdEf123456', freigeber_chat_ids: { 'chef@firma.de': '-100200300' } });
 });

@@ -121,3 +121,11 @@ test('Eskalation nur, wenn ein Vorgang betroffen ist und kein Parallel-Konflikt 
 	assert.equal(mit('UNZULAESSIGER_STATUSWECHSEL', null), false);
 	assert.equal(f.ausErrorTrigger({ execution: { error: { message: 'socket hang up' } } }).eskalieren, false);
 });
+
+test('ausErrorTrigger: Fehler aus "Status setzen" werden nicht erneut gesichert (keine Fehlerschleife)', () => {
+	const fehler = (name) => f.ausErrorTrigger({ workflow: { id: 'w', name }, execution: { id: 1, error: { message: '[EPA:400:UNGUELTIGES_FORMAT:V-1] Eingabe "kunde_id" fehlt' } } });
+	assert.equal(fehler('EPA SW Status setzen').eskalieren, false);
+	assert.equal(fehler('EPA SW Status setzen *').eskalieren, false, 'Markierung " *" ändert nichts');
+	assert.equal(fehler('EPA-01 Eingang verarbeiten').eskalieren, true);
+	assert.deepEqual(f.OHNE_SICHERUNG_AUS, ['EPA SW Status setzen']);
+});

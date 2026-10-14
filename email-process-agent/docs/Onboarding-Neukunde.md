@@ -14,7 +14,7 @@ Stand 2026-10-14 (M7). Ein Workflow-Satz bedient alle Kunden. Pro Kunde kommen d
 | Welche Vorgangsart(en)? Welche Angaben braucht der Kunde zwingend, welche optional? | Feldliste | `epa_config_pflichtfelder` |
 | Fester Satz je fehlender Angabe (wird wortgleich an den Kunden geschickt) | Textbausteine | `resolution_textbaustein` |
 | Wer darf Rückfragen freigeben? Vertretung? | Liste Microsoft-365-Konten | `freigeber`, `vertreter` |
-| Teams-Kanal für Meldungen | Team- und Kanal-ID | `benachrichtigung` |
+| Teams-Kanal für Meldungen | Team- und Kanal-ID | `benachrichtigung` (`"kanal": "teams"`; `telegram_test` ist nur für interne Tests und nie für Kunden) |
 | Anrede (Sie/Du), Sprache, Signatur | Texte | `anrede_stil`, `sprache`, `signatur` |
 | KI-Hinweis in ausgehenden Mails (juristisch prüfen lassen) | Text | `ki_hinweistext` |
 | Antwortfrist, Anzahl/Abstand der Erinnerungen, max. Rückfragerunden | Zahlen | `frist_stunden`, `anzahl_erinnerungen`, `erinnerung_intervall_stunden`, `max_runden` |
