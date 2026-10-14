@@ -1,6 +1,6 @@
 # Stand in der Instanz timbaule.app.n8n.cloud
 
-Stand 2026-10-14. Speicher: **n8n Data Tables** (persönliches Projekt).
+Stand 2026-10-14 (M5). Speicher: **n8n Data Tables** (persönliches Projekt).
 
 ## Workflows
 | Workflow | ID | Nodes | Status |
@@ -21,7 +21,7 @@ Stand 2026-10-14. Speicher: **n8n Data Tables** (persönliches Projekt).
 | EPA-04 Nachfassen und Eskalation | `OvSzCe83KeiTLnkN` | 24 | Entwurf (veröffentlichbar nach EPA SW Nachfassen; Zeitplan stündlich) |
 | EPA-07 Freigabe-Endpunkt | `xj4e8E82vccdoiXl` | 41 | **veröffentlicht**, Link: `https://timbaule.app.n8n.cloud/webhook/epa-freigabe` (Probe: ungültiger Link → 404-Seite) |
 
-M4: eingespielt aus `workflows/` vom Commit `8d36300` (M3: `1bccce8`, M2: `50f1cce`, M1: `b195eb6`), direkt von GitHub geladen. Danach wurde jeder Node mit der Quelle abgeglichen (Typ, Version, Parameter): 0 Abweichungen.
+M5: eingespielt aus `workflows/` vom Commit `cf2bfa8` (M4: `8d36300`, M3: `1bccce8`, M2: `50f1cce`, M1: `b195eb6`), direkt von GitHub geladen. Danach wurde jeder Node mit der Quelle abgeglichen (Typ, Version, Parameter): 0 Abweichungen.
 
 ## Data Tables
 | Tabelle | ID | Inhalt |

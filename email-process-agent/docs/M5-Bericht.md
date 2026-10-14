@@ -40,7 +40,8 @@ Stand 2026-10-14. n8n 2.43.4, Data Tables.
    - Freigeber-Erinnerung (einmalig, alter Link gilt weiter)
    - Freigabe-Erneuerung (alle alten Links 410, neuer Link sendet)
    - Kunde ohne gültige Config → Alarm 424, Lock frei
-3. Regression: siehe Abschnitt „Gesamtlauf“.
+3. **Gesamtlauf lokal:** **71/71** (M2 36/36, M3 16/16, M4 9/9, M5 10/10). Die M1-Regression ist grün.
+4. **Cloud:** Alle 15 Workflows sind auf dem Stand von Commit `cf2bfa8`. Der Abgleich jedes Nodes mit der Quelle ergab 0 Abweichungen. Neu sind die Tabelle `epa_system_status` (mit Lock-Zeile) und die drei neuen Spalten. Die zuvor veröffentlichten Workflows (4 Basis-Bausteine, EPA-07) sind wieder veröffentlicht.
 
 ## Offen / zu verifizieren
 - Die Teams-Nachricht „bitte telefonisch kontaktieren“ wurde lokal nur als Zustellversuch geprüft (Dummy-Credential). Der Inhalt ist per Unit-Test geprüft, die echte Zustellung folgt mit deinem Teams-Credential.
