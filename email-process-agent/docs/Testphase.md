@@ -117,6 +117,7 @@ Echtes Postfach, aber jede Rückfrage wird bewusst geprüft (das ist ohnehin Pfl
 | E1 | 2026-10-14 | ok | „Transportanfrage Köln – München“ → V-2026-0001 „Bereit zur Bearbeitung“, alle 10 Felder korrekt (u. a. 3 Paletten → Palette, 0221 1234567 → 02211234567), keine Mail an den Kunden |
 | E2 | 2026-10-14 | ok, ein Befund | „Transport nach Berlin“ → V-2026-0002 „Freigabe ausstehend“, Entwurf im Ordner Entwürfe (Betreff mit Vorgangs-ID), Rückfrage nach PLZ Start/Ziel, Datum, Telefon; Freigabe offen, Link per Telegram. **Befund:** Ansprechpartner „Max“ (nur Vorname aus „Gruß Max“) gilt als vorhanden – zu entscheiden, ob ein Vorname reicht |
 | Hinweis | 2026-10-14 | – | Beide Testmails landeten bei Outlook in **Junk-E-Mail**; der Agent liest nur den Posteingang. Für den Test in den Posteingang verschoben und direkt an die Postfach-Kopie übergeben. Absender als „Kein Junk“ markieren. |
+| E3 (1. Versuch) | 2026-10-14 | Fehler gefunden und behoben | Klick auf „Freigeben“ ohne Wirkung: Die Seite deaktivierte die Knöpfe beim Absenden, ein deaktivierter Knopf überträgt seinen Wert nicht, EPA-07 hielt den POST für einen Seitenaufruf. Behoben (Commit daf92d7), E2E F17 ergänzt, EPA-02/EPA-07/SW Nachfassen neu eingespielt. Freigabe blieb offen, nichts gesendet. |
 | E3–E12 | | | |
 
 ## Lauf STUFE1-L1 (2026-10-14): Auswertung
