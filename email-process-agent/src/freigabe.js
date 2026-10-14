@@ -47,10 +47,12 @@ function freigabePruefen({ token, freigabe, freigeberErlaubt, jetzt }) {
 	if (freigabe.status !== 'offen') {
 		const wer = freigabe.entscheider ? ` von ${freigabe.entscheider}` : '';
 		const was = { in_versand: 'wird gerade versendet', gesendet: 'wurde bereits freigegeben und gesendet', abgelehnt: 'wurde bereits abgelehnt', abgelaufen: 'ist abgelaufen', ersetzt: 'wurde durch eine neuere Freigabe ersetzt', fehler: 'ist beim Versand fehlgeschlagen' }[freigabe.status] || `hat den Status "${freigabe.status}"`;
-		return nein(freigabe.status === 'abgelaufen' ? 410 : 409, freigabe.status === 'abgelaufen' ? 'FREIGABE_ABGELAUFEN' : 'DUPLIKAT', `Diese Rückfrage ${was}${freigabe.status === 'gesendet' || freigabe.status === 'abgelehnt' ? wer : ''}.`);
+		return nein(freigabe.status === 'abgelaufen' ? 410 : 409, freigabe.status === 'abgelaufen' ? 'FREIGABE_ABGELAUFEN' : 'DUPLIKAT', `Diese ${freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage'} ${was}${freigabe.status === 'gesendet' || freigabe.status === 'abgelehnt' ? wer : ''}.`);
 	}
 	if (token.verbraucht_am) return nein(409, 'DUPLIKAT', 'Dieser Link wurde bereits verwendet.');
 	if (new Date(freigabe.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Ein neuer Link wird automatisch verschickt.');
+	// Ab M5: Links haben eine eigene Ablaufzeit. Bei der Erneuerung einer abgelaufenen Freigabe werden alle alten Links gesperrt.
+	if (token.ablauf && new Date(token.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Sie haben inzwischen einen neuen Link erhalten.');
 	if (!freigeberErlaubt) return nein(403, 'KEINE_BERECHTIGUNG', 'Sie sind für diesen Kunden nicht (mehr) als Freigeber eingetragen.');
 	return { ok: true };
 }
@@ -93,8 +95,9 @@ function seite(titel, inhalt) {
 
 function seiteFormular({ token, freigabe, vorgang, fehlende, text, abschluss }) {
 	const luecken = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}${f.grund ? ` <span class="hinweis">(${esc(f.grund)})</span>` : ''}</li>`).join('');
-	return seite(`Rückfrage ${vorgang.vorgangs_id}`, `
-<div class="karte"><h1>Rückfrage freigeben – ${esc(vorgang.vorgangs_id)}</h1>
+	const was = freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';
+	return seite(`${was} ${vorgang.vorgangs_id}`, `
+<div class="karte"><h1>${was} freigeben – ${esc(vorgang.vorgangs_id)}</h1>
 <dl><dt>An</dt><dd>${esc(freigabe.empfaenger)}</dd><dt>Betreff</dt><dd>${esc(freigabe.betreff)}</dd>
 <dt>Runde</dt><dd>${esc(Number(vorgang.rundenzaehler || 0) + 1)}</dd><dt>Gültig bis</dt><dd>${esc(new Date(freigabe.ablauf).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }))}</dd></dl>
 <p>Fehlende Angaben:</p><ul>${luecken}</ul>${freigabe.fallback ? '<p class="hinweis">Hinweis: Die KI-Formulierung hat die Prüfung nicht bestanden, es wird die Standardvorlage verwendet.</p>' : ''}</div>
@@ -115,14 +118,20 @@ function seiteMeldung(titel, text, art = 'ok') {
 }
 
 /** Teams-Nachricht an den Freigeber (1:1-Chat). */
-function nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art }) {
+const ANLASS = Object.freeze({
+	freigabe_erinnerung: 'Erinnerung: Diese Freigabe ist noch offen. Hier ist ein neuer persönlicher Link.',
+	freigabe_erneuern: 'Der bisherige Link ist abgelaufen und gilt nicht mehr. Hier ist ein neuer persönlicher Link.',
+});
+
+function nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art, anlass }) {
 	const liste = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}</li>`).join('');
 	const titel = art === 'erinnerung' ? 'Erinnerung an den Kunden freigeben' : 'Rückfrage an den Kunden freigeben';
-	return `<b>${esc(titel)}: ${esc(vorgang.vorgangs_id)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>Fehlende Angaben:<ul>${liste}</ul>` +
+	const hinweis = ANLASS[anlass] ? `<i>${esc(ANLASS[anlass])}</i><br>` : '';
+	return `${hinweis}<b>${esc(titel)}: ${esc(vorgang.vorgangs_id)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>Fehlende Angaben:<ul>${liste}</ul>` +
 		`<a href="${esc(url)}">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Persönlicher Link, einmal verwendbar, gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;
 }
 
 module.exports = {
 	TOKEN_MUSTER, AKTIONEN, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,
-	freigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber,
+	freigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber, ANLASS,
 };

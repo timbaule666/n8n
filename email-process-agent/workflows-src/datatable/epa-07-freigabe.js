@@ -22,7 +22,8 @@ module.exports = function () {
 		'## EPA-07 Freigabe-Endpunkt (Phase C3/C4)',
 		'**Zweck:** Seite hinter dem persönlichen Freigabe-Link. GET zeigt Empfänger, Betreff, fehlende Angaben und den bearbeitbaren Text; POST nimmt "Freigeben und senden" (optional mit geändertem Text) oder "Ablehnen" (mit Grund) entgegen.',
 		'**Sicherheit:** Token einmalig (nur Hash gespeichert), Ablaufzeit, Freigeber muss noch in der Config stehen. Die Freigabe wird atomar übernommen (bedingtes Update auf status = offen): ein Doppelklick oder zweiter Freigeber bekommt "bereits bearbeitet". Signatur und KI-Hinweis sind nicht änderbar.',
-		'**Versand (C4):** über den Postfach-Workflow des Kunden (postfach_workflow_id): vorher prüfen, ob der Entwurf noch existiert, sonst in Gesendete Elemente suchen → kein Doppelversand. Erst nach bestätigtem Versand: Status "Warten auf Kunde", Rundenzähler +1, Antwortfrist (Geschäftszeiten), Audit mit Freigeber und "bearbeitet".',
+		'**Versand (C4):** über den Postfach-Workflow des Kunden (postfach_workflow_id): vorher prüfen, ob der Entwurf noch existiert, sonst in Gesendete Elemente suchen → kein Doppelversand. Erst nach bestätigtem Versand: Status "Warten auf Kunde", Rundenzähler +1, Antwortfrist (Geschäftszeiten), Audit mit Freigeber und "bearbeitet". Bei einer Erinnerung (M5): Erinnerungszähler +1, neue Frist = Erinnerungsintervall, Runde bleibt.',
+		'**Links (M5):** Jeder Link hat eine eigene Ablaufzeit. Erneuert EPA-04 eine abgelaufene Freigabe, gelten nur noch die neuen Links (alte → 410).',
 		'**Fehler:** Versand fehlgeschlagen → Freigabe "fehler", Seite informiert, danach Fehler an EPA-05 (Vorgang wird gesichert, Alarm).',
 		'**Trigger:** Webhook GET/POST /webhook/epa-freigabe. Muss veröffentlicht sein. Keine Credentials nötig.',
 	].join('\n'), { breite: 920, hoehe: 400 });
@@ -82,7 +83,7 @@ if (a.methode === 'GET') {
 }
 const f = a.formular;
 if (!f.ok) return antwort(400, f.meldung + ' Bitte über den Link erneut öffnen.');
-const basis = { freigabe_id: fg.freigabe_id, kunde_id: fg.kunde_id, vorgangs_id: fg.vorgangs_id, entwurf_id: fg.entwurf_id, token_id: tok.id, entscheider: String(tok.freigeber).toLowerCase(), runde: fg.runde };
+const basis = { freigabe_id: fg.freigabe_id, kunde_id: fg.kunde_id, vorgangs_id: fg.vorgangs_id, entwurf_id: fg.entwurf_id, token_id: tok.id, entscheider: String(tok.freigeber).toLowerCase(), runde: fg.runde, art: fg.art || 'rueckfrage', erinnerungen_gesendet: Number(v.erinnerungen_gesendet || 0) };
 if (f.aktion === 'ablehnen') return [{ json: { ...basis, weg: 'ablehnen', grund: f.grund } }];
 const bearbeitet = freigabe.istBearbeitet(fg.entwurf_text, f.text);
 let text = fg.entwurf_text;
@@ -192,7 +193,7 @@ return [{ json: { status: 'gesendet', gesendet_am: new Date().toISOString(), ges
 		['vorgangs_id', 'string', `={{ ${P}.vorgangs_id }}`],
 		['neuer_status', 'string', 'Warten auf Kunde'],
 		['ausloeser', 'string', `={{ 'Mitarbeiter:' + ${P}.entscheider }}`],
-		['details', 'object', `={{ { freigabe_id: ${P}.freigabe_id, runde: ${P}.runde, bearbeitet: ${P}.bearbeitet, bereits_gesendet: $('Versand auswerten').first().json.bereits } }}`],
+		['details', 'object', `={{ { freigabe_id: ${P}.freigabe_id, art: ${P}.art, runde: ${P}.runde, bearbeitet: ${P}.bearbeitet, bereits_gesendet: $('Versand auswerten').first().json.bereits } }}`],
 		['referenz', 'string', `={{ ${P}.freigabe_id }}`],
 		['erwartete_version', 'number', '={{ null }}'],
 		['nur_wenn_erlaubt', 'boolean', '={{ false }}'],
@@ -205,11 +206,11 @@ return [{ json: { status: 'gesendet', gesendet_am: new Date().toISOString(), ges
 const config = $input.first().json.config;
 const p = $('Prüfen').first().json;
 const v = $('Versand auswerten').first().json;
-const daten = {
-	rundenzaehler: Number(p.runde),
-	antwort_frist: fristen.berechneFrist(new Date().toISOString(), config.frist_stunden, config),
-	erinnerungen_gesendet: 0,
-};
+// Rückfrage: neue Runde, volle Antwortfrist, Erinnerungen zurück auf 0.
+// Erinnerung (M5): Runde bleibt, Erinnerungszähler +1, neue Frist = Erinnerungsintervall.
+const daten = p.art === 'erinnerung'
+	? { antwort_frist: fristen.berechneFrist(new Date().toISOString(), config.erinnerung_intervall_stunden, config), erinnerungen_gesendet: Number(p.erinnerungen_gesendet) + 1 }
+	: { rundenzaehler: Number(p.runde), antwort_frist: fristen.berechneFrist(new Date().toISOString(), config.frist_stunden, config), erinnerungen_gesendet: 0 };
 if (v.internet_message_id) daten.neue_message_ids = [v.internet_message_id];
 return [{ json: { daten, version: $('Status: Warten auf Kunde').first().json.version } }];
 `);
@@ -227,7 +228,8 @@ const p = $('Prüfen').first().json;
 const frist = $('Frist berechnen').first().json.daten.antwort_frist;
 const config = $('Config laden').first().json.config;
 const t = DateTime.fromISO(frist).setZone(config.zeitzone).toFormat('dd.LL.yyyy, HH:mm');
-return [{ json: { status: 200, html: freigabe.seiteMeldung('Rückfrage gesendet', (p.bearbeitet ? 'Ihr bearbeiteter Text wurde gesendet. ' : 'Die Rückfrage wurde gesendet. ') + 'Der Vorgang ' + p.vorgangs_id + ' wartet jetzt auf die Antwort des Kunden (Frist: ' + t + ').', 'ok') } }];
+const was = p.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';
+return [{ json: { status: 200, html: freigabe.seiteMeldung(was + ' gesendet', (p.bearbeitet ? 'Ihr bearbeiteter Text wurde gesendet. ' : 'Die ' + was + ' wurde gesendet. ') + 'Der Vorgang ' + p.vorgangs_id + ' wartet jetzt auf die Antwort des Kunden (Frist: ' + t + ').', 'ok') } }];
 `);
 
 	// fehlgeschlagen
@@ -238,7 +240,7 @@ return [{ json: { status: 'fehler' } }];
 	const fSeite = wf.code('Seite: Versand fehlgeschlagen', [4400, 440], ['freigabe'], `
 const p = $('Prüfen').first().json;
 return [{ json: { status: 502, nachmelden: true, vorgangs_id: p.vorgangs_id, meldung: $('Versand auswerten').first().json.fehler,
-	html: freigabe.seiteMeldung('Versand fehlgeschlagen', 'Die Rückfrage konnte nicht gesendet werden. Es wurde nichts doppelt gesendet. Die Entwicklung ist informiert, der Vorgang wird manuell weiterbearbeitet.', 'fehler') } }];
+	html: freigabe.seiteMeldung('Versand fehlgeschlagen', 'Die Mail konnte nicht gesendet werden. Es wurde nichts doppelt gesendet. Die Entwicklung ist informiert, der Vorgang wird manuell weiterbearbeitet.', 'fehler') } }];
 `);
 
 	// ---------------------------------------------------------------- Antwort

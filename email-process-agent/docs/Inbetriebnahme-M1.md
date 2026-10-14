@@ -84,3 +84,11 @@ In den Workflow-Settings bzw. global: Ausführungsdaten erfolgreicher Läufe nic
 - **Freigabe-Link:** `https://<instanz>/webhook/epa-freigabe`. EPA-07 muss veröffentlicht sein. Die Basis-URL wird automatisch ermittelt; abweichend (z. B. eigene Domain) über `freigabe_basis_url`.
 - **Selbst gehostetes n8n:** Code-Nodes nutzen `require('crypto')` für die Token. In n8n Cloud ist das erlaubt; bei eigener Installation `NODE_FUNCTION_ALLOW_BUILTIN=crypto` setzen.
 - **Ausführungsdaten:** Der Klartext-Link steht nur in den Ausführungsdaten von EPA-02. Aufbewahrung erfolgreicher Ausführungen begrenzen (Abschnitt 6).
+
+## 8. Ab M5: Nachfassen und Eskalation (EPA-04)
+- **Data Tables:** `node tools/datatables-setup.js` legt die neue Tabelle `epa_system_status` an (inkl. der Lock-Zeile `epa04_lauf`) und ergänzt die Spalten `epa_freigaben.erinnert_am`, `epa_freigaben.erneuert_am` und `epa_freigabe_tokens.ablauf`. Fehlt die Lock-Zeile, legt EPA-04 sie beim ersten Lauf selbst an und arbeitet ab dem zweiten Lauf.
+- **Veröffentlichen:** `EPA SW Nachfassen` nach EPA-02, danach `EPA-04 Nachfassen und Eskalation`. Keine eigenen Credentials nötig.
+- **Intervall:** Node „Stündlich“ (Minute 5). 1–2 Stunden sind sinnvoll. Ein Lauf darf höchstens 50 Minuten dauern; der Lauf-Lock gilt 55 Minuten und verfällt damit vor dem nächsten Lauf, auch nach einem Absturz.
+- **Config-Werte:** `frist_stunden` (erste Antwortfrist), `anzahl_erinnerungen` und `erinnerung_intervall_stunden` (Abstand der Erinnerungen), `freigabe_erinnerung_stunden` (Erinnerung an Freigeber) und `freigabe_ablauf_stunden` (Gültigkeit eines Links). Mit `frist_nur_geschaeftszeit = true` zählen nur Geschäftsstunden (inkl. Feiertage der `feiertage_region`).
+- **Geschäftszeiten:** Aufgaben eines Kunden laufen nur innerhalb seiner Geschäftszeiten. Was nachts oder am Wochenende fällig wird, holt der erste Lauf am nächsten Arbeitstag nach.
+- **Manuell auslösen/testen:** EPA-04 hat zusätzlich einen Aufruf-Trigger mit der Eingabe `jetzt` (ISO-Zeitpunkt). Damit lässt sich ein Lauf zu einem anderen Zeitpunkt simulieren; Links prüft EPA-07 immer gegen die echte Uhrzeit.

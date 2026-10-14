@@ -1,0 +1,1722 @@
+{
+  "name": "EPA SW Nachfassen",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## EPA SW Nachfassen (Phase E, eine Aufgabe)\n**Zweck:** Führt eine von EPA-04 geplante Aufgabe für genau einen Vorgang bzw. eine Freigabe aus. Prüft vorher erneut, ob die Aufgabe noch gilt (der Kunde kann inzwischen geantwortet haben).\n**erinnerung (Fall 1):** Erinnerungsentwurf über EPA-02 (art = erinnerung): Vorlage mit den Bausteinen der offenen Felder, Freigabe nötig, nie automatischer Versand.\n**eskalation (Fall 2):** Status \"Eskaliert / Manuell\" (Auslöser Cronjob, mit Versionsprüfung) und Teams-Nachricht \"Kunde reagiert seit N Tagen nicht … bitte telefonisch kontaktieren\" mit Kontaktdaten.\n**freigabe_erinnerung:** Freigabe ist seit freigabe_erinnerung_stunden offen: neue persönliche Links an alle Freigeber (alte bleiben gültig).\n**freigabe_erneuern:** Freigabe ist abgelaufen: neue Ablaufzeit, alle alten Links gesperrt (410), neue Links an alle Freigeber. Es wird nie automatisch gesendet.\n**Trigger:** Aufruf durch EPA-04 (einzeln je Aufgabe). **Eingaben:** aktion, kunde_id, vorgangs_id, freigabe_id, jetzt, referenz. **Ausgabe:** { ergebnis }",
+        "width": 900,
+        "height": 360,
+        "color": 7
+      },
+      "id": "9f4ada67-1369-4708-a25b-8ac2dd083276",
+      "name": "Notiz Zweck",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -560
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "aktion",
+              "type": "string"
+            },
+            {
+              "name": "kunde_id",
+              "type": "string"
+            },
+            {
+              "name": "vorgangs_id",
+              "type": "string"
+            },
+            {
+              "name": "freigabe_id",
+              "type": "string"
+            },
+            {
+              "name": "jetzt",
+              "type": "string"
+            },
+            {
+              "name": "referenz",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "a273a507-caad-4b8d-a155-9f0c369aeccf",
+      "name": "Bei Aufruf",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Config laden",
+          "cachedResultName": "EPA SW Config laden"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $json.kunde_id }}",
+            "postfach": ""
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "postfach",
+              "displayName": "postfach",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "604d2c6e-c531-4588-aa0b-a019cb9be299",
+      "name": "Config laden",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Vorgang verwalten",
+          "cachedResultName": "EPA SW Vorgang verwalten"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "aktion": "lesen",
+            "kunde_id": "={{ $('Bei Aufruf').first().json.kunde_id }}",
+            "vorgangs_id": "={{ $('Bei Aufruf').first().json.vorgangs_id }}",
+            "daten": "={{ {} }}",
+            "erwartete_version": "={{ null }}",
+            "referenz": "={{ $('Bei Aufruf').first().json.referenz || '' }}",
+            "lock_sekunden": "={{ null }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "aktion",
+              "displayName": "aktion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "daten",
+              "displayName": "daten",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object",
+              "removed": false
+            },
+            {
+              "id": "erwartete_version",
+              "displayName": "erwartete_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "referenz",
+              "displayName": "referenz",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "lock_sekunden",
+              "displayName": "lock_sekunden",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "7440857a-a276-4a70-a4e3-da453cee6ea9",
+      "name": "Vorgang lesen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "2787d870-326c-4139-ab1a-bd73dc11d3c3",
+                    "leftValue": "={{ $('Bei Aufruf').first().json.aktion }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "erinnerung"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "erinnerung"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "37c5e6c1-cbfd-4662-a42c-2bd6a070aeaa",
+                    "leftValue": "={{ $('Bei Aufruf').first().json.aktion }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "eskalation"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "eskalation"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "cbe8b6f6-1952-40f4-a560-ab8bfed074af",
+                    "leftValue": "={{ $('Bei Aufruf').first().json.aktion }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "startsWith"
+                    },
+                    "rightValue": "freigabe_"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "freigabe"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "unbekannt"
+        }
+      },
+      "id": "92ed946a-7c8a-45dd-a8d8-33a6df85321e",
+      "name": "Aktion",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId),\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst zeilen = [\n\t\t`<b>EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)}</b> (${escapeHtml(e.klasse)})`,\n\t\t`Workflow: ${escapeHtml(e.workflow_name || e.workflow_id || '?')}`,\n\t\t`Node: ${escapeHtml(e.node || '?')}`,\n\t\t`Vorgang: ${escapeHtml(e.vorgangs_id || '–')}`,\n\t\t`Meldung: ${escapeHtml(e.meldung || '–')}`,\n\t\te.retrybar ? 'Hinweis: vorübergehender Fehler, erneuter Versuch kann helfen.' : 'Hinweis: dauerhafter Fehler, bitte prüfen.',\n\t];\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n\n// ----- Node-Logik -----\nthrow fehlerklassen.epaFehler('UNGUELTIGES_FORMAT', $('Bei Aufruf').first().json.vorgangs_id || null, 'Unbekannte Nachfass-Aktion \"' + $('Bei Aufruf').first().json.aktion + '\"');\n"
+      },
+      "id": "bbf268fb-64b7-4668-ab6e-b75506d77b1d",
+      "name": "Unbekannte Aktion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA-02 Rückfrage anfordern",
+          "cachedResultName": "EPA-02 Rückfrage anfordern"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $('Bei Aufruf').first().json.kunde_id }}",
+            "vorgangs_id": "={{ $('Bei Aufruf').first().json.vorgangs_id }}",
+            "art": "erinnerung",
+            "referenz": "={{ $('Bei Aufruf').first().json.referenz || '' }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "art",
+              "displayName": "art",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "referenz",
+              "displayName": "referenz",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "fccaf6f7-b785-4d15-a4b2-5ba646000292",
+      "name": "Erinnerung anfordern",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        880,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst r = $input.first().json;\nreturn [{ json: { ergebnis: 'erinnerung_' + (r.ergebnis || 'unbekannt'), freigabe_id: r.freigabe_id || null, zugestellt: r.zugestellt ?? null } }];\n"
+      },
+      "id": "d4f5cd13-ae97-4e72-ae29-7b55a505e5df",
+      "name": "Ergebnis: Erinnerung",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\n// Gilt die Aufgabe noch? Der Kunde kann seit der Planung geantwortet haben.\nconst e = $('Bei Aufruf').first().json;\nconst config = $('Config laden').first().json.config;\nconst v = $('Vorgang lesen').first().json.vorgang;\nconst jetzt = e.jetzt || new Date().toISOString();\nlet grund = '';\nif (v.status !== 'Warten auf Kunde') grund = 'status_geaendert';\nelse if (!v.antwort_frist || new Date(v.antwort_frist).getTime() >= new Date(jetzt).getTime()) grund = 'frist_nicht_abgelaufen';\nelse if (Number(v.erinnerungen_gesendet || 0) < Number(config.anzahl_erinnerungen || 0)) grund = 'erinnerungen_offen';\nreturn [{ json: { eskalieren: !grund, grund, jetzt } }];\n"
+      },
+      "id": "e9a74590-e8af-4db6-a329-597327b32ea6",
+      "name": "Eskalation prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "80ea6589-5aa6-47a2-a07f-983686810c0a",
+              "leftValue": "={{ $json.eskalieren }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "124370d2-5837-4f21-aab2-8f4deb0f0fe9",
+      "name": "Eskalieren?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1100,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigaben"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Bei Aufruf').first().json.kunde_id }}"
+            },
+            {
+              "keyName": "vorgangs_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Bei Aufruf').first().json.vorgangs_id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "gesendet"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "c5298747-ac8b-4d97-a666-18a2e6cbcc45",
+      "name": "Gesendete Nachrichten lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1320,
+        -180
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/nachfassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst nachfassen = (() => {\nconst module = { exports: {} };\n// Phase E (Masterprompt Workflow 4, Bauplan 2.2/6): Nachfassen beim Kunden, Eskalation, Erinnerung an Freigeber\n// und Erneuerung abgelaufener Freigabe-Links. Reine Planungslogik: EPA-04 liest Vorgänge, offene Freigaben und\n// Configs, dieses Modul entscheidet, was zu tun ist. Ausgeführt wird jede Aufgabe einzeln in \"EPA SW Nachfassen\".\n// Es wird nie automatisch an Kunden gesendet: Eine Erinnerung an den Kunden ist immer ein Entwurf mit Freigabe.\n\nconst LOCK_SCHLUESSEL = 'epa04_lauf';\nconst LOCK_MINUTEN = 55;\nconst MAX_AUFGABEN = 50;\nconst EPOCHE = '1970-01-01T00:00:00.000Z';\nconst WARTEN = 'Warten auf Kunde';\n\n// Reihenfolge, falls mehr Aufgaben anfallen als ein Lauf abarbeitet (Rest folgt im nächsten Lauf).\nconst PRIORITAET = Object.freeze({ eskalation: 1, erinnerung: 2, freigabe_erneuern: 3, freigabe_erinnerung: 4 });\n\nfunction ms(t) {\n\tif (t === null || t === undefined || t === '') return NaN;\n\tconst x = new Date(t).getTime();\n\treturn Number.isFinite(x) ? x : NaN;\n}\n\n/**\n * Plant die Aufgaben eines Laufs.\n * @param {object} p\n * @param {object[]} p.vorgaenge  Zeilen aus epa_vorgaenge (Status \"Warten auf Kunde\")\n * @param {object[]} p.freigaben  Zeilen aus epa_freigaben (Status \"offen\")\n * @param {object} p.configs      kunde_id -> geprüfte Config; null = Kunde inaktiv; fehlt = Config ungültig\n * @param {string} p.jetzt        ISO-Zeitpunkt\n * @param {object} p.fristen      Modul src/fristen.js (im Code-Node eingebettet)\n * @returns {{ aufgaben: object[], uebersprungen: object[], verschoben: number }}\n */\nfunction planen({ vorgaenge, freigaben, configs, jetzt, fristen, max = MAX_AUFGABEN }) {\n\tconst jetztMs = ms(jetzt);\n\tif (!Number.isFinite(jetztMs)) throw new Error(`Ungültiger Zeitpunkt \"${jetzt}\"`);\n\tconst aufgaben = [];\n\tconst uebersprungen = [];\n\tconst imDienst = {};\n\tconst geschaeftszeit = (kunde, c) => {\n\t\tif (!(kunde in imDienst)) imDienst[kunde] = fristen.istGeschaeftszeit(jetzt, c);\n\t\treturn imDienst[kunde];\n\t};\n\n\tfor (const v of vorgaenge || []) {\n\t\tif (!v || v.status !== WARTEN) continue;\n\t\tconst frist = ms(v.antwort_frist);\n\t\tif (!Number.isFinite(frist) || frist >= jetztMs) continue;\n\t\tconst ref = { kunde_id: v.kunde_id, vorgangs_id: v.vorgangs_id };\n\t\tconst c = configs[v.kunde_id];\n\t\tif (!c) {\n\t\t\tuebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\tcontinue;\n\t\t}\n\t\tif (!geschaeftszeit(v.kunde_id, c)) {\n\t\t\tuebersprungen.push({ ...ref, grund: 'ausserhalb_geschaeftszeit' });\n\t\t\tcontinue;\n\t\t}\n\t\tconst gesendet = Number(v.erinnerungen_gesendet || 0);\n\t\tconst erlaubt = Number(c.anzahl_erinnerungen || 0);\n\t\taufgaben.push({\n\t\t\taktion: gesendet < erlaubt ? 'erinnerung' : 'eskalation',\n\t\t\t...ref,\n\t\t\tfreigabe_id: '',\n\t\t\tversion: v.version ?? null,\n\t\t\terinnerungen_gesendet: gesendet,\n\t\t});\n\t}\n\n\tfor (const f of freigaben || []) {\n\t\tif (!f || f.status !== 'offen') continue;\n\t\tconst ref = { kunde_id: f.kunde_id, vorgangs_id: f.vorgangs_id, freigabe_id: f.freigabe_id };\n\t\tconst c = configs[f.kunde_id];\n\t\tif (!c) {\n\t\t\tuebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\tcontinue;\n\t\t}\n\t\tconst abgelaufen = ms(f.ablauf) <= jetztMs;\n\t\tlet erinnern = false;\n\t\tif (!abgelaufen && !f.erinnert_am && Number(c.freigabe_erinnerung_stunden) > 0) {\n\t\t\tconst basis = f.erneuert_am || f.createdAt;\n\t\t\tif (Number.isFinite(ms(basis))) erinnern = ms(fristen.berechneFrist(new Date(basis).toISOString(), c.freigabe_erinnerung_stunden, c)) <= jetztMs;\n\t\t}\n\t\tif (!abgelaufen && !erinnern) continue;\n\t\tif (!geschaeftszeit(f.kunde_id, c)) {\n\t\t\tuebersprungen.push({ ...ref, grund: 'ausserhalb_geschaeftszeit' });\n\t\t\tcontinue;\n\t\t}\n\t\taufgaben.push({ aktion: abgelaufen ? 'freigabe_erneuern' : 'freigabe_erinnerung', ...ref, version: null, erinnerungen_gesendet: null });\n\t}\n\n\taufgaben.sort((a, b) => PRIORITAET[a.aktion] - PRIORITAET[b.aktion]);\n\treturn { aufgaben: aufgaben.slice(0, max), uebersprungen, verschoben: Math.max(0, aufgaben.length - max) };\n}\n\n// ---------------------------------------------------------------- Lauf-Lock (Tabelle epa_system_status)\n\nfunction lockHolen(laufId, jetztEcht) {\n\tconst t = ms(jetztEcht);\n\treturn {\n\t\tlock_bis: new Date(t + LOCK_MINUTEN * 60000).toISOString(),\n\t\tlock_durch: String(laufId),\n\t\tletzter_start: new Date(t).toISOString(),\n\t};\n}\n\nfunction lockFreigeben(jetztEcht, ergebnis) {\n\treturn {\n\t\tlock_bis: EPOCHE,\n\t\tlock_durch: '',\n\t\tletzter_lauf: new Date(ms(jetztEcht)).toISOString(),\n\t\tletztes_ergebnis: JSON.stringify(ergebnis || {}),\n\t};\n}\n\n/** Zusammenfassung eines Laufs, nur Zähler und IDs (keine personenbezogenen Daten). */\nfunction laufAuswerten(plan, ergebnisse) {\n\tconst zaehler = {};\n\tconst fehler = [];\n\t(plan.aufgaben || []).forEach((a, i) => {\n\t\tconst r = (ergebnisse || [])[i] || {};\n\t\tconst ergebnis = r.error ? 'fehler' : String(r.ergebnis || 'unbekannt');\n\t\tconst k = `${a.aktion}:${ergebnis}`;\n\t\tzaehler[k] = (zaehler[k] || 0) + 1;\n\t\tif (r.error) fehler.push({ aktion: a.aktion, vorgangs_id: a.vorgangs_id, freigabe_id: a.freigabe_id || null });\n\t});\n\treturn {\n\t\taufgaben: (plan.aufgaben || []).length,\n\t\tergebnisse: zaehler,\n\t\tfehler,\n\t\tuebersprungen: (plan.uebersprungen || []).length,\n\t\tverschoben: plan.verschoben || 0,\n\t};\n}\n\n// ---------------------------------------------------------------- Eskalation (Fall 2)\n\n/**\n * Seit wann wartet der Vorgang? Erste versendete Rückfrage der aktuellen Runde, sonst die jüngste versendete\n * Nachricht. Liefert ganze Tage oder null, wenn kein Versand bekannt ist.\n */\nfunction tageOhneReaktion(vorgang, gesendete, jetzt) {\n\tconst liste = (gesendete || []).filter((f) => f && f.status === 'gesendet' && Number.isFinite(ms(f.gesendet_am)));\n\tconst runde = Number(vorgang.rundenzaehler || 0);\n\tconst dieseRunde = liste.filter((f) => f.art === 'rueckfrage' && Number(f.runde) === runde);\n\tlet start = NaN;\n\tif (dieseRunde.length) start = Math.min(...dieseRunde.map((f) => ms(f.gesendet_am)));\n\telse if (liste.length) start = Math.max(...liste.map((f) => ms(f.gesendet_am)));\n\tif (!Number.isFinite(start)) return null;\n\treturn Math.max(0, Math.floor((ms(jetzt) - start) / 86400000));\n}\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction wertAus(daten, feld) {\n\tconst d = daten && daten[feld];\n\tif (d === null || d === undefined) return '';\n\treturn typeof d === 'object' ? String(d.wert ?? '') : String(d);\n}\n\n/** Teams-Nachricht an die Mitarbeiter (Masterprompt Fall 2) mit Kontaktdaten aus dem Vorgang. */\nfunction meldungKeineReaktion({ vorgang, tage, erinnerungen, fehlende, daten, telefonFeld = 'Telefon' }) {\n\tconst name = vorgang.absender_name ? `${vorgang.absender_name} ` : '';\n\tconst seit = tage === null || tage === undefined ? 'seit längerer Zeit' : tage === 1 ? 'seit 1 Tag' : `seit ${tage} Tagen`;\n\tconst tel = wertAus(daten, telefonFeld);\n\tconst offen = (fehlende || []).map((f) => esc(f.anzeigename || f.feldname)).join(', ');\n\treturn `<b>Kunde reagiert nicht – bitte telefonisch kontaktieren</b><br>Vorgang: <b>${esc(vorgang.vorgangs_id)}</b><br>` +\n\t\t`Kunde ${esc(name)}(${esc(vorgang.absender_adresse)}) reagiert ${esc(seit)} nicht auf Nachfragen (${Number(erinnerungen || 0)} Erinnerung(en) gesendet).<br>` +\n\t\t`Betreff: ${esc(vorgang.betreff)}${tel ? `<br>Telefon: ${esc(tel)}` : ''}${offen ? `<br>Noch offen: ${offen}` : ''}` +\n\t\t'<br>Es gehen keine automatischen Nachfragen mehr raus. Der Vorgang steht auf \"Eskaliert / Manuell\".';\n}\n\n// ---------------------------------------------------------------- Freigabe erinnern / erneuern\n\n/**\n * Prüft, ob die Aufgabe für diese Freigabe noch gilt, und liefert die zu schreibenden Daten.\n * aktion: freigabe_erinnerung (neue Links zusätzlich, alte bleiben gültig)\n *         freigabe_erneuern   (neue Ablaufzeit, alle bisherigen Links werden ungültig)\n */\nfunction freigabeAuffrischen({ aktion, freigabe, config, jetzt }) {\n\tif (!freigabe || freigabe.status !== 'offen') return { ok: false, grund: 'nicht_mehr_offen' };\n\tconst t = ms(jetzt);\n\tconst abgelaufen = ms(freigabe.ablauf) <= t;\n\tif (aktion === 'freigabe_erneuern') {\n\t\tif (!abgelaufen) return { ok: false, grund: 'nicht_abgelaufen' };\n\t\tconst ablauf = new Date(t + Number(config.freigabe_ablauf_stunden) * 3600000).toISOString();\n\t\treturn { ok: true, alteLinksSperren: true, ablauf, daten: { ablauf, erneuert_am: new Date(t).toISOString(), erinnert_am: null } };\n\t}\n\tif (aktion === 'freigabe_erinnerung') {\n\t\tif (abgelaufen) return { ok: false, grund: 'abgelaufen' };\n\t\tif (freigabe.erinnert_am) return { ok: false, grund: 'schon_erinnert' };\n\t\treturn { ok: true, alteLinksSperren: false, ablauf: new Date(ms(freigabe.ablauf)).toISOString(), daten: { erinnert_am: new Date(t).toISOString() } };\n\t}\n\treturn { ok: false, grund: 'unbekannte_aktion' };\n}\n\nmodule.exports = {\n\tLOCK_SCHLUESSEL, LOCK_MINUTEN, MAX_AUFGABEN, EPOCHE, PRIORITAET,\n\tplanen, lockHolen, lockFreigeben, laufAuswerten, tageOhneReaktion, meldungKeineReaktion, freigabeAuffrischen,\n};\nreturn module.exports;\n})();\n// ===== Ende src/nachfassen.js =====\n\n// ----- Node-Logik -----\nconst v = $('Vorgang lesen').first().json.vorgang;\nconst jetzt = $('Eskalation prüfen').first().json.jetzt;\nconst gesendet = $input.all().map((i) => i.json).filter((z) => z && z.id !== undefined);\nconst tage = nachfassen.tageOhneReaktion(v, gesendet, jetzt);\nconst daten = v.extrahierte_daten || {};\nreturn [{ json: {\n\ttage,\n\tnachricht_html: nachfassen.meldungKeineReaktion({ vorgang: v, tage, erinnerungen: v.erinnerungen_gesendet, fehlende: v.fehlende_felder, daten }),\n} }];\n"
+      },
+      "id": "3d0f2bde-89c3-4a7d-a24c-96a0331cba15",
+      "name": "Meldung: keine Reaktion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Status setzen",
+          "cachedResultName": "EPA SW Status setzen"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $('Bei Aufruf').first().json.kunde_id }}",
+            "vorgangs_id": "={{ $('Bei Aufruf').first().json.vorgangs_id }}",
+            "neuer_status": "Eskaliert / Manuell",
+            "ausloeser": "Cronjob",
+            "details": "={{ { grund: 'Kunde reagiert nicht auf Nachfragen', erinnerungen_gesendet: $('Vorgang lesen').first().json.vorgang.erinnerungen_gesendet, tage_ohne_reaktion: $json.tage, fehlende: ($('Vorgang lesen').first().json.vorgang.fehlende_felder || []).map((f) => f.feldname) } }}",
+            "referenz": "={{ $('Bei Aufruf').first().json.referenz || '' }}",
+            "erwartete_version": "={{ $('Vorgang lesen').first().json.vorgang.version }}",
+            "nur_wenn_erlaubt": "={{ false }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "neuer_status",
+              "displayName": "neuer_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "ausloeser",
+              "displayName": "ausloeser",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "details",
+              "displayName": "details",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object",
+              "removed": false
+            },
+            {
+              "id": "referenz",
+              "displayName": "referenz",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "erwartete_version",
+              "displayName": "erwartete_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "nur_wenn_erlaubt",
+              "displayName": "nur_wenn_erlaubt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "5be22740-b84c-45b2-a218-58f5bb1566a3",
+      "name": "Status: Eskaliert (keine Reaktion)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1760,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Benachrichtigen",
+          "cachedResultName": "EPA SW Benachrichtigen"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $('Bei Aufruf').first().json.kunde_id }}",
+            "vorgangs_id": "={{ $('Bei Aufruf').first().json.vorgangs_id }}",
+            "team_id": "={{ $('Config laden').first().json.config.benachrichtigung.team_id }}",
+            "channel_id": "={{ $('Config laden').first().json.config.benachrichtigung.channel_id }}",
+            "nachricht_html": "={{ $('Meldung: keine Reaktion').first().json.nachricht_html }}",
+            "anlass": "keine_reaktion"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "team_id",
+              "displayName": "team_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "channel_id",
+              "displayName": "channel_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "nachricht_html",
+              "displayName": "nachricht_html",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "anlass",
+              "displayName": "anlass",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "ac8aed19-7502-4b87-a5df-865b7d33ec91",
+      "name": "Mitarbeiter informieren",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1980,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: { ergebnis: 'eskaliert', tage: $('Meldung: keine Reaktion').first().json.tage } }];\n"
+      },
+      "id": "cb1deca6-4fd7-4c10-a0e4-89fb610c945d",
+      "name": "Ergebnis: eskaliert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: { ergebnis: 'entfaellt_' + $('Eskalation prüfen').first().json.grund } }];\n"
+      },
+      "id": "1eaedd90-8098-4678-a2eb-486e287c615d",
+      "name": "Ergebnis: Eskalation entfällt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigaben"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "freigabe_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Bei Aufruf').first().json.freigabe_id || '__keine__' }}"
+            },
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Bei Aufruf').first().json.kunde_id }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "id": "aa2189d6-fa92-4095-abe2-435d5998cf09",
+      "name": "Freigabe lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId),\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst zeilen = [\n\t\t`<b>EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)}</b> (${escapeHtml(e.klasse)})`,\n\t\t`Workflow: ${escapeHtml(e.workflow_name || e.workflow_id || '?')}`,\n\t\t`Node: ${escapeHtml(e.node || '?')}`,\n\t\t`Vorgang: ${escapeHtml(e.vorgangs_id || '–')}`,\n\t\t`Meldung: ${escapeHtml(e.meldung || '–')}`,\n\t\te.retrybar ? 'Hinweis: vorübergehender Fehler, erneuter Versuch kann helfen.' : 'Hinweis: dauerhafter Fehler, bitte prüfen.',\n\t];\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n// ===== eingebettet aus src/nachfassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst nachfassen = (() => {\nconst module = { exports: {} };\n// Phase E (Masterprompt Workflow 4, Bauplan 2.2/6): Nachfassen beim Kunden, Eskalation, Erinnerung an Freigeber\n// und Erneuerung abgelaufener Freigabe-Links. Reine Planungslogik: EPA-04 liest Vorgänge, offene Freigaben und\n// Configs, dieses Modul entscheidet, was zu tun ist. Ausgeführt wird jede Aufgabe einzeln in \"EPA SW Nachfassen\".\n// Es wird nie automatisch an Kunden gesendet: Eine Erinnerung an den Kunden ist immer ein Entwurf mit Freigabe.\n\nconst LOCK_SCHLUESSEL = 'epa04_lauf';\nconst LOCK_MINUTEN = 55;\nconst MAX_AUFGABEN = 50;\nconst EPOCHE = '1970-01-01T00:00:00.000Z';\nconst WARTEN = 'Warten auf Kunde';\n\n// Reihenfolge, falls mehr Aufgaben anfallen als ein Lauf abarbeitet (Rest folgt im nächsten Lauf).\nconst PRIORITAET = Object.freeze({ eskalation: 1, erinnerung: 2, freigabe_erneuern: 3, freigabe_erinnerung: 4 });\n\nfunction ms(t) {\n\tif (t === null || t === undefined || t === '') return NaN;\n\tconst x = new Date(t).getTime();\n\treturn Number.isFinite(x) ? x : NaN;\n}\n\n/**\n * Plant die Aufgaben eines Laufs.\n * @param {object} p\n * @param {object[]} p.vorgaenge  Zeilen aus epa_vorgaenge (Status \"Warten auf Kunde\")\n * @param {object[]} p.freigaben  Zeilen aus epa_freigaben (Status \"offen\")\n * @param {object} p.configs      kunde_id -> geprüfte Config; null = Kunde inaktiv; fehlt = Config ungültig\n * @param {string} p.jetzt        ISO-Zeitpunkt\n * @param {object} p.fristen      Modul src/fristen.js (im Code-Node eingebettet)\n * @returns {{ aufgaben: object[], uebersprungen: object[], verschoben: number }}\n */\nfunction planen({ vorgaenge, freigaben, configs, jetzt, fristen, max = MAX_AUFGABEN }) {\n\tconst jetztMs = ms(jetzt);\n\tif (!Number.isFinite(jetztMs)) throw new Error(`Ungültiger Zeitpunkt \"${jetzt}\"`);\n\tconst aufgaben = [];\n\tconst uebersprungen = [];\n\tconst imDienst = {};\n\tconst geschaeftszeit = (kunde, c) => {\n\t\tif (!(kunde in imDienst)) imDienst[kunde] = fristen.istGeschaeftszeit(jetzt, c);\n\t\treturn imDienst[kunde];\n\t};\n\n\tfor (const v of vorgaenge || []) {\n\t\tif (!v || v.status !== WARTEN) continue;\n\t\tconst frist = ms(v.antwort_frist);\n\t\tif (!Number.isFinite(frist) || frist >= jetztMs) continue;\n\t\tconst ref = { kunde_id: v.kunde_id, vorgangs_id: v.vorgangs_id };\n\t\tconst c = configs[v.kunde_id];\n\t\tif (!c) {\n\t\t\tuebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\tcontinue;\n\t\t}\n\t\tif (!geschaeftszeit(v.kunde_id, c)) {\n\t\t\tuebersprungen.push({ ...ref, grund: 'ausserhalb_geschaeftszeit' });\n\t\t\tcontinue;\n\t\t}\n\t\tconst gesendet = Number(v.erinnerungen_gesendet || 0);\n\t\tconst erlaubt = Number(c.anzahl_erinnerungen || 0);\n\t\taufgaben.push({\n\t\t\taktion: gesendet < erlaubt ? 'erinnerung' : 'eskalation',\n\t\t\t...ref,\n\t\t\tfreigabe_id: '',\n\t\t\tversion: v.version ?? null,\n\t\t\terinnerungen_gesendet: gesendet,\n\t\t});\n\t}\n\n\tfor (const f of freigaben || []) {\n\t\tif (!f || f.status !== 'offen') continue;\n\t\tconst ref = { kunde_id: f.kunde_id, vorgangs_id: f.vorgangs_id, freigabe_id: f.freigabe_id };\n\t\tconst c = configs[f.kunde_id];\n\t\tif (!c) {\n\t\t\tuebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\tcontinue;\n\t\t}\n\t\tconst abgelaufen = ms(f.ablauf) <= jetztMs;\n\t\tlet erinnern = false;\n\t\tif (!abgelaufen && !f.erinnert_am && Number(c.freigabe_erinnerung_stunden) > 0) {\n\t\t\tconst basis = f.erneuert_am || f.createdAt;\n\t\t\tif (Number.isFinite(ms(basis))) erinnern = ms(fristen.berechneFrist(new Date(basis).toISOString(), c.freigabe_erinnerung_stunden, c)) <= jetztMs;\n\t\t}\n\t\tif (!abgelaufen && !erinnern) continue;\n\t\tif (!geschaeftszeit(f.kunde_id, c)) {\n\t\t\tuebersprungen.push({ ...ref, grund: 'ausserhalb_geschaeftszeit' });\n\t\t\tcontinue;\n\t\t}\n\t\taufgaben.push({ aktion: abgelaufen ? 'freigabe_erneuern' : 'freigabe_erinnerung', ...ref, version: null, erinnerungen_gesendet: null });\n\t}\n\n\taufgaben.sort((a, b) => PRIORITAET[a.aktion] - PRIORITAET[b.aktion]);\n\treturn { aufgaben: aufgaben.slice(0, max), uebersprungen, verschoben: Math.max(0, aufgaben.length - max) };\n}\n\n// ---------------------------------------------------------------- Lauf-Lock (Tabelle epa_system_status)\n\nfunction lockHolen(laufId, jetztEcht) {\n\tconst t = ms(jetztEcht);\n\treturn {\n\t\tlock_bis: new Date(t + LOCK_MINUTEN * 60000).toISOString(),\n\t\tlock_durch: String(laufId),\n\t\tletzter_start: new Date(t).toISOString(),\n\t};\n}\n\nfunction lockFreigeben(jetztEcht, ergebnis) {\n\treturn {\n\t\tlock_bis: EPOCHE,\n\t\tlock_durch: '',\n\t\tletzter_lauf: new Date(ms(jetztEcht)).toISOString(),\n\t\tletztes_ergebnis: JSON.stringify(ergebnis || {}),\n\t};\n}\n\n/** Zusammenfassung eines Laufs, nur Zähler und IDs (keine personenbezogenen Daten). */\nfunction laufAuswerten(plan, ergebnisse) {\n\tconst zaehler = {};\n\tconst fehler = [];\n\t(plan.aufgaben || []).forEach((a, i) => {\n\t\tconst r = (ergebnisse || [])[i] || {};\n\t\tconst ergebnis = r.error ? 'fehler' : String(r.ergebnis || 'unbekannt');\n\t\tconst k = `${a.aktion}:${ergebnis}`;\n\t\tzaehler[k] = (zaehler[k] || 0) + 1;\n\t\tif (r.error) fehler.push({ aktion: a.aktion, vorgangs_id: a.vorgangs_id, freigabe_id: a.freigabe_id || null });\n\t});\n\treturn {\n\t\taufgaben: (plan.aufgaben || []).length,\n\t\tergebnisse: zaehler,\n\t\tfehler,\n\t\tuebersprungen: (plan.uebersprungen || []).length,\n\t\tverschoben: plan.verschoben || 0,\n\t};\n}\n\n// ---------------------------------------------------------------- Eskalation (Fall 2)\n\n/**\n * Seit wann wartet der Vorgang? Erste versendete Rückfrage der aktuellen Runde, sonst die jüngste versendete\n * Nachricht. Liefert ganze Tage oder null, wenn kein Versand bekannt ist.\n */\nfunction tageOhneReaktion(vorgang, gesendete, jetzt) {\n\tconst liste = (gesendete || []).filter((f) => f && f.status === 'gesendet' && Number.isFinite(ms(f.gesendet_am)));\n\tconst runde = Number(vorgang.rundenzaehler || 0);\n\tconst dieseRunde = liste.filter((f) => f.art === 'rueckfrage' && Number(f.runde) === runde);\n\tlet start = NaN;\n\tif (dieseRunde.length) start = Math.min(...dieseRunde.map((f) => ms(f.gesendet_am)));\n\telse if (liste.length) start = Math.max(...liste.map((f) => ms(f.gesendet_am)));\n\tif (!Number.isFinite(start)) return null;\n\treturn Math.max(0, Math.floor((ms(jetzt) - start) / 86400000));\n}\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction wertAus(daten, feld) {\n\tconst d = daten && daten[feld];\n\tif (d === null || d === undefined) return '';\n\treturn typeof d === 'object' ? String(d.wert ?? '') : String(d);\n}\n\n/** Teams-Nachricht an die Mitarbeiter (Masterprompt Fall 2) mit Kontaktdaten aus dem Vorgang. */\nfunction meldungKeineReaktion({ vorgang, tage, erinnerungen, fehlende, daten, telefonFeld = 'Telefon' }) {\n\tconst name = vorgang.absender_name ? `${vorgang.absender_name} ` : '';\n\tconst seit = tage === null || tage === undefined ? 'seit längerer Zeit' : tage === 1 ? 'seit 1 Tag' : `seit ${tage} Tagen`;\n\tconst tel = wertAus(daten, telefonFeld);\n\tconst offen = (fehlende || []).map((f) => esc(f.anzeigename || f.feldname)).join(', ');\n\treturn `<b>Kunde reagiert nicht – bitte telefonisch kontaktieren</b><br>Vorgang: <b>${esc(vorgang.vorgangs_id)}</b><br>` +\n\t\t`Kunde ${esc(name)}(${esc(vorgang.absender_adresse)}) reagiert ${esc(seit)} nicht auf Nachfragen (${Number(erinnerungen || 0)} Erinnerung(en) gesendet).<br>` +\n\t\t`Betreff: ${esc(vorgang.betreff)}${tel ? `<br>Telefon: ${esc(tel)}` : ''}${offen ? `<br>Noch offen: ${offen}` : ''}` +\n\t\t'<br>Es gehen keine automatischen Nachfragen mehr raus. Der Vorgang steht auf \"Eskaliert / Manuell\".';\n}\n\n// ---------------------------------------------------------------- Freigabe erinnern / erneuern\n\n/**\n * Prüft, ob die Aufgabe für diese Freigabe noch gilt, und liefert die zu schreibenden Daten.\n * aktion: freigabe_erinnerung (neue Links zusätzlich, alte bleiben gültig)\n *         freigabe_erneuern   (neue Ablaufzeit, alle bisherigen Links werden ungültig)\n */\nfunction freigabeAuffrischen({ aktion, freigabe, config, jetzt }) {\n\tif (!freigabe || freigabe.status !== 'offen') return { ok: false, grund: 'nicht_mehr_offen' };\n\tconst t = ms(jetzt);\n\tconst abgelaufen = ms(freigabe.ablauf) <= t;\n\tif (aktion === 'freigabe_erneuern') {\n\t\tif (!abgelaufen) return { ok: false, grund: 'nicht_abgelaufen' };\n\t\tconst ablauf = new Date(t + Number(config.freigabe_ablauf_stunden) * 3600000).toISOString();\n\t\treturn { ok: true, alteLinksSperren: true, ablauf, daten: { ablauf, erneuert_am: new Date(t).toISOString(), erinnert_am: null } };\n\t}\n\tif (aktion === 'freigabe_erinnerung') {\n\t\tif (abgelaufen) return { ok: false, grund: 'abgelaufen' };\n\t\tif (freigabe.erinnert_am) return { ok: false, grund: 'schon_erinnert' };\n\t\treturn { ok: true, alteLinksSperren: false, ablauf: new Date(ms(freigabe.ablauf)).toISOString(), daten: { erinnert_am: new Date(t).toISOString() } };\n\t}\n\treturn { ok: false, grund: 'unbekannte_aktion' };\n}\n\nmodule.exports = {\n\tLOCK_SCHLUESSEL, LOCK_MINUTEN, MAX_AUFGABEN, EPOCHE, PRIORITAET,\n\tplanen, lockHolen, lockFreigeben, laufAuswerten, tageOhneReaktion, meldungKeineReaktion, freigabeAuffrischen,\n};\nreturn module.exports;\n})();\n// ===== Ende src/nachfassen.js =====\n// ===== eingebettet aus src/freigabe.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst freigabe = (() => {\nconst module = { exports: {} };\n// Freigabe Variante B (Bauplan 6): einmaliges, ablaufendes Token je Freigeber. Gespeichert wird nur der\n// SHA-256-Hash. Der Endpunkt EPA-07 zeigt ein Formular (Vorschau, Text bearbeitbar, Senden/Ablehnen) und\n// verbraucht die Freigabe atomar (bedingtes Update auf status = 'offen').\n\nconst TOKEN_MUSTER = /^[A-Za-z0-9_-]{43}$/; // 32 Byte base64url\nconst AKTIONEN = ['senden', 'ablehnen'];\n\n/** @param {object} c Node-Modul \"crypto\" (im Code-Node per require('crypto')) */\nfunction tokenErzeugen(c) {\n\tconst token = c.randomBytes(32).toString('base64url');\n\treturn { token, hash: tokenHash(c, token) };\n}\n\nfunction tokenHash(c, token) {\n\treturn c.createHash('sha256').update(String(token), 'utf8').digest('hex');\n}\n\nfunction freigabeIdErzeugen(c) {\n\treturn 'F-' + c.randomUUID();\n}\n\nfunction istGueltigesToken(t) {\n\treturn typeof t === 'string' && TOKEN_MUSTER.test(t);\n}\n\n/** Basis-URL der Instanz aus $execution.resumeUrl (…/webhook-waiting/<id>) bzw. einem Override. */\nfunction basisUrl(resumeUrl, override) {\n\tif (override) return String(override).replace(/\\/+$/, '');\n\tconst m = String(resumeUrl || '').match(/^(https?:\\/\\/[^/]+(?:\\/[^/]+)*?)\\/webhook-waiting\\//);\n\tif (!m) throw new Error('Basis-URL der Instanz nicht ermittelbar');\n\treturn m[1];\n}\n\nfunction link(basis, token) {\n\treturn `${basis}/webhook/epa-freigabe?t=${encodeURIComponent(token)}`;\n}\n\n/**\n * Prüft Token und Freigabe vor Anzeige bzw. Entscheidung.\n * @returns {{ ok: true } | { ok: false, status: number, code: string, meldung: string }}\n */\nfunction freigabePruefen({ token, freigabe, freigeberErlaubt, jetzt }) {\n\tconst nein = (status, code, meldung) => ({ ok: false, status, code, meldung });\n\tif (!token || token.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Dieser Freigabe-Link ist ungültig.');\n\tif (!freigabe || freigabe.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Die Freigabe existiert nicht mehr.');\n\tif (freigabe.status !== 'offen') {\n\t\tconst wer = freigabe.entscheider ? ` von ${freigabe.entscheider}` : '';\n\t\tconst was = { in_versand: 'wird gerade versendet', gesendet: 'wurde bereits freigegeben und gesendet', abgelehnt: 'wurde bereits abgelehnt', abgelaufen: 'ist abgelaufen', ersetzt: 'wurde durch eine neuere Freigabe ersetzt', fehler: 'ist beim Versand fehlgeschlagen' }[freigabe.status] || `hat den Status \"${freigabe.status}\"`;\n\t\treturn nein(freigabe.status === 'abgelaufen' ? 410 : 409, freigabe.status === 'abgelaufen' ? 'FREIGABE_ABGELAUFEN' : 'DUPLIKAT', `Diese ${freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage'} ${was}${freigabe.status === 'gesendet' || freigabe.status === 'abgelehnt' ? wer : ''}.`);\n\t}\n\tif (token.verbraucht_am) return nein(409, 'DUPLIKAT', 'Dieser Link wurde bereits verwendet.');\n\tif (new Date(freigabe.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Ein neuer Link wird automatisch verschickt.');\n\t// Ab M5: Links haben eine eigene Ablaufzeit. Bei der Erneuerung einer abgelaufenen Freigabe werden alle alten Links gesperrt.\n\tif (token.ablauf && new Date(token.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Sie haben inzwischen einen neuen Link erhalten.');\n\tif (!freigeberErlaubt) return nein(403, 'KEINE_BERECHTIGUNG', 'Sie sind für diesen Kunden nicht (mehr) als Freigeber eingetragen.');\n\treturn { ok: true };\n}\n\n/** Formulardaten aus EPA-07 (POST, application/x-www-form-urlencoded). */\nfunction formularLesen(body) {\n\tconst b = body && typeof body === 'object' ? body : {};\n\tconst aktion = String(b.aktion || '');\n\tif (!AKTIONEN.includes(aktion)) return { ok: false, meldung: 'Unbekannte Aktion.' };\n\tif (!istGueltigesToken(b.t)) return { ok: false, meldung: 'Ungültiger Link.' };\n\tconst grund = String(b.grund || '').trim().slice(0, 500);\n\tif (aktion === 'ablehnen' && !grund) return { ok: false, meldung: 'Bitte einen Grund für die Ablehnung angeben.' };\n\treturn { ok: true, aktion, token: b.t, text: typeof b.text === 'string' ? b.text : '', grund };\n}\n\nfunction istBearbeitet(original, neu) {\n\tconst n = (s) => String(s ?? '').replace(/\\r\\n?/g, '\\n').replace(/[ \\t]+/g, ' ').replace(/\\s+$/gm, '').trim();\n\treturn n(original) !== n(neu);\n}\n\n// ---------------------------------------------------------------- HTML\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nconst STIL = `body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;margin:0;background:#f4f5f7;color:#1d2433}\nmain{max-width:760px;margin:0 auto;padding:16px}\n.karte{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}\nh1{font-size:1.3rem;margin:0 0 12px}dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0}\ndt{color:#5b6475}dd{margin:0;overflow-wrap:anywhere}textarea{width:100%;box-sizing:border-box;min-height:260px;font:inherit;padding:8px}\npre{white-space:pre-wrap;font:inherit;color:#5b6475;margin:8px 0 0}.knoepfe{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}\nbutton{font:inherit;padding:10px 16px;border-radius:6px;border:0;cursor:pointer}.senden{background:#1f6f43;color:#fff}.ablehnen{background:#a3222b;color:#fff}\ninput[type=text]{width:100%;box-sizing:border-box;font:inherit;padding:8px}.hinweis{color:#5b6475;font-size:.9rem}\n.ok{border-left:4px solid #1f6f43}.fehler{border-left:4px solid #a3222b}`;\n\nfunction seite(titel, inhalt) {\n\treturn `<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><title>${esc(titel)}</title><style>${STIL}</style></head><body><main>${inhalt}</main></body></html>`;\n}\n\nfunction seiteFormular({ token, freigabe, vorgang, fehlende, text, abschluss }) {\n\tconst luecken = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}${f.grund ? ` <span class=\"hinweis\">(${esc(f.grund)})</span>` : ''}</li>`).join('');\n\tconst was = freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';\n\treturn seite(`${was} ${vorgang.vorgangs_id}`, `\n<div class=\"karte\"><h1>${was} freigeben – ${esc(vorgang.vorgangs_id)}</h1>\n<dl><dt>An</dt><dd>${esc(freigabe.empfaenger)}</dd><dt>Betreff</dt><dd>${esc(freigabe.betreff)}</dd>\n<dt>Runde</dt><dd>${esc(Number(vorgang.rundenzaehler || 0) + 1)}</dd><dt>Gültig bis</dt><dd>${esc(new Date(freigabe.ablauf).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }))}</dd></dl>\n<p>Fehlende Angaben:</p><ul>${luecken}</ul>${freigabe.fallback ? '<p class=\"hinweis\">Hinweis: Die KI-Formulierung hat die Prüfung nicht bestanden, es wird die Standardvorlage verwendet.</p>' : ''}</div>\n<form class=\"karte\" method=\"post\" onsubmit=\"for(const b of this.querySelectorAll('button'))b.disabled=true\">\n<input type=\"hidden\" name=\"t\" value=\"${esc(token)}\">\n<label for=\"text\"><b>Text der Mail</b> (bearbeitbar)</label>\n<textarea id=\"text\" name=\"text\">${esc(text)}</textarea>\n<pre>${esc(abschluss)}</pre>\n<p class=\"hinweis\">Signatur und KI-Hinweis werden immer automatisch angehängt.</p>\n<label for=\"grund\">Grund (nur bei Ablehnung)</label><input type=\"text\" id=\"grund\" name=\"grund\" maxlength=\"500\">\n<div class=\"knoepfe\"><button class=\"senden\" name=\"aktion\" value=\"senden\">Freigeben und senden</button>\n<button class=\"ablehnen\" name=\"aktion\" value=\"ablehnen\">Ablehnen (manuell bearbeiten)</button></div>\n<p class=\"hinweis\">Der Link ist nur einmal verwendbar. Nichts wird ohne Ihren Klick versendet.</p></form>`);\n}\n\nfunction seiteMeldung(titel, text, art = 'ok') {\n\treturn seite(titel, `<div class=\"karte ${art === 'ok' ? 'ok' : 'fehler'}\"><h1>${esc(titel)}</h1><p>${esc(text)}</p></div>`);\n}\n\n/** Teams-Nachricht an den Freigeber (1:1-Chat). */\nconst ANLASS = Object.freeze({\n\tfreigabe_erinnerung: 'Erinnerung: Diese Freigabe ist noch offen. Hier ist ein neuer persönlicher Link.',\n\tfreigabe_erneuern: 'Der bisherige Link ist abgelaufen und gilt nicht mehr. Hier ist ein neuer persönlicher Link.',\n});\n\nfunction nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art, anlass }) {\n\tconst liste = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}</li>`).join('');\n\tconst titel = art === 'erinnerung' ? 'Erinnerung an den Kunden freigeben' : 'Rückfrage an den Kunden freigeben';\n\tconst hinweis = ANLASS[anlass] ? `<i>${esc(ANLASS[anlass])}</i><br>` : '';\n\treturn `${hinweis}<b>${esc(titel)}: ${esc(vorgang.vorgangs_id)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>Fehlende Angaben:<ul>${liste}</ul>` +\n\t\t`<a href=\"${esc(url)}\">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Persönlicher Link, einmal verwendbar, gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;\n}\n\nmodule.exports = {\n\tTOKEN_MUSTER, AKTIONEN, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,\n\tfreigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber, ANLASS,\n};\nreturn module.exports;\n})();\n// ===== Ende src/freigabe.js =====\n\n// ----- Node-Logik -----\nconst crypto = require('crypto');\nconst e = $('Bei Aufruf').first().json;\nconst config = $('Config laden').first().json.config;\nconst f = $input.first().json;\nconst jetzt = e.jetzt || new Date().toISOString();\nconst r = nachfassen.freigabeAuffrischen({ aktion: e.aktion, freigabe: f && f.id !== undefined ? f : null, config, jetzt });\nif (!r.ok) return [{ json: { weiter: false, grund: r.grund } }];\nif (!config.freigeber.length) throw fehlerklassen.epaFehler('KONFIGURATIONSFEHLER', e.vorgangs_id, 'Keine Freigeber konfiguriert');\nreturn [{ json: {\n\tweiter: true,\n\talte_sperren: r.alteLinksSperren,\n\tablauf: r.ablauf,\n\tdaten: r.daten,\n\ttokens: config.freigeber.map((fg) => ({ freigeber: fg, ...freigabe.tokenErzeugen(crypto) })),\n} }];\n"
+      },
+      "id": "1d68b734-3aff-41d8-ae35-f32ee6e315b8",
+      "name": "Auffrischen prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c846106c-f835-479c-ab14-bc74199e9fbc",
+              "leftValue": "={{ $json.weiter }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "21433d84-c24a-4017-ade5-5e27835f390d",
+      "name": "Auffrischen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1320,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: $input.first().json.daten }];\n"
+      },
+      "id": "8b2239de-bee2-4baf-a214-a500ec8c1c63",
+      "name": "Freigabe-Daten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigaben"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "freigabe_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Bei Aufruf').first().json.freigabe_id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "offen"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "813655a8-c079-427b-a6da-81d69bde2783",
+      "name": "Freigabe aktualisieren",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        120
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5c24d135-1fae-49cf-a224-0bb9076be572",
+              "leftValue": "={{ $('Freigabe aktualisieren').first().json.id }}",
+              "operator": {
+                "type": "number",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "d0ef808f-af75-432b-a298-18dcc9ddc91b",
+      "name": "Freigabe noch offen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1980,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9eae43f9-ebae-4e2a-afd8-29c0c6fbe2cb",
+              "leftValue": "={{ $('Auffrischen prüfen').first().json.alte_sperren }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f0cad933-15c6-4f36-a36f-a809f5a99d37",
+      "name": "Alte Links sperren?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2200,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: { ablauf: new Date().toISOString() } }];\n"
+      },
+      "id": "aa6951d6-261a-4b4b-a026-522b26c79e91",
+      "name": "Sperrdaten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigabe_tokens"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "freigabe_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Bei Aufruf').first().json.freigabe_id }}"
+            },
+            {
+              "keyName": "verbraucht_am",
+              "condition": "isEmpty"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "7c3f1ad7-c616-45c8-a30d-990942b4b650",
+      "name": "Alte Links sperren",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2640,
+        -40
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Bei Aufruf').first().json;\nconst a = $('Auffrischen prüfen').first().json;\nreturn a.tokens.map((t) => ({ json: { freigabe_id: e.freigabe_id, kunde_id: e.kunde_id, freigeber: t.freigeber, token_hash: t.hash, verbraucht_am: null, ablauf: a.ablauf } }));\n"
+      },
+      "id": "1e02f6ac-1a7b-4ef4-af7c-08f389230b1b",
+      "name": "Neue Links vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        40
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigabe_tokens"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "e8f08204-a9e0-4831-a667-c3e81812d5d4",
+      "name": "Neue Links speichern",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        3080,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/freigabe.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst freigabe = (() => {\nconst module = { exports: {} };\n// Freigabe Variante B (Bauplan 6): einmaliges, ablaufendes Token je Freigeber. Gespeichert wird nur der\n// SHA-256-Hash. Der Endpunkt EPA-07 zeigt ein Formular (Vorschau, Text bearbeitbar, Senden/Ablehnen) und\n// verbraucht die Freigabe atomar (bedingtes Update auf status = 'offen').\n\nconst TOKEN_MUSTER = /^[A-Za-z0-9_-]{43}$/; // 32 Byte base64url\nconst AKTIONEN = ['senden', 'ablehnen'];\n\n/** @param {object} c Node-Modul \"crypto\" (im Code-Node per require('crypto')) */\nfunction tokenErzeugen(c) {\n\tconst token = c.randomBytes(32).toString('base64url');\n\treturn { token, hash: tokenHash(c, token) };\n}\n\nfunction tokenHash(c, token) {\n\treturn c.createHash('sha256').update(String(token), 'utf8').digest('hex');\n}\n\nfunction freigabeIdErzeugen(c) {\n\treturn 'F-' + c.randomUUID();\n}\n\nfunction istGueltigesToken(t) {\n\treturn typeof t === 'string' && TOKEN_MUSTER.test(t);\n}\n\n/** Basis-URL der Instanz aus $execution.resumeUrl (…/webhook-waiting/<id>) bzw. einem Override. */\nfunction basisUrl(resumeUrl, override) {\n\tif (override) return String(override).replace(/\\/+$/, '');\n\tconst m = String(resumeUrl || '').match(/^(https?:\\/\\/[^/]+(?:\\/[^/]+)*?)\\/webhook-waiting\\//);\n\tif (!m) throw new Error('Basis-URL der Instanz nicht ermittelbar');\n\treturn m[1];\n}\n\nfunction link(basis, token) {\n\treturn `${basis}/webhook/epa-freigabe?t=${encodeURIComponent(token)}`;\n}\n\n/**\n * Prüft Token und Freigabe vor Anzeige bzw. Entscheidung.\n * @returns {{ ok: true } | { ok: false, status: number, code: string, meldung: string }}\n */\nfunction freigabePruefen({ token, freigabe, freigeberErlaubt, jetzt }) {\n\tconst nein = (status, code, meldung) => ({ ok: false, status, code, meldung });\n\tif (!token || token.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Dieser Freigabe-Link ist ungültig.');\n\tif (!freigabe || freigabe.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Die Freigabe existiert nicht mehr.');\n\tif (freigabe.status !== 'offen') {\n\t\tconst wer = freigabe.entscheider ? ` von ${freigabe.entscheider}` : '';\n\t\tconst was = { in_versand: 'wird gerade versendet', gesendet: 'wurde bereits freigegeben und gesendet', abgelehnt: 'wurde bereits abgelehnt', abgelaufen: 'ist abgelaufen', ersetzt: 'wurde durch eine neuere Freigabe ersetzt', fehler: 'ist beim Versand fehlgeschlagen' }[freigabe.status] || `hat den Status \"${freigabe.status}\"`;\n\t\treturn nein(freigabe.status === 'abgelaufen' ? 410 : 409, freigabe.status === 'abgelaufen' ? 'FREIGABE_ABGELAUFEN' : 'DUPLIKAT', `Diese ${freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage'} ${was}${freigabe.status === 'gesendet' || freigabe.status === 'abgelehnt' ? wer : ''}.`);\n\t}\n\tif (token.verbraucht_am) return nein(409, 'DUPLIKAT', 'Dieser Link wurde bereits verwendet.');\n\tif (new Date(freigabe.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Ein neuer Link wird automatisch verschickt.');\n\t// Ab M5: Links haben eine eigene Ablaufzeit. Bei der Erneuerung einer abgelaufenen Freigabe werden alle alten Links gesperrt.\n\tif (token.ablauf && new Date(token.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Sie haben inzwischen einen neuen Link erhalten.');\n\tif (!freigeberErlaubt) return nein(403, 'KEINE_BERECHTIGUNG', 'Sie sind für diesen Kunden nicht (mehr) als Freigeber eingetragen.');\n\treturn { ok: true };\n}\n\n/** Formulardaten aus EPA-07 (POST, application/x-www-form-urlencoded). */\nfunction formularLesen(body) {\n\tconst b = body && typeof body === 'object' ? body : {};\n\tconst aktion = String(b.aktion || '');\n\tif (!AKTIONEN.includes(aktion)) return { ok: false, meldung: 'Unbekannte Aktion.' };\n\tif (!istGueltigesToken(b.t)) return { ok: false, meldung: 'Ungültiger Link.' };\n\tconst grund = String(b.grund || '').trim().slice(0, 500);\n\tif (aktion === 'ablehnen' && !grund) return { ok: false, meldung: 'Bitte einen Grund für die Ablehnung angeben.' };\n\treturn { ok: true, aktion, token: b.t, text: typeof b.text === 'string' ? b.text : '', grund };\n}\n\nfunction istBearbeitet(original, neu) {\n\tconst n = (s) => String(s ?? '').replace(/\\r\\n?/g, '\\n').replace(/[ \\t]+/g, ' ').replace(/\\s+$/gm, '').trim();\n\treturn n(original) !== n(neu);\n}\n\n// ---------------------------------------------------------------- HTML\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nconst STIL = `body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;margin:0;background:#f4f5f7;color:#1d2433}\nmain{max-width:760px;margin:0 auto;padding:16px}\n.karte{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}\nh1{font-size:1.3rem;margin:0 0 12px}dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0}\ndt{color:#5b6475}dd{margin:0;overflow-wrap:anywhere}textarea{width:100%;box-sizing:border-box;min-height:260px;font:inherit;padding:8px}\npre{white-space:pre-wrap;font:inherit;color:#5b6475;margin:8px 0 0}.knoepfe{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}\nbutton{font:inherit;padding:10px 16px;border-radius:6px;border:0;cursor:pointer}.senden{background:#1f6f43;color:#fff}.ablehnen{background:#a3222b;color:#fff}\ninput[type=text]{width:100%;box-sizing:border-box;font:inherit;padding:8px}.hinweis{color:#5b6475;font-size:.9rem}\n.ok{border-left:4px solid #1f6f43}.fehler{border-left:4px solid #a3222b}`;\n\nfunction seite(titel, inhalt) {\n\treturn `<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><title>${esc(titel)}</title><style>${STIL}</style></head><body><main>${inhalt}</main></body></html>`;\n}\n\nfunction seiteFormular({ token, freigabe, vorgang, fehlende, text, abschluss }) {\n\tconst luecken = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}${f.grund ? ` <span class=\"hinweis\">(${esc(f.grund)})</span>` : ''}</li>`).join('');\n\tconst was = freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';\n\treturn seite(`${was} ${vorgang.vorgangs_id}`, `\n<div class=\"karte\"><h1>${was} freigeben – ${esc(vorgang.vorgangs_id)}</h1>\n<dl><dt>An</dt><dd>${esc(freigabe.empfaenger)}</dd><dt>Betreff</dt><dd>${esc(freigabe.betreff)}</dd>\n<dt>Runde</dt><dd>${esc(Number(vorgang.rundenzaehler || 0) + 1)}</dd><dt>Gültig bis</dt><dd>${esc(new Date(freigabe.ablauf).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }))}</dd></dl>\n<p>Fehlende Angaben:</p><ul>${luecken}</ul>${freigabe.fallback ? '<p class=\"hinweis\">Hinweis: Die KI-Formulierung hat die Prüfung nicht bestanden, es wird die Standardvorlage verwendet.</p>' : ''}</div>\n<form class=\"karte\" method=\"post\" onsubmit=\"for(const b of this.querySelectorAll('button'))b.disabled=true\">\n<input type=\"hidden\" name=\"t\" value=\"${esc(token)}\">\n<label for=\"text\"><b>Text der Mail</b> (bearbeitbar)</label>\n<textarea id=\"text\" name=\"text\">${esc(text)}</textarea>\n<pre>${esc(abschluss)}</pre>\n<p class=\"hinweis\">Signatur und KI-Hinweis werden immer automatisch angehängt.</p>\n<label for=\"grund\">Grund (nur bei Ablehnung)</label><input type=\"text\" id=\"grund\" name=\"grund\" maxlength=\"500\">\n<div class=\"knoepfe\"><button class=\"senden\" name=\"aktion\" value=\"senden\">Freigeben und senden</button>\n<button class=\"ablehnen\" name=\"aktion\" value=\"ablehnen\">Ablehnen (manuell bearbeiten)</button></div>\n<p class=\"hinweis\">Der Link ist nur einmal verwendbar. Nichts wird ohne Ihren Klick versendet.</p></form>`);\n}\n\nfunction seiteMeldung(titel, text, art = 'ok') {\n\treturn seite(titel, `<div class=\"karte ${art === 'ok' ? 'ok' : 'fehler'}\"><h1>${esc(titel)}</h1><p>${esc(text)}</p></div>`);\n}\n\n/** Teams-Nachricht an den Freigeber (1:1-Chat). */\nconst ANLASS = Object.freeze({\n\tfreigabe_erinnerung: 'Erinnerung: Diese Freigabe ist noch offen. Hier ist ein neuer persönlicher Link.',\n\tfreigabe_erneuern: 'Der bisherige Link ist abgelaufen und gilt nicht mehr. Hier ist ein neuer persönlicher Link.',\n});\n\nfunction nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art, anlass }) {\n\tconst liste = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}</li>`).join('');\n\tconst titel = art === 'erinnerung' ? 'Erinnerung an den Kunden freigeben' : 'Rückfrage an den Kunden freigeben';\n\tconst hinweis = ANLASS[anlass] ? `<i>${esc(ANLASS[anlass])}</i><br>` : '';\n\treturn `${hinweis}<b>${esc(titel)}: ${esc(vorgang.vorgangs_id)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>Fehlende Angaben:<ul>${liste}</ul>` +\n\t\t`<a href=\"${esc(url)}\">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Persönlicher Link, einmal verwendbar, gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;\n}\n\nmodule.exports = {\n\tTOKEN_MUSTER, AKTIONEN, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,\n\tfreigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber, ANLASS,\n};\nreturn module.exports;\n})();\n// ===== Ende src/freigabe.js =====\n\n// ----- Node-Logik -----\nconst e = $('Bei Aufruf').first().json;\nconst config = $('Config laden').first().json.config;\nconst v = $('Vorgang lesen').first().json.vorgang;\nconst f = $('Freigabe lesen').first().json;\nconst a = $('Auffrischen prüfen').first().json;\nlet fehlende = [];\ntry { fehlende = JSON.parse(f.fehlende_felder || '[]'); } catch (err) { fehlende = []; }\nconst basis = freigabe.basisUrl($execution.resumeUrl, config.freigabe_basis_url);\nconst ablaufText = DateTime.fromISO(a.ablauf).setZone(config.zeitzone).toFormat('dd.LL.yyyy, HH:mm');\nreturn a.tokens.map((t) => ({ json: {\n\tfreigeber: t.freigeber,\n\tnachricht_html: freigabe.nachrichtFreigeber({ vorgang: v, freigabe: f, fehlende: fehlende.map((x) => ({ anzeigename: x.anzeigename || x.feldname })), link: freigabe.link(basis, t.token), ablaufText, art: f.art, anlass: e.aktion }),\n} }));\n"
+      },
+      "id": "6d6e2776-444b-45d3-a1da-8322d15fb8f9",
+      "name": "Nachrichten vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3300,
+        40
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Freigabe senden",
+          "cachedResultName": "EPA SW Freigabe senden"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $('Bei Aufruf').first().json.kunde_id }}",
+            "vorgangs_id": "={{ $('Bei Aufruf').first().json.vorgangs_id }}",
+            "freigeber": "={{ $json.freigeber }}",
+            "nachricht_html": "={{ $json.nachricht_html }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "freigeber",
+              "displayName": "freigeber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "nachricht_html",
+              "displayName": "nachricht_html",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "444d3f4e-199a-40d1-aa6e-bf5fed1e54a1",
+      "name": "Freigeber benachrichtigen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3520,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/entwurf.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst entwurf = (() => {\nconst module = { exports: {} };\n// Rückfrage-Entwurf (Masterprompt C1, C2; Bauplan 5.5).\n// Das LLM liefert nur die Hülle (Anrede, Einleitung, Schluss) als getrennte Felder. Die festen Textbausteine,\n// die Signatur und der KI-Hinweis werden hier deterministisch eingesetzt. Damit stehen die Bausteine\n// konstruktionsbedingt wortgleich in der Mail. Die Hülle wird geprüft; bei Verstoß gilt das Template-Gerüst (Fallback).\n\nconst MAX = Object.freeze({ anrede: 80, einleitung: 400, schluss: 300, gesamt: 600 });\n\n// Zusage- und Fakten-Wörter, die in der Hülle nichts verloren haben (Wortanfänge, klein).\nconst VERBOTEN = Object.freeze([\n\t'garantier', 'zusag', 'zusich', 'verbindlich', 'kostenlos', 'gratis', 'preis', 'rabatt', 'euro', 'versprech',\n\t'spätestens', 'innerhalb von', 'bis zum', 'sofort', 'umgehend', 'bestätigen wir', 'guarantee', 'free of charge', 'price', 'discount',\n]);\n\nfunction normalisiereLeerraum(s) {\n\treturn String(s ?? '').replace(/\\s+/g, ' ').trim();\n}\n\n/** Anzeigename des Kunden für die Anrede: nur Buchstaben, Leerzeichen, Bindestrich, Punkt; sonst leer. */\nfunction sichererName(name) {\n\tconst n = normalisiereLeerraum(name).replace(/^[\"']|[\"']$/g, '');\n\tif (!n || n.length > 60 || n.includes('@')) return '';\n\treturn /^[\\p{L}][\\p{L} .'-]*$/u.test(n) ? n : '';\n}\n\n/** Feste Bausteine der fehlenden Felder in Config-Reihenfolge. Fehlender Baustein = Konfigurationsfehler. */\nfunction bausteine(fehlende, felder) {\n\tconst nachName = new Map((felder || []).map((f) => [f.feldname, f]));\n\tconst fehlendeNamen = new Set((fehlende || []).map((f) => f.feldname));\n\tconst out = [];\n\tfor (const f of felder || []) {\n\t\tif (!fehlendeNamen.has(f.feldname)) continue;\n\t\tconst b = normalisiereLeerraum(f.resolution_textbaustein);\n\t\tif (!b) throw new Error(`Textbaustein für Feld \"${f.feldname}\" fehlt`);\n\t\tout.push({ feldname: f.feldname, anzeigename: f.anzeigename, text: b });\n\t}\n\tfor (const n of fehlendeNamen) if (!nachName.has(n)) throw new Error(`Feld \"${n}\" ist in der Config unbekannt`);\n\treturn out;\n}\n\n/** Template-Gerüst ohne LLM (Fallback). */\nfunction vorlage({ anrede_stil: stil, sprache }, name) {\n\tconst n = sichererName(name);\n\tif (sprache === 'en') {\n\t\treturn {\n\t\t\tanrede: n ? `Dear ${n},` : 'Hello,',\n\t\t\teinleitung: 'Thank you for your request. To process it, we still need the following information:',\n\t\t\tschluss: 'Thank you in advance for your reply.',\n\t\t};\n\t}\n\tif (stil === 'Du') {\n\t\treturn {\n\t\t\tanrede: n ? `Hallo ${n},` : 'Hallo,',\n\t\t\teinleitung: 'vielen Dank für deine Anfrage. Damit wir sie bearbeiten können, brauchen wir noch folgende Angaben:',\n\t\t\tschluss: 'Vielen Dank für deine Rückmeldung.',\n\t\t};\n\t}\n\treturn {\n\t\tanrede: n ? `Guten Tag ${n},` : 'Guten Tag,',\n\t\teinleitung: 'vielen Dank für Ihre Anfrage. Damit wir sie bearbeiten können, benötigen wir noch folgende Angaben:',\n\t\tschluss: 'Vielen Dank für Ihre Rückmeldung.',\n\t};\n}\n\n/** Template für die Erinnerung an den Kunden (Phase E, Fall 1). Bewusst ohne LLM: deterministisch und prüfbar. */\nfunction vorlageErinnerung({ anrede_stil: stil, sprache }, name) {\n\tconst n = sichererName(name);\n\tif (sprache === 'en') {\n\t\treturn {\n\t\t\tanrede: n ? `Dear ${n},` : 'Hello,',\n\t\t\teinleitung: 'we would like to kindly remind you of our previous message. To process your request, we still need the following information:',\n\t\t\tschluss: 'Thank you in advance for your reply.',\n\t\t};\n\t}\n\tif (stil === 'Du') {\n\t\treturn {\n\t\t\tanrede: n ? `Hallo ${n},` : 'Hallo,',\n\t\t\teinleitung: 'wir möchten dich freundlich an unsere letzte Nachricht erinnern. Damit wir deine Anfrage bearbeiten können, brauchen wir noch folgende Angaben:',\n\t\t\tschluss: 'Vielen Dank für deine Rückmeldung.',\n\t\t};\n\t}\n\treturn {\n\t\tanrede: n ? `Guten Tag ${n},` : 'Guten Tag,',\n\t\teinleitung: 'wir möchten Sie freundlich an unsere letzte Nachricht erinnern. Damit wir Ihre Anfrage bearbeiten können, benötigen wir noch folgende Angaben:',\n\t\tschluss: 'Vielen Dank für Ihre Rückmeldung.',\n\t};\n}\n\n/**\n * Prüft die vom LLM gelieferte Hülle. Gibt eine Liste von Verstößen zurück (leer = in Ordnung).\n * Name des Kunden darf in der Anrede stehen, sonst keine Ziffern, Beträge, URLs, Adressen, Zusagen.\n */\nfunction huellePruefen(huelle, { anrede_stil: stil } = {}) {\n\tconst fehler = [];\n\tif (!huelle || typeof huelle !== 'object') return ['keine Hülle'];\n\tlet gesamt = 0;\n\tfor (const teil of ['anrede', 'einleitung', 'schluss']) {\n\t\tconst t = normalisiereLeerraum(huelle[teil]);\n\t\tgesamt += t.length;\n\t\tif (!t) fehler.push(`${teil}: leer`);\n\t\tif (t.length > MAX[teil]) fehler.push(`${teil}: zu lang`);\n\t\tif (/\\d/.test(t)) fehler.push(`${teil}: enthält Ziffern`);\n\t\tif (/[€$£]|\\b(eur|usd|chf)\\b/i.test(t)) fehler.push(`${teil}: enthält Währung`);\n\t\tif (/(https?:\\/\\/|www\\.|\\b[a-z0-9-]+\\.(de|com|net|org|eu|io)\\b)/i.test(t)) fehler.push(`${teil}: enthält Link`);\n\t\tif (/@/.test(t)) fehler.push(`${teil}: enthält E-Mail-Adresse`);\n\t\tif (/[{}[\\]<>]/.test(t)) fehler.push(`${teil}: enthält Platzhalter oder Markup`);\n\t\tconst klein = t.toLowerCase();\n\t\tfor (const w of VERBOTEN) if (klein.includes(w)) fehler.push(`${teil}: verbotenes Wort \"${w}\"`);\n\t\tif (stil === 'Sie' && /\\b(du|dich|dir|dein|deine|deinen|deinem|deiner|euch|euer)\\b/i.test(t)) fehler.push(`${teil}: duzt statt siezt`);\n\t\tif (stil === 'Sie' && /(^|[.!?]\\s+|\\s)ihr\\b/.test(t)) fehler.push(`${teil}: duzt statt siezt`);\n\t}\n\tif (gesamt > MAX.gesamt) fehler.push('Hülle insgesamt zu lang');\n\treturn [...new Set(fehler)];\n}\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\n/** Editierbarer Teil als Text (für Vorschau und Bearbeiten-Formular). */\nfunction bearbeitbarerText(huelle, bs) {\n\treturn [normalisiereLeerraum(huelle.anrede), '', normalisiereLeerraum(huelle.einleitung), '', ...bs.map((b) => `- ${b.text}`), '', normalisiereLeerraum(huelle.schluss)].join('\\n');\n}\n\n/** Fester Abschluss: Signatur und KI-Hinweis (nie vom LLM, nie im Formular änderbar). */\nfunction abschlussText(config) {\n\treturn [String(config.signatur || '').trim(), '', '--', String(config.ki_hinweistext || '').trim()].join('\\n');\n}\n\n/** Text (bearbeitbarer Teil) -> HTML-Mail mit festem Abschluss. Text wird vollständig escaped. */\nfunction zuHtml(text, config) {\n\tconst absatz = (t) => esc(t).replace(/\\r\\n?/g, '\\n').replace(/\\n/g, '<br>');\n\treturn `<div style=\"font-family:Arial,sans-serif;font-size:11pt\">${absatz(text)}<br><br>${absatz(String(config.signatur || '').trim())}<br><br><span style=\"color:#666;font-size:9pt\">${esc(String(config.ki_hinweistext || '').trim())}</span></div>`;\n}\n\n/**\n * Setzt den Entwurf zusammen.\n * @param {object|null} llmHuelle { anrede, einleitung, schluss } oder null (LLM fehlgeschlagen)\n * @returns {{ text, html, abschluss, bausteine, fallback, pruefung }}\n */\nfunction entwurfBauen(llmHuelle, { config, felder, fehlende, name }) {\n\tconst bs = bausteine(fehlende, felder);\n\tif (!bs.length) throw new Error('Keine fehlenden Felder: keine Rückfrage nötig');\n\tconst pruefung = llmHuelle ? huellePruefen(llmHuelle, config) : ['LLM-Entwurf nicht verfügbar'];\n\tconst fallback = pruefung.length > 0;\n\tconst huelle = fallback ? vorlage(config, name) : llmHuelle;\n\tconst text = bearbeitbarerText(huelle, bs);\n\treturn { text, html: zuHtml(text, config), abschluss: abschlussText(config), bausteine: bs, fallback, pruefung };\n}\n\n/** Erinnerungs-Entwurf: Template-Hülle, feste Bausteine der noch offenen Felder, fester Abschluss. */\nfunction erinnerungBauen({ config, felder, fehlende, name }) {\n\tconst bs = bausteine(fehlende, felder);\n\tif (!bs.length) throw new Error('Keine fehlenden Felder: keine Erinnerung nötig');\n\tconst text = bearbeitbarerText(vorlageErinnerung(config, name), bs);\n\treturn { text, html: zuHtml(text, config), abschluss: abschlussText(config), bausteine: bs, fallback: false, pruefung: [] };\n}\n\n/**\n * Prüft einen vom Mitarbeiter bearbeiteten Text. Er darf frei formulieren; abgelehnt werden nur leere oder\n * übermäßig lange Texte. Fehlende Bausteine werden als Hinweis gemeldet (der Mitarbeiter verantwortet die Änderung).\n */\nfunction bearbeitungPruefen(text, bs) {\n\tconst t = String(text ?? '').replace(/\\r\\n?/g, '\\n').trim();\n\tif (!t) return { ok: false, grund: 'Der Text ist leer.' };\n\tif (t.length > 5000) return { ok: false, grund: 'Der Text ist zu lang (max. 5000 Zeichen).' };\n\tconst norm = normalisiereLeerraum(t);\n\tconst fehlend = (bs || []).filter((b) => !norm.includes(b.text)).map((b) => b.anzeigename);\n\treturn { ok: true, text: t, bausteine_entfernt: fehlend };\n}\n\nmodule.exports = { MAX, VERBOTEN, sichererName, bausteine, vorlage, vorlageErinnerung, erinnerungBauen, huellePruefen, bearbeitbarerText, abschlussText, zuHtml, entwurfBauen, bearbeitungPruefen, esc };\nreturn module.exports;\n})();\n// ===== Ende src/entwurf.js =====\n\n// ----- Node-Logik -----\nconst e = $('Bei Aufruf').first().json;\nconst zugestellt = $input.all().filter((i) => i.json && i.json.gesendet === true).length;\nconst html = zugestellt ? null : '<b>Neuer Freigabe-Link konnte niemandem zugestellt werden</b><br>Vorgang: <b>' + entwurf.esc(e.vorgangs_id) + '</b><br>Freigabe ' + entwurf.esc(e.freigabe_id) + ' ist weiter offen. Bitte Teams-Zugang prüfen; der Fehler steht im Fehlerlog.';\nreturn [{ json: { zugestellt, nachricht_html: html } }];\n"
+      },
+      "id": "617103f5-858e-49dc-a7a1-179967652186",
+      "name": "Zustellung auswerten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3740,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2b74ef67-969c-49af-a8b7-6f1ee7aef320",
+              "leftValue": "={{ $json.zugestellt }}",
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              },
+              "rightValue": 0
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "50eda06f-5efc-492e-ac88-9e4142921091",
+      "name": "Niemand erreicht?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3960,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Benachrichtigen",
+          "cachedResultName": "EPA SW Benachrichtigen"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $('Bei Aufruf').first().json.kunde_id }}",
+            "vorgangs_id": "={{ $('Bei Aufruf').first().json.vorgangs_id }}",
+            "team_id": "={{ $('Config laden').first().json.config.benachrichtigung.team_id }}",
+            "channel_id": "={{ $('Config laden').first().json.config.benachrichtigung.channel_id }}",
+            "nachricht_html": "={{ $json.nachricht_html }}",
+            "anlass": "freigabe_nicht_zugestellt"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "team_id",
+              "displayName": "team_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "channel_id",
+              "displayName": "channel_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "nachricht_html",
+              "displayName": "nachricht_html",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "anlass",
+              "displayName": "anlass",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "b2c92f7f-4d4a-4d29-a015-462615cee9a4",
+      "name": "Kanal warnen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        4180,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Bei Aufruf').first().json;\nreturn [{ json: { ergebnis: e.aktion === 'freigabe_erneuern' ? 'links_erneuert' : 'freigeber_erinnert', zugestellt: $('Zustellung auswerten').first().json.zugestellt } }];\n"
+      },
+      "id": "ada32fa9-c9e4-4ee7-a498-4a8528353058",
+      "name": "Ergebnis: Freigabe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4400,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst p = $('Auffrischen prüfen').first().json;\nreturn [{ json: { ergebnis: 'entfaellt_' + (p.grund || 'nicht_mehr_offen') } }];\n"
+      },
+      "id": "e93ed947-8848-40f9-a699-9f17f233f293",
+      "name": "Ergebnis: Freigabe entfällt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Bei Aufruf": {
+      "main": [
+        [
+          {
+            "node": "Config laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config laden": {
+      "main": [
+        [
+          {
+            "node": "Vorgang lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorgang lesen": {
+      "main": [
+        [
+          {
+            "node": "Aktion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aktion": {
+      "main": [
+        [
+          {
+            "node": "Erinnerung anfordern",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Eskalation prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Freigabe lesen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unbekannte Aktion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Erinnerung anfordern": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis: Erinnerung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eskalation prüfen": {
+      "main": [
+        [
+          {
+            "node": "Eskalieren?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eskalieren?": {
+      "main": [
+        [
+          {
+            "node": "Gesendete Nachrichten lesen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ergebnis: Eskalation entfällt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gesendete Nachrichten lesen": {
+      "main": [
+        [
+          {
+            "node": "Meldung: keine Reaktion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meldung: keine Reaktion": {
+      "main": [
+        [
+          {
+            "node": "Status: Eskaliert (keine Reaktion)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status: Eskaliert (keine Reaktion)": {
+      "main": [
+        [
+          {
+            "node": "Mitarbeiter informieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mitarbeiter informieren": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis: eskaliert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigabe lesen": {
+      "main": [
+        [
+          {
+            "node": "Auffrischen prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auffrischen prüfen": {
+      "main": [
+        [
+          {
+            "node": "Auffrischen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auffrischen?": {
+      "main": [
+        [
+          {
+            "node": "Freigabe-Daten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ergebnis: Freigabe entfällt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigabe-Daten": {
+      "main": [
+        [
+          {
+            "node": "Freigabe aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigabe aktualisieren": {
+      "main": [
+        [
+          {
+            "node": "Freigabe noch offen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigabe noch offen?": {
+      "main": [
+        [
+          {
+            "node": "Alte Links sperren?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ergebnis: Freigabe entfällt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alte Links sperren?": {
+      "main": [
+        [
+          {
+            "node": "Sperrdaten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Neue Links vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sperrdaten": {
+      "main": [
+        [
+          {
+            "node": "Alte Links sperren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alte Links sperren": {
+      "main": [
+        [
+          {
+            "node": "Neue Links vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Neue Links vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Neue Links speichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Neue Links speichern": {
+      "main": [
+        [
+          {
+            "node": "Nachrichten vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nachrichten vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Freigeber benachrichtigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigeber benachrichtigen": {
+      "main": [
+        [
+          {
+            "node": "Zustellung auswerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Zustellung auswerten": {
+      "main": [
+        [
+          {
+            "node": "Niemand erreicht?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Niemand erreicht?": {
+      "main": [
+        [
+          {
+            "node": "Kanal warnen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ergebnis: Freigabe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kanal warnen": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis: Freigabe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

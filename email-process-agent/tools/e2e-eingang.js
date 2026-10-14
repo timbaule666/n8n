@@ -19,6 +19,7 @@ const { bauen } = require('./build-workflows');
 const { POSTFACH, FAELLE } = require('../test/daten/testmails');
 const { freigabeSzenarien } = require('./lib/e2e-freigabe');
 const { antwortSzenarien } = require('./lib/e2e-antwort');
+const { nachfassSzenarien } = require('./lib/e2e-nachfassen');
 
 const BASIS = (process.env.N8N_URL || '').replace(/\/+$/, '');
 const KEY = process.env.N8N_API_KEY;
@@ -49,7 +50,7 @@ async function zeilenLoeschen(tabellenId, spalte, wert) {
 }
 
 async function testkundeAnlegen(ids, mockPort, postfachWorkflowId) {
-	for (const t of ['epa_config_allgemein', 'epa_config_pflichtfelder', 'epa_vorgaenge', 'epa_audit_log', 'epa_verarbeitete_mails', 'epa_freigaben', 'epa_freigabe_tokens']) {
+	for (const t of ['epa_config_allgemein', 'epa_config_pflichtfelder', 'epa_vorgaenge', 'epa_audit_log', 'epa_verarbeitete_mails', 'epa_freigaben', 'epa_freigabe_tokens', 'epa_fehler_log']) {
 		await zeilenLoeschen(ids[t], 'kunde_id', KUNDE);
 	}
 	const daten = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'datatables', 'beispiel-transport.json'), 'utf8'));
@@ -151,6 +152,13 @@ async function freigabeSendenUmleiten(id, mockPort) {
 	await api('POST', `/workflows/${id}/activate`);
 }
 
+async function zeitplanAus(id) {
+	const wf = await api('GET', `/workflows/${id}`);
+	for (const n of wf.nodes) if (n.type === 'n8n-nodes-base.scheduleTrigger') n.disabled = true;
+	await api('PUT', `/workflows/${id}`, { name: wf.name, nodes: wf.nodes, connections: wf.connections, settings: wf.settings });
+	await api('POST', `/workflows/${id}/activate`);
+}
+
 async function aufrufen(slug, body) {
 	const res = await fetch(`${BASIS}/webhook/epa-test-${slug}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 	const text = await res.text();
@@ -180,6 +188,7 @@ async function main() {
 	const zeilen = [];
 	const zeilenM3 = [];
 	const zeilenM4 = [];
+	const zeilenM5 = [];
 	try {
 		bauen();
 		const ids = await einrichten({ prompts: true, log: () => {} });
@@ -197,8 +206,11 @@ async function main() {
 		const h1 = await api('POST', '/workflows', harness('EPA-TEST Eingang', 'eingang', wfIds['EPA-01 Eingang verarbeiten'], 'EPA-01 Eingang verarbeiten', [['postfach', 'string'], ['mail', 'object'], ['anhaenge', 'array']]));
 		const h2 = await api('POST', '/workflows', harness('EPA-TEST Postfach', 'postfach', kopie.id, 'EPA-TEST Postfach (Mock-Graph)', [['postfach', 'string'], ['graph_id', 'string']]));
 		const h3 = await api('POST', '/workflows', harness('EPA-TEST Rückfrage', 'rueckfrage', wfIds['EPA-02 Rückfrage anfordern'], 'EPA-02 Rückfrage anfordern', [['kunde_id', 'string'], ['vorgangs_id', 'string'], ['art', 'string'], ['referenz', 'string']]));
-		temp.push(h1.id, h2.id, h3.id);
-		for (const h of [h1, h2, h3]) await api('POST', `/workflows/${h.id}/activate`);
+		// EPA-04 lokal ohne Zeitplan (sonst würde der stündliche Lauf in die Tests greifen); Aufruf nur über den Test-Harness.
+		await zeitplanAus(wfIds['EPA-04 Nachfassen und Eskalation']);
+		const h4 = await api('POST', '/workflows', harness('EPA-TEST Nachfassen', 'nachfassen', wfIds['EPA-04 Nachfassen und Eskalation'], 'EPA-04 Nachfassen und Eskalation', [['jetzt', 'string']]));
+		temp.push(h1.id, h2.id, h3.id, h4.id);
+		for (const h of [h1, h2, h3, h4]) await api('POST', `/workflows/${h.id}/activate`);
 		await warte(1000);
 
 		const tabelle = async (name) => alleZeilen(ids[name]);
@@ -295,6 +307,11 @@ async function main() {
 			zeilenM4.push(...await antwortSzenarien({ mock, aufrufen, tabelle, api, ids, KUNDE, POSTFACH, FREIGEBER, nur: nur.filter((n) => /^A/.test(n)) }));
 		}
 
+		// M5: Nachfassen und Eskalation (Phase E)
+		if (!nur.length || nur.some((n) => /^N/.test(n))) {
+			zeilenM5.push(...await nachfassSzenarien({ mock, aufrufen, tabelle, api, ids, KUNDE, POSTFACH, FREIGEBER, nur: nur.filter((n) => /^N/.test(n)) }));
+		}
+
 		// Teams-Versandfehler werden protokolliert (lokal gibt es nur ein Dummy-Credential)
 		const teamsFehler = (await tabelle('epa_fehler_log')).filter((z) => z.kunde_id === KUNDE && z.node === 'Teams-Nachricht senden');
 		console.log(`\nHinweis: ${teamsFehler.length} Teams-Meldungen konnten lokal nicht zugestellt werden (Dummy-Credential) und stehen als 502 im Fehlerlog.`);
@@ -303,13 +320,14 @@ async function main() {
 		for (const id of temp) await entfernen(id).catch((e) => console.error('Aufräumen:', e.message));
 		await mock.stoppen();
 	}
-	const alle = [...zeilen, ...zeilenM3, ...zeilenM4];
+	const alle = [...zeilen, ...zeilenM3, ...zeilenM4, ...zeilenM5];
 	const bestanden = alle.filter((z) => z.ok).length;
-	console.log(`\nM2: ${zeilen.filter((z) => z.ok).length}/${zeilen.length}, M3: ${zeilenM3.filter((z) => z.ok).length}/${zeilenM3.length}, M4: ${zeilenM4.filter((z) => z.ok).length}/${zeilenM4.length} – gesamt ${bestanden}/${alle.length} Szenarien bestanden`);
+	console.log(`\nM2: ${zeilen.filter((z) => z.ok).length}/${zeilen.length}, M3: ${zeilenM3.filter((z) => z.ok).length}/${zeilenM3.length}, M4: ${zeilenM4.filter((z) => z.ok).length}/${zeilenM4.length}, M5: ${zeilenM5.filter((z) => z.ok).length}/${zeilenM5.length} – gesamt ${bestanden}/${alle.length} Szenarien bestanden`);
 	if (!nur.length) {
 		protokoll(zeilen, 'M2', 'Eingang (EPA-00/EPA-01)', 'Testprotokoll-M2.md');
 		protokoll(zeilenM3, 'M3', 'Rückfrage und Freigabe (EPA-02/EPA-07)', 'Testprotokoll-M3.md');
 		protokoll(zeilenM4, 'M4', 'Antworten verarbeiten (EPA-03)', 'Testprotokoll-M4.md');
+		protokoll(zeilenM5, 'M5', 'Nachfassen und Eskalation (EPA-04)', 'Testprotokoll-M5.md');
 	}
 	process.exit(bestanden === alle.length ? 0 : 1);
 }

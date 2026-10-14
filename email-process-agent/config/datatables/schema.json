@@ -143,14 +143,25 @@
       "bearbeitet": "boolean",
       "grund": "string",
       "gesendet_am": "date",
-      "gesendet_message_id": "string"
+      "gesendet_message_id": "string",
+      "erinnert_am": "date",
+      "erneuert_am": "date"
     },
     "epa_freigabe_tokens": {
       "freigabe_id": "string",
       "kunde_id": "string",
       "freigeber": "string",
       "token_hash": "string",
-      "verbraucht_am": "date"
+      "verbraucht_am": "date",
+      "ablauf": "date"
+    },
+    "epa_system_status": {
+      "schluessel": "string",
+      "lock_bis": "date",
+      "lock_durch": "string",
+      "letzter_start": "date",
+      "letzter_lauf": "date",
+      "letztes_ergebnis": "string"
     }
   }
 }

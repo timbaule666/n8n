@@ -24,6 +24,7 @@ const VERSIONEN = Object.freeze({
 	'n8n-nodes-base.wait': 1.1,
 	'n8n-nodes-base.extractFromFile': 1.1,
 	'n8n-nodes-base.microsoftOutlookTrigger': 1,
+	'n8n-nodes-base.scheduleTrigger': 1.2,
 });
 
 function uuid(...teile) {

@@ -75,6 +75,14 @@ async function einrichten({ beispiel = false, postfach, freigeber, prompts = fal
 		}
 		ids[name] = t.id;
 	}
+	// Lauf-Lock von EPA-04 (M5): genau eine Zeile, frei = lock_bis in der Vergangenheit.
+	if (ids.epa_system_status) {
+		const { LOCK_SCHLUESSEL, EPOCHE } = require('../src/nachfassen');
+		if (!(await alleZeilen(ids.epa_system_status)).some((z) => z.schluessel === LOCK_SCHLUESSEL)) {
+			await api('POST', `/data-tables/${ids.epa_system_status}/rows`, { data: [{ schluessel: LOCK_SCHLUESSEL, lock_bis: EPOCHE, lock_durch: '' }], returnType: 'count' });
+			log(`Lauf-Lock angelegt: ${LOCK_SCHLUESSEL}`);
+		}
+	}
 	if (beispiel) {
 		const daten = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'datatables', 'beispiel-transport.json'), 'utf8'));
 		const kunde = daten.epa_config_allgemein[0].kunde_id;

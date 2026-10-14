@@ -23,6 +23,8 @@ const M2 = [
 	['epa-02-rueckfrage', 'EPA-02_Rueckfrage_anfordern.json'],
 	['epa-07-freigabe', 'EPA-07_Freigabe-Endpunkt.json'],
 	['epa-03-antwort', 'EPA-03_Antwort_verarbeiten.json'],
+	['sw-nachfassen', 'EPA_SW_Nachfassen.json'],
+	['epa-04-nachfassen', 'EPA-04_Nachfassen_und_Eskalation.json'],
 ];
 // Die Postgres-Variante bleibt auf dem Stand von M1 (Speicher-Standard sind Data Tables).
 const DATEIEN = { datatable: [...M1, ...M2], postgres: M1 }; // M2 enthält ab M3 auch EPA-02/EPA-07

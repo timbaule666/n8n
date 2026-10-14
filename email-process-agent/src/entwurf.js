@@ -62,6 +62,30 @@ function vorlage({ anrede_stil: stil, sprache }, name) {
 	};
 }
 
+/** Template für die Erinnerung an den Kunden (Phase E, Fall 1). Bewusst ohne LLM: deterministisch und prüfbar. */
+function vorlageErinnerung({ anrede_stil: stil, sprache }, name) {
+	const n = sichererName(name);
+	if (sprache === 'en') {
+		return {
+			anrede: n ? `Dear ${n},` : 'Hello,',
+			einleitung: 'we would like to kindly remind you of our previous message. To process your request, we still need the following information:',
+			schluss: 'Thank you in advance for your reply.',
+		};
+	}
+	if (stil === 'Du') {
+		return {
+			anrede: n ? `Hallo ${n},` : 'Hallo,',
+			einleitung: 'wir möchten dich freundlich an unsere letzte Nachricht erinnern. Damit wir deine Anfrage bearbeiten können, brauchen wir noch folgende Angaben:',
+			schluss: 'Vielen Dank für deine Rückmeldung.',
+		};
+	}
+	return {
+		anrede: n ? `Guten Tag ${n},` : 'Guten Tag,',
+		einleitung: 'wir möchten Sie freundlich an unsere letzte Nachricht erinnern. Damit wir Ihre Anfrage bearbeiten können, benötigen wir noch folgende Angaben:',
+		schluss: 'Vielen Dank für Ihre Rückmeldung.',
+	};
+}
+
 /**
  * Prüft die vom LLM gelieferte Hülle. Gibt eine Liste von Verstößen zurück (leer = in Ordnung).
  * Name des Kunden darf in der Anrede stehen, sonst keine Ziffern, Beträge, URLs, Adressen, Zusagen.
@@ -124,6 +148,14 @@ function entwurfBauen(llmHuelle, { config, felder, fehlende, name }) {
 	return { text, html: zuHtml(text, config), abschluss: abschlussText(config), bausteine: bs, fallback, pruefung };
 }
 
+/** Erinnerungs-Entwurf: Template-Hülle, feste Bausteine der noch offenen Felder, fester Abschluss. */
+function erinnerungBauen({ config, felder, fehlende, name }) {
+	const bs = bausteine(fehlende, felder);
+	if (!bs.length) throw new Error('Keine fehlenden Felder: keine Erinnerung nötig');
+	const text = bearbeitbarerText(vorlageErinnerung(config, name), bs);
+	return { text, html: zuHtml(text, config), abschluss: abschlussText(config), bausteine: bs, fallback: false, pruefung: [] };
+}
+
 /**
  * Prüft einen vom Mitarbeiter bearbeiteten Text. Er darf frei formulieren; abgelehnt werden nur leere oder
  * übermäßig lange Texte. Fehlende Bausteine werden als Hinweis gemeldet (der Mitarbeiter verantwortet die Änderung).
@@ -137,4 +169,4 @@ function bearbeitungPruefen(text, bs) {
 	return { ok: true, text: t, bausteine_entfernt: fehlend };
 }
 
-module.exports = { MAX, VERBOTEN, sichererName, bausteine, vorlage, huellePruefen, bearbeitbarerText, abschlussText, zuHtml, entwurfBauen, bearbeitungPruefen, esc };
+module.exports = { MAX, VERBOTEN, sichererName, bausteine, vorlage, vorlageErinnerung, erinnerungBauen, huellePruefen, bearbeitbarerText, abschlussText, zuHtml, entwurfBauen, bearbeitungPruefen, esc };
