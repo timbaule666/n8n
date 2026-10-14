@@ -115,6 +115,10 @@ async function fehlerSzenarien(ctx) {
 		for (const z of await tabelle('epa_test_ki_faelle')) {
 			await api('DELETE', `/data-tables/${ids.epa_test_ki_faelle}/rows/delete?filter=${encodeURIComponent(JSON.stringify(filter(['id', z.id])))}`);
 		}
+		// Ergebnisse früherer Testläufe mit derselben lauf_id entfernen (sonst zählt ein zweiter Lauf doppelt).
+		for (const z of (await tabelle('epa_test_ki_ergebnisse')).filter((e) => e.lauf_id === 'Q01-LAUF')) {
+			await api('DELETE', `/data-tables/${ids.epa_test_ki_ergebnisse}/rows/delete?filter=${encodeURIComponent(JSON.stringify(filter(['id', z.id])))}`);
+		}
 		await api('POST', `/data-tables/${ids.epa_test_ki_faelle}/rows`, { returnType: 'count', data: [
 			{ fall_id: 'Q-A', betreff: 'Transportanfrage', text: 'Bitte Transport von 50667 Köln nach 04109 Leipzig, 1200 kg, Tel. 0221 1234567.', absender: 'a@q.example', erwartete_klasse: 'anfrage', erwartete_felder: JSON.stringify({ Start_PLZ: '50667', Ziel_PLZ: '04109', Gewicht_kg: '1200', Telefon: '0221 1234567', Abholdatum: null }), aktiv: true },
 			{ fall_id: 'Q-B', betreff: 'Newsletter', text: 'Unser Newsletter mit Angeboten.', absender: 'news@q.example', erwartete_klasse: 'keine_anfrage', erwartete_felder: '{}', aktiv: true },
