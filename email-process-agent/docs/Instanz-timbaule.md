@@ -10,7 +10,7 @@ Stand 2026-10-14 (M6). Speicher: **n8n Data Tables** (persönliches Projekt).
 | EPA SW Status setzen | `xwBsSqK1LVgMuQx4` | 12 | veröffentlicht |
 | EPA SW Vorgang verwalten | `EixHJ4vRqMIGcyuL` | 32 | veröffentlicht |
 | EPA-05 Error-Handler | `nMkGyI82z0mwm9ud` | 18 | Entwurf, Teams-IDs und Credential fehlen noch |
-| EPA SW LLM aufrufen | `VNTqDuobRAqqj4Y7` | 13 | Entwurf, OpenAI-Credential fehlt |
+| EPA SW LLM aufrufen | `VNTqDuobRAqqj4Y7` | 13 | **veröffentlicht**, Credential „OpenAI account“ zugewiesen (Testphase) |
 | EPA SW Benachrichtigen | `KLzgK5VQCop0z9QA` | 9 | Entwurf, Teams-Credential fehlt |
 | EPA-01 Eingang verarbeiten | `W1j7GzjIxdjtQkVS` | 41 | Entwurf (veröffentlichbar nach EPA-02) |
 | EPA-00 Postfach (Vorlage) | `fi1VnvQ26qBQ8aMQ` | 43 | Vorlage, je Postfach duplizieren (enthält ab M3 die Postfach-Aktionen für Entwurf/Versand) |
@@ -19,9 +19,9 @@ Stand 2026-10-14 (M6). Speicher: **n8n Data Tables** (persönliches Projekt).
 | EPA-03 Antwort verarbeiten | `R83VDuvm7aML2HwH` | 32 | Entwurf (veröffentlichbar nach EPA-02) |
 | EPA SW Nachfassen | `XzWGKZPK0HGb6Si7` | 34 | Entwurf (veröffentlichbar nach EPA-02) |
 | EPA-04 Nachfassen und Eskalation | `OvSzCe83KeiTLnkN` | 24 | Entwurf (veröffentlichbar nach EPA SW Nachfassen; Zeitplan stündlich) |
-| EPA-06 Watchdog | `wkAkeJjhOwsTBJKd` | 23 | Entwurf: Teams-IDs (Betriebskanal) und Credentials (Teams, OpenAI) fehlen |
+| EPA-06 Watchdog | `wkAkeJjhOwsTBJKd` | 23 | Entwurf: OpenAI zugewiesen; Teams-IDs (Betriebskanal) und Teams-Credential fehlen |
 | EPA-08 Löschjob | `SKBmXLzixbf2Unl4` | 30 | Entwurf, bewusst nicht veröffentlicht: erst nach Probelauf und Freigabe durch dich |
-| EPA-T1 KI-Qualität prüfen | `AowNJzPlsxBHFFQJ` | 15 | Testphase-Prüfstand (Commit `c128407`), manuell ausführen; braucht OpenAI-Credential in SW LLM und eine gültige Kunden-Config |
+| EPA-T1 KI-Qualität prüfen | `AowNJzPlsxBHFFQJ` | 15 | **veröffentlicht**, Testphase-Prüfstand (Commit `c128407`). Start per Workflow „EPA-TEST Stufe 1 starten“ (`pQaNkaXL3yHE8RKJ`, Kunde `epa-ki-test`) |
 | EPA-07 Freigabe-Endpunkt | `xj4e8E82vccdoiXl` | 41 | **veröffentlicht**, Link: `https://timbaule.app.n8n.cloud/webhook/epa-freigabe` (Probe: ungültiger Link → 404-Seite) |
 
 M6: eingespielt aus `workflows/` vom Commit `f3a7fb3`, EPA-07 danach aus `302cd9f` (M5: `cf2bfa8`, M4: `8d36300`, M3: `1bccce8`, M2: `50f1cce`, M1: `b195eb6`), direkt von GitHub geladen. Danach wurde jeder Node mit der Quelle abgeglichen (Typ, Version, Parameter): 0 Abweichungen.
@@ -41,6 +41,8 @@ M6: eingespielt aus `workflows/` vom Commit `f3a7fb3`, EPA-07 danach aus `302cd9
 | epa_test_ki_faelle | `wfEcVNTEmqgX4MZk` | 15 synthetische KI-Testfälle (S01–S15) |
 | epa_test_ki_ergebnisse | `qulil8k9xv3ji8ZI` | leer (Ergebnisse des Prüfstands) |
 | epa_system_status | `PfrSmbclvoZa3zcN` | Lock-Zeile `epa04_lauf` (frei) (M5) |
+
+Testphase: In `epa_config_allgemein`/`epa_config_pflichtfelder` steht zusätzlich der Kunde `epa-ki-test` (nur für den KI-Prüfstand; erfundenes Postfach `ki-pruefstand@epa-test.invalid`, kein Postfach-Workflow). Vor dem Produktivstart deaktivieren oder löschen.
 
 `epa_config_allgemein` hat ab M6 zusätzlich `stille_alarm_stunden` (leer = aus). Seit M3 gibt es die Spalten `postfach_workflow_id` (ID der EPA-00-Kopie des Kunden) und `freigabe_basis_url` (optional, sonst automatisch).
 
