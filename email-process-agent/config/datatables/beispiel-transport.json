@@ -146,7 +146,7 @@
    "pflicht": false,
    "validierungsregel": "{\"werte\": [\"Palette\", \"Paket\", \"Stückgut\", \"Sonstiges\"]}",
    "resolution_textbaustein": "Bitte beschreiben Sie kurz die Art der Ladung.",
-   "extraktions_hinweis": "Einer der erlaubten Werte",
+   "extraktions_hinweis": "Einer der erlaubten Werte in der Einzahl, auch wenn die Art nur zusammen mit einer Anzahl genannt ist (z. B. „3 Paletten“ → Palette, „12 Pakete“ → Paket). Leer lassen, wenn keine Ladungsart genannt ist",
    "platzhalter_muster": "[]",
    "reihenfolge": 80,
    "aktiv": true
