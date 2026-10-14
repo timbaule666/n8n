@@ -87,7 +87,7 @@ Tims privates Microsoft-Konto hat keine Teams-Lizenz. Microsoft antwortet auf Gr
 
 | Was | Stand |
 |---|---|
-| EPA-T2 Telegram senden (Test) * | angelegt, ID `HSD3za9kE5L0IMyv`; Telegram-Credential fehlt, nicht veröffentlicht |
-| `epa_system_status` | Spalten `alarm_kanal`, `telegram_chat_id`, `telegram_workflow_id` ergänzt; Zeile `alarmierung` noch nicht angelegt |
+| EPA-T2 Telegram senden (Test) * | ID `HSD3za9kE5L0IMyv`, Credential „Error Guard“ (bestehender Bot), veröffentlicht; Verbindungstest an Chat 8961899217 zugestellt |
+| `epa_system_status` | Spalten `alarm_kanal`, `telegram_chat_id`, `telegram_workflow_id` ergänzt; Zeile `alarmierung` angelegt: alarm_kanal = telegram_test, Chat 8961899217, EPA-T2 |
 | Outlook- und Teams-Credential | HTTP-Request-Sperre aufgehoben (Allowed Domains: graph.microsoft.com); Outlook-Postfach per Graph lesbar |
 | Workflows | 17 Workflows auf Stand eb0411d, 0 Abweichungen; Sternchen und Credentials erhalten; vorher aktive neu veröffentlicht |
