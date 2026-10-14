@@ -120,3 +120,20 @@ test('Objekt statt Wert wird abgelehnt', () => {
 	const r = pf.pruefen({ Start_Ort: { wert: { a: 1 } } }, [feld('Start_Ort')]);
 	assert.match(r.fehlende[0].grund, /unerwartetes Format/);
 });
+
+test('Text mit Regel person: Anrede weg, Team-, Abteilungs- und Firmennamen gelten als fehlend', () => {
+	const a = (w) => pf.feldPruefen(feld('Ansprechpartner'), w);
+	assert.deepEqual(a('Frau Lisa Probe'), { ok: true, wert: 'Lisa Probe' });
+	assert.deepEqual(a('Herrn Dr. Max Muster'), { ok: true, wert: 'Dr. Max Muster' });
+	assert.deepEqual(a('Pieter Example'), { ok: true, wert: 'Pieter Example' });
+	for (const ok of ['Anna Teamer', 'Agnes Kogler', 'Müller-Lüdenscheidt']) assert.equal(a(ok).ok, true, ok);
+	for (const nein of ['Team Kaffee Beispiel', 'Ihr Dispositionsteam', 'Vertriebsteam Nord', 'Logistik-Team', 'Einkauf', 'Beispiel Transport GmbH', 'Kaffee & Co. KG']) {
+		assert.match(a(nein).grund || '', /kein Personenname/, nein);
+	}
+	// Pflichtfeld: ein Teamname führt zur Rückfrage statt zu einem erfundenen Ansprechpartner.
+	const r = pf.pruefen(ex({ ...VOLL, Ansprechpartner: 'Team Kaffee Beispiel' }), FELDER, { heute: HEUTE });
+	assert.equal(r.vollstaendig, false);
+	assert.ok(r.fehlende.some((f) => f.feldname === 'Ansprechpartner'));
+	// Ohne Regel bleibt Text unverändert.
+	assert.deepEqual(pf.feldPruefen({ typ: 'text', validierungsregel: {} }, 'Team Nord'), { ok: true, wert: 'Team Nord' });
+});

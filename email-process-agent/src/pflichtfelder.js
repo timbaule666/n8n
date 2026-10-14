@@ -16,6 +16,15 @@ const STANDARD_REGELN = Object.freeze({
 
 const UNSICHER_UNTER = 0.5;
 
+// Regel "person" für Textfelder (z. B. Ansprechpartner).
+const ANREDE = /^(herrn?|frau|hr\.?|fr\.?|mr\.?|mrs\.?|ms\.?)\s+/i;
+const KEIN_PERSONENNAME = new RegExp(
+	'^(ihr|ihre|your|the|das|die|der)\\s|\\p{L}*team(?=$|[\\s\\-/).,&])|' +
+		'(^|[\\s\\-/(])(team|abteilung|firma|disposition|dispo|vertrieb|einkauf|logistik|kundenservice|kundendienst|service|support|zentrale|buchhaltung|' +
+		'gmbh|mbh|ag|kg|ohg|gbr|ug|e\\.\\s?k\\.?|ltd\\.?|inc\\.?|llc|b\\.v\\.?|co\\.?)(?=$|[\\s\\-/).,&])',
+	'iu',
+);
+
 function istPlatzhalter(wert, zusaetzliche) {
 	const s = String(wert).trim().toLowerCase().replace(/\s+/g, ' ');
 	if (GLOBALE_PLATZHALTER.includes(s)) return true;
@@ -85,7 +94,13 @@ function feldPruefen(feld, roh, { heute } = {}) {
 	const fehler = (grund) => ({ ok: false, grund });
 	switch (feld.typ) {
 		case 'text': {
-			const s = String(roh).replace(/\s+/g, ' ').trim();
+			let s = String(roh).replace(/\s+/g, ' ').trim();
+			if (regel.person) {
+				// Personenname: Anrede entfernen; Team-, Abteilungs- und Firmennamen gelten als fehlend,
+				// damit ein erfundener Ansprechpartner keine nötige Rückfrage verhindert.
+				s = s.replace(ANREDE, '').trim();
+				if (KEIN_PERSONENNAME.test(s) || !/\p{L}/u.test(s)) return fehler('kein Personenname (Team, Abteilung oder Firma)');
+			}
 			if (regel.min_laenge !== undefined && s.length < regel.min_laenge) return fehler(`zu kurz (mind. ${regel.min_laenge} Zeichen)`);
 			if (regel.max_laenge !== undefined && s.length > regel.max_laenge) return fehler(`zu lang (max. ${regel.max_laenge} Zeichen)`);
 			if (regel.regex && !new RegExp(regel.regex).test(s)) return fehler('Format ungültig');

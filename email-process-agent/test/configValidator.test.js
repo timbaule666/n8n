@@ -100,6 +100,8 @@ test('Validierungsregeln je Typ', () => {
 		[feld({ validierungsregel: { regex: '([' } }), /ungültiger regulärer Ausdruck/],
 		[feld({ typ: 'zahl', validierungsregel: { min: 10, max: 1 } }), /min ist größer als max/],
 		[feld({ typ: 'zahl', validierungsregel: { minimum: 1 } }), /Schlüssel "minimum" ist für Typ "zahl" nicht erlaubt/],
+		[feld({ validierungsregel: { person: 'ja' } }), /person: muss true\/false sein/],
+		[feld({ typ: 'zahl', validierungsregel: { person: true } }), /Schlüssel "person" ist für Typ "zahl" nicht erlaubt/],
 		[feld({ typ: 'enum', validierungsregel: {} }), /braucht eine Liste erlaubter Werte/],
 		[feld({ typ: 'enum', validierungsregel: { werte: ['ok', ''] } }), /braucht eine Liste erlaubter Werte/],
 		[feld({ typ: 'farbe' }), /typ: "farbe" ist unbekannt/],

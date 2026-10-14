@@ -32,6 +32,7 @@ Stand 2026-10-14 (M7). Ein Workflow-Satz bedient alle Kunden. Pro Kunde kommen d
 1. **Config anlegen:** `config/datatables/vorlage-leer.json` bzw. `config/vorlagen/epa_config_*_leer.csv` als Vorlage nehmen (Beispiel mit echten Werten: `beispiel-transport.json`). Alle `<Platzhalter>` ersetzen. `aktiv` zunächst auf `false` lassen.
    - Zeile in `epa_config_allgemein` anlegen (über die Data-Table-Oberfläche oder per CSV-Import [zu verifizieren: CSV-Import in der Cloud-Oberfläche]).
    - Je Pflichtfeld eine Zeile in `epa_config_pflichtfelder` (gleiche `kunde_id`).
+     Für Felder mit einem Personennamen (Ansprechpartner) in `validierungsregel` `"person": true` setzen: Die Anrede wird entfernt, und Team-, Abteilungs- oder Firmennamen gelten als fehlend. So löst eine Signatur wie „Ihr Dispositionsteam“ eine Rückfrage aus, statt als Ansprechpartner übernommen zu werden.
 2. **Postfach-Workflow:** `EPA-00 Postfach (Vorlage)` duplizieren und z. B. „EPA-00 Postfach anfragen@kunde.de“ nennen. Im Node „Postfach festlegen“ die Adresse eintragen. Das Outlook-Credential des Dienstkontos im Trigger und in allen Graph-Nodes zuweisen. Die ID der Kopie (aus der URL) in `postfach_workflow_id` eintragen.
 3. **Config prüfen:** `EPA SW Config laden` manuell mit `{"kunde_id": "<kürzel>"}` ausführen. Erwartet: `config` ohne Fehler. Fehlermeldungen nennen das Feld.
 4. **Testphase:** Mit dem Testpostfach bzw. einem Testabsender 5–10 typische Mails schicken: vollständig, mit Lücken, Antwort, Newsletter, Abwesenheitsnotiz. Freigaben über die Links testen.

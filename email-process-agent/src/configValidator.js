@@ -6,7 +6,7 @@ const FELDTYPEN = ['text', 'plz', 'datum', 'zahl', 'email', 'telefon', 'enum'];
 
 // Erlaubte Schlüssel der Validierungsregel je Feldtyp (Tippfehler sollen auffallen).
 const REGEL_SCHLUESSEL = {
-	text: ['min_laenge', 'max_laenge', 'regex'],
+	text: ['min_laenge', 'max_laenge', 'regex', 'person'],
 	plz: ['regex'],
 	datum: ['min_tage_ab_heute', 'max_tage_ab_heute'],
 	zahl: ['min', 'max', 'ganzzahl'],
@@ -94,6 +94,7 @@ function pruefeRegel(feld, regel, praefix, fehler) {
 		if (typeof r[a] === 'number' && typeof r[b] === 'number' && r[a] > r[b]) fehler.push(`${praefix}.validierungsregel: ${a} ist größer als ${b}`);
 	}
 	if (r.ganzzahl !== undefined && typeof r.ganzzahl !== 'boolean') fehler.push(`${praefix}.validierungsregel.ganzzahl: muss true/false sein`);
+	if (r.person !== undefined && typeof r.person !== 'boolean') fehler.push(`${praefix}.validierungsregel.person: muss true/false sein`);
 	if (feld.typ === 'enum') {
 		if (!Array.isArray(r.werte) || r.werte.length === 0 || r.werte.some((w) => typeof w !== 'string' || !w.trim())) {
 			fehler.push(`${praefix}.validierungsregel.werte: Typ enum braucht eine Liste erlaubter Werte`);

@@ -52,7 +52,7 @@ VALUES
      'Bitte teilen Sie uns die Anzahl der Packstücke mit.', 'Anzahl Paletten, Pakete oder Kolli', 70),
     ('beispiel-transport', 'transport', 'Ladungsart', 'Art der Ladung', 'enum', FALSE, '{"werte": ["Palette", "Paket", "Stückgut", "Sonstiges"]}',
      'Bitte beschreiben Sie kurz die Art der Ladung.', 'Einer der erlaubten Werte in der Einzahl, auch wenn die Art nur zusammen mit einer Anzahl genannt ist (z. B. „3 Paletten“ → Palette, „12 Pakete“ → Paket). Leer lassen, wenn keine Ladungsart genannt ist', 80),
-    ('beispiel-transport', 'transport', 'Ansprechpartner', 'Ansprechpartner', 'text', TRUE, '{"min_laenge": 2, "max_laenge": 80}',
+    ('beispiel-transport', 'transport', 'Ansprechpartner', 'Ansprechpartner', 'text', TRUE, '{"min_laenge": 2, "max_laenge": 80, "person": true}',
      'Bitte nennen Sie uns einen Ansprechpartner für Rückfragen.', 'Vor- und Nachname einer Person beim Kunden, ohne Anrede (Herr/Frau). Keine Firmen-, Abteilungs- oder Teamnamen; leer lassen, wenn keine Person genannt ist', 90),
     ('beispiel-transport', 'transport', 'Telefon', 'Telefonnummer', 'telefon', TRUE, '{"min_ziffern": 6, "max_ziffern": 20}',
      'Bitte geben Sie uns eine Telefonnummer für Rückfragen an.', 'Telefonnummer der Kontaktperson', 100)
