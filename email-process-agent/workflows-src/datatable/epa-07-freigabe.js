@@ -8,6 +8,10 @@ const SEITE_HEADER = {
 		{ name: 'Cache-Control', value: 'no-store' },
 		{ name: 'Referrer-Policy', value: 'no-referrer' },
 		{ name: 'X-Robots-Tag', value: 'noindex' },
+		// Härtung (M6): Freigabeseite darf nicht eingebettet werden (Clickjacking), kein MIME-Sniffing.
+		{ name: 'X-Frame-Options', value: 'DENY' },
+		{ name: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+		{ name: 'X-Content-Type-Options', value: 'nosniff' },
 	],
 };
 
@@ -17,6 +21,8 @@ function existiert(ausdruck) {
 
 module.exports = function () {
 	const wf = new Workflow('EPA-07 Freigabe-Endpunkt');
+	// Härtung (M6): Erfolgreiche Ausführungen enthalten Klartext-Links bzw. Mail-Text und werden nicht gespeichert.
+	wf.settings.saveDataSuccessExecution = 'none';
 
 	wf.notiz('Notiz Zweck', [-120, -640], [
 		'## EPA-07 Freigabe-Endpunkt (Phase C3/C4)',

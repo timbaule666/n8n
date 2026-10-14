@@ -92,3 +92,11 @@ In den Workflow-Settings bzw. global: Ausführungsdaten erfolgreicher Läufe nic
 - **Config-Werte:** `frist_stunden` (erste Antwortfrist), `anzahl_erinnerungen` und `erinnerung_intervall_stunden` (Abstand der Erinnerungen), `freigabe_erinnerung_stunden` (Erinnerung an Freigeber) und `freigabe_ablauf_stunden` (Gültigkeit eines Links). Mit `frist_nur_geschaeftszeit = true` zählen nur Geschäftsstunden (inkl. Feiertage der `feiertage_region`).
 - **Geschäftszeiten:** Aufgaben eines Kunden laufen nur innerhalb seiner Geschäftszeiten. Was nachts oder am Wochenende fällig wird, holt der erste Lauf am nächsten Arbeitstag nach.
 - **Manuell auslösen/testen:** EPA-04 hat zusätzlich einen Aufruf-Trigger mit der Eingabe `jetzt` (ISO-Zeitpunkt). Damit lässt sich ein Lauf zu einem anderen Zeitpunkt simulieren; Links prüft EPA-07 immer gegen die echte Uhrzeit.
+
+## 9. Ab M6: Watchdog, Löschjob, Härtung
+- **Data Tables:** `node tools/datatables-setup.js` ergänzt `epa_config_allgemein.stille_alarm_stunden` (optional, 0 = aus) und `epa_freigaben.entwurf_entfernt_am`.
+- **EPA-06 Watchdog:** Im Node „Betriebskanal benachrichtigen“ Team und Kanal eintragen (wie EPA-05). Credentials: Teams-Dienstkonto in „Teams prüfen“ und „Betriebskanal benachrichtigen“, OpenAI in „KI prüfen“. Danach veröffentlichen. Zeiten im Node „Zweimal täglich“ (Cron, Europe/Berlin).
+- **EPA-08 Löschjob:** Keine Credentials nötig. Vor dem ersten Veröffentlichen einmal manuell mit `probelauf = true` ausführen und das Ergebnis prüfen. Für das Löschen alter Entwürfe braucht jeder Kunde `postfach_workflow_id`.
+- **EPA-00-Kopien aktualisieren:** Die Vorlage hat zwei neue Aktionen (`verbindung_pruefen`, `entwurf_loeschen`). Bestehende Kopien neu aus der Vorlage erzeugen bzw. die neuen Nodes übernehmen; die Outlook-Credentials auch dort zuweisen.
+- **Ausführungsdaten:** EPA-02, EPA-07, SW Freigabe senden und SW Nachfassen speichern erfolgreiche Ausführungen nicht mehr (Klartext-Links). Für alle übrigen in den n8n-Einstellungen die Aufbewahrung begrenzen.
+- **Betrieb:** `docs/Betriebshandbuch.md` (Meldungen und Maßnahmen), `docs/Datenschutz-und-KI-Checkliste.md` (offene Punkte vor Produktivstart).

@@ -8,6 +8,8 @@ const Z = "$('Entwurf zusammensetzen').first().json";
 
 module.exports = function () {
 	const wf = new Workflow('EPA-02 Rückfrage anfordern');
+	// Härtung (M6): Erfolgreiche Ausführungen enthalten Klartext-Links bzw. Mail-Text und werden nicht gespeichert.
+	wf.settings.saveDataSuccessExecution = 'none';
 
 	wf.notiz('Notiz Zweck', [-80, -620], [
 		'## EPA-02 Rückfrage anfordern (Phase C1–C3)',

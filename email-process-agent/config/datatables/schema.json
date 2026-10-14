@@ -35,7 +35,8 @@
       "freigabe_erinnerung_stunden": "number",
       "freigabe_ablauf_stunden": "number",
       "postfach_workflow_id": "string",
-      "freigabe_basis_url": "string"
+      "freigabe_basis_url": "string",
+      "stille_alarm_stunden": "number"
     },
     "epa_config_pflichtfelder": {
       "kunde_id": "string",
@@ -145,7 +146,8 @@
       "gesendet_am": "date",
       "gesendet_message_id": "string",
       "erinnert_am": "date",
-      "erneuert_am": "date"
+      "erneuert_am": "date",
+      "entwurf_entfernt_am": "date"
     },
     "epa_freigabe_tokens": {
       "freigabe_id": "string",

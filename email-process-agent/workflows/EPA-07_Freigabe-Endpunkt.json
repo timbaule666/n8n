@@ -1513,6 +1513,18 @@
               {
                 "name": "X-Robots-Tag",
                 "value": "noindex"
+              },
+              {
+                "name": "X-Frame-Options",
+                "value": "DENY"
+              },
+              {
+                "name": "Content-Security-Policy",
+                "value": "frame-ancestors 'none'"
+              },
+              {
+                "name": "X-Content-Type-Options",
+                "value": "nosniff"
               }
             ]
           }
@@ -2103,7 +2115,8 @@
   "settings": {
     "executionOrder": "v1",
     "saveManualExecutions": true,
-    "callerPolicy": "workflowsFromSameOwner"
+    "callerPolicy": "workflowsFromSameOwner",
+    "saveDataSuccessExecution": "none"
   },
   "pinData": {},
   "meta": {

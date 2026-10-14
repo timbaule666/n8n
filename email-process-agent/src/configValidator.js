@@ -255,6 +255,8 @@ function validiereConfig(allgemein, pflichtfelder, optionen = {}) {
 		leerantwort_fristverlaengerung_stunden: zahl(a.leerantwort_fristverlaengerung_stunden ?? 0, 'leerantwort_fristverlaengerung_stunden', fehler, { min: 0, max: 2000 }),
 		freigabe_erinnerung_stunden: zahl(a.freigabe_erinnerung_stunden, 'freigabe_erinnerung_stunden', fehler, { min: 1, max: 2000 }),
 		freigabe_ablauf_stunden: zahl(a.freigabe_ablauf_stunden, 'freigabe_ablauf_stunden', fehler, { min: 1, max: 2000 }),
+		// Watchdog (M6): Hinweis, wenn so viele Geschäftsstunden keine Mail kam; leer oder 0 = aus.
+		stille_alarm_stunden: zahl(a.stille_alarm_stunden ?? 0, 'stille_alarm_stunden', fehler, { min: 0, max: 2000 }),
 		vorgangstypen: pruefePflichtfelder(pflichtfelder, fehler),
 	};
 	for (const liste of ['absender_allowlist', 'absender_blocklist']) {

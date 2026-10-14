@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## EPA-00 Postfach (Vorlage, je Postfach eine Kopie)\n**Zweck:** Holt neue Mails aus dem Posteingang (Polling, Bauplan 5.1), lädt Header und Anhänge über Microsoft Graph, liest PDF-Text und bereitet Bilder für die KI auf und übergibt alles an \"EPA-01 Eingang verarbeiten\". Aussortierte Mails (Newsletter, Auto-Replies, Blockliste) werden danach in den Archivordner verschoben, nie gelöscht.\n**Trigger:** Microsoft Outlook Trigger (jede Minute, nur Posteingang). Jede Mail wird als eigene Ausführung dieses Workflows verarbeitet (Aufruf von sich selbst), damit ein Fehler nur diese eine Mail betrifft.\n**Einrichten:** 1) Workflow duplizieren und umbenennen (z. B. \"EPA-00 Postfach anfragen@kunde.de\"). 2) Im Node \"Postfach festlegen\" die Adresse eintragen (muss in epa_config_allgemein.postfach stehen). 3) Outlook-Credential (Microsoft Outlook OAuth2, bei Shared Mailbox mit \"Use Shared Mailbox\") im Trigger und in allen Graph-Nodes zuweisen. 4) Archivordner (Config: archivordner) als Ordner auf oberster Ebene im Postfach anlegen. 5) Veröffentlichen.\n**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread, Betreff mit Vorgangs-ID, Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.\n**Hinweis:** Der Trigger liefert nur die Message-ID; Header (In-Reply-To, References, Auto-Submitted, Authentication-Results) holt \"Mail laden\", weil der Trigger sie nicht ausgibt.",
+        "content": "## EPA-00 Postfach (Vorlage, je Postfach eine Kopie)\n**Zweck:** Holt neue Mails aus dem Posteingang (Polling, Bauplan 5.1), lädt Header und Anhänge über Microsoft Graph, liest PDF-Text und bereitet Bilder für die KI auf und übergibt alles an \"EPA-01 Eingang verarbeiten\". Aussortierte Mails (Newsletter, Auto-Replies, Blockliste) werden danach in den Archivordner verschoben, nie gelöscht.\n**Trigger:** Microsoft Outlook Trigger (jede Minute, nur Posteingang). Jede Mail wird als eigene Ausführung dieses Workflows verarbeitet (Aufruf von sich selbst), damit ein Fehler nur diese eine Mail betrifft.\n**Einrichten:** 1) Workflow duplizieren und umbenennen (z. B. \"EPA-00 Postfach anfragen@kunde.de\"). 2) Im Node \"Postfach festlegen\" die Adresse eintragen (muss in epa_config_allgemein.postfach stehen). 3) Outlook-Credential (Microsoft Outlook OAuth2, bei Shared Mailbox mit \"Use Shared Mailbox\") im Trigger und in allen Graph-Nodes zuweisen. 4) Archivordner (Config: archivordner) als Ordner auf oberster Ebene im Postfach anlegen. 5) Veröffentlichen.\n**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread, Betreff mit Vorgangs-ID, Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.\n**Hinweis:** Der Trigger liefert nur die Message-ID; Header (In-Reply-To, References, Auto-Submitted, Authentication-Results) holt \"Mail laden\", weil der Trigger sie nicht ausgibt.",
         "width": 900,
         "height": 380,
         "color": 7
@@ -279,6 +279,54 @@
               },
               "renameOutput": true,
               "outputKey": "entwurf_senden"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "e53e2d68-b9af-4c7f-a6d1-18fae1e5d660",
+                    "leftValue": "={{ $json.aktion || 'eingang' }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "verbindung_pruefen"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "verbindung_pruefen"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "d3c554ed-6f19-4904-add4-77b223426fa2",
+                    "leftValue": "={{ $json.aktion || 'eingang' }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "entwurf_loeschen"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "entwurf_loeschen"
             }
           ]
         },
@@ -1058,6 +1106,184 @@
         1980,
         1180
       ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/mailFolders/inbox",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendQuery": true,
+        "specifyQuery": "keypair",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$select",
+              "value": "id"
+            }
+          ]
+        }
+      },
+      "id": "464b9ed9-a7a0-422e-a54e-0dcdb57f6834",
+      "name": "Posteingang prüfen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        1400
+      ],
+      "retryOnFail": false,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst r = $input.first().json || {};\nconst status = Number(r.statusCode) || null;\nconst fehler = r.body && r.body.error ? String(r.body.error.code || r.body.error.message || '').slice(0, 120) : '';\nreturn [{ json: { ok: status === 200, status, meldung: status === 200 ? '' : fehler } }];\n"
+      },
+      "id": "403021bd-879a-4dd9-aa01-d4f9cd417bcd",
+      "name": "Verbindung melden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        1400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.entwurf_id) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendQuery": true,
+        "specifyQuery": "keypair",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$select",
+              "value": "id,isDraft"
+            },
+            {
+              "name": "$expand",
+              "value": "singleValueExtendedProperties($filter=id eq 'String {00020329-0000-0000-C000-000000000046} Name EPA-Freigabe-ID')"
+            }
+          ]
+        }
+      },
+      "id": "4c04f001-1488-4b4b-a629-115f2e9d2332",
+      "name": "Entwurf zum Löschen abrufen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        1600
+      ],
+      "retryOnFail": false,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/loeschen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst loeschen = (() => {\nconst module = { exports: {} };\n// Lösch- und Aufräumjob (Masterprompt 7, Bauplan Datenschutz): Daten nur so lange wie nötig.\n// - Vorgänge in einem Endstatus (\"Abgeschlossen\", \"Ignoriert\") nach aufbewahrung_tage seit der letzten Änderung,\n//   samt Audit, Freigaben und Freigabe-Links. Offene oder eskalierte Vorgänge werden nie automatisch gelöscht.\n// - Dedupe-Einträge (epa_verarbeitete_mails) nach aufbewahrung_tage.\n// - Fehlerlog nach 90 Tagen (enthält nur IDs und technische Meldungen).\n// - Ersetzte Rückfrage-Entwürfe im Postfach (nie gesendet, nie mehr gültig). Gelöscht wird nur, was nachweislich\n//   ein Entwurf ist und die passende Freigabe-Kennung trägt. Outlook verschiebt ihn in \"Gelöschte Elemente\".\n\nconst ENDSTATUS = Object.freeze(['Abgeschlossen', 'Ignoriert']);\nconst FEHLERLOG_TAGE = 90;\nconst MAX_VORGAENGE = 200;\nconst MAX_ENTWUERFE = 50;\nconst TAG = 86400000;\n\nfunction ms(t) {\n\tif (t === null || t === undefined || t === '') return NaN;\n\tconst x = new Date(t).getTime();\n\treturn Number.isFinite(x) ? x : NaN;\n}\n\n/**\n * @param {object} p\n * @param {string} p.jetzt\n * @param {object[]} p.vorgaenge  Zeilen aus epa_vorgaenge (mit updatedAt)\n * @param {object[]} p.freigaben  Zeilen aus epa_freigaben\n * @param {object} p.configs      kunde_id -> { aufbewahrung_tage, postfach, postfach_workflow_id } (auch inaktive Kunden)\n */\nfunction planen({ jetzt, vorgaenge, freigaben, configs, maxVorgaenge = MAX_VORGAENGE, maxEntwuerfe = MAX_ENTWUERFE }) {\n\tconst t = ms(jetzt);\n\tif (!Number.isFinite(t)) throw new Error(`Ungültiger Zeitpunkt \"${jetzt}\"`);\n\tconst ohneConfig = new Set();\n\tconst tage = (kunde) => {\n\t\tconst c = configs[kunde];\n\t\tconst n = c ? Number(c.aufbewahrung_tage) : NaN;\n\t\tif (!(n > 0)) {\n\t\t\tohneConfig.add(kunde);\n\t\t\treturn null;\n\t\t}\n\t\treturn n;\n\t};\n\n\t// Ersetzte Entwürfe, die noch im Postfach liegen\n\tconst offeneEntwuerfe = (freigaben || []).filter((f) => f && f.status === 'ersetzt' && f.entwurf_id && !f.entwurf_entfernt_am);\n\tconst entwuerfe = [];\n\tfor (const f of offeneEntwuerfe) {\n\t\tconst c = configs[f.kunde_id];\n\t\tif (!c || !c.postfach_workflow_id || !c.postfach) continue;\n\t\tif (entwuerfe.length >= maxEntwuerfe) break;\n\t\tentwuerfe.push({ kunde_id: f.kunde_id, vorgangs_id: f.vorgangs_id, freigabe_id: f.freigabe_id, entwurf_id: f.entwurf_id, postfach: c.postfach, postfach_workflow_id: c.postfach_workflow_id });\n\t}\n\tconst entwurfOffen = new Set(offeneEntwuerfe.map((f) => `${f.kunde_id}|${f.vorgangs_id}`));\n\n\t// Vorgänge nach Ablauf der Aufbewahrung\n\tconst zuLoeschen = [];\n\tlet zurueckgestellt = 0;\n\tfor (const v of vorgaenge || []) {\n\t\tif (!v || !ENDSTATUS.includes(v.status)) continue;\n\t\tconst n = tage(v.kunde_id);\n\t\tif (n === null) continue;\n\t\tconst stand = ms(v.updatedAt);\n\t\tif (!Number.isFinite(stand) || stand + n * TAG > t) continue;\n\t\t// Erst den alten Entwurf aus dem Postfach entfernen, dann die Freigabe (sonst ginge die Zuordnung verloren).\n\t\tif (entwurfOffen.has(`${v.kunde_id}|${v.vorgangs_id}`)) {\n\t\t\tzurueckgestellt += 1;\n\t\t\tcontinue;\n\t\t}\n\t\tzuLoeschen.push({ kunde_id: v.kunde_id, vorgangs_id: v.vorgangs_id });\n\t}\n\tconst vorgaengeListe = zuLoeschen.slice(0, maxVorgaenge);\n\tconst schluessel = new Set(vorgaengeListe.map((v) => `${v.kunde_id}|${v.vorgangs_id}`));\n\tconst freigabeIds = (freigaben || []).filter((f) => f && schluessel.has(`${f.kunde_id}|${f.vorgangs_id}`)).map((f) => ({ kunde_id: f.kunde_id, vorgangs_id: f.vorgangs_id, freigabe_id: f.freigabe_id }));\n\n\tconst mailGrenzen = Object.keys(configs).map((k) => ({ kunde_id: k, n: tage(k) })).filter((x) => x.n !== null)\n\t\t.map((x) => ({ kunde_id: x.kunde_id, grenze: new Date(t - x.n * TAG).toISOString() }));\n\n\treturn {\n\t\tvorgaenge: vorgaengeListe,\n\t\tfreigaben: freigabeIds,\n\t\tentwuerfe,\n\t\tmail_grenzen: mailGrenzen,\n\t\tfehler_grenze: new Date(t - FEHLERLOG_TAGE * TAG).toISOString(),\n\t\tzurueckgestellt,\n\t\tverschoben: Math.max(0, zuLoeschen.length - maxVorgaenge) + Math.max(0, offeneEntwuerfe.length - entwuerfe.length),\n\t\tohne_config: [...ohneConfig].sort(),\n\t};\n}\n\n/**\n * Darf der Entwurf gelöscht werden? Antwort von GET /messages/{id} mit fullResponse.\n * @returns {{ loeschen: boolean, erledigt: boolean, grund: string }}\n */\nfunction entwurfPruefen(antwort, freigabeId, eigenschaftId) {\n\tconst status = Number(antwort && antwort.statusCode);\n\tif (status === 404) return { loeschen: false, erledigt: true, grund: 'nicht_mehr_vorhanden' };\n\tif (status !== 200) return { loeschen: false, erledigt: false, grund: `http_${status || 'unbekannt'}` };\n\tconst b = (antwort && antwort.body) || {};\n\tif (b.isDraft !== true) return { loeschen: false, erledigt: true, grund: 'kein_entwurf' };\n\tconst prop = (b.singleValueExtendedProperties || []).find((p) => String(p.id).toLowerCase() === String(eigenschaftId).toLowerCase());\n\tif (!prop || prop.value !== freigabeId) return { loeschen: false, erledigt: true, grund: 'kennung_passt_nicht' };\n\treturn { loeschen: true, erledigt: true, grund: 'entwurf_geloescht' };\n}\n\nfunction zusammenfassung(plan) {\n\treturn {\n\t\tvorgaenge: plan.vorgaenge.length,\n\t\tfreigaben: plan.freigaben.length,\n\t\tentwuerfe: plan.entwuerfe.length,\n\t\tzurueckgestellt: plan.zurueckgestellt,\n\t\tverschoben: plan.verschoben,\n\t\tohne_config: plan.ohne_config,\n\t\tfehler_grenze: plan.fehler_grenze,\n\t};\n}\n\nmodule.exports = { ENDSTATUS, FEHLERLOG_TAGE, MAX_VORGAENGE, MAX_ENTWUERFE, planen, entwurfPruefen, zusammenfassung };\nreturn module.exports;\n})();\n// ===== Ende src/loeschen.js =====\n\n// ----- Node-Logik -----\nconst e = $('Bei Einzelaufruf').first().json;\nreturn [{ json: loeschen.entwurfPruefen($input.first().json, e.freigabe_id, \"String {00020329-0000-0000-C000-000000000046} Name EPA-Freigabe-ID\") }];\n"
+      },
+      "id": "5d5cd067-6dd0-4ca3-a07e-969abbee2ae6",
+      "name": "Löschen prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0935ade7-feaf-418d-a699-b60ae3197c98",
+              "leftValue": "={{ $json.loeschen }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0768053a-e530-4163-a095-9f4825cd4456",
+      "name": "Entwurf löschen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        880,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.entwurf_id) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "options": {}
+      },
+      "id": "b1646642-23c0-47fc-a3d0-724ae676db18",
+      "name": "Entwurf löschen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        1540
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst p = $('Löschen prüfen').first().json;\nreturn [{ json: { geloescht: p.loeschen, erledigt: p.erledigt, grund: p.grund } }];\n"
+      },
+      "id": "f628696b-542f-4e62-a08d-b49253e976af",
+      "name": "Löschung melden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        1600
+      ]
     }
   ],
   "connections": {
@@ -1120,6 +1346,82 @@
         [
           {
             "node": "Entwurf abrufen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Posteingang prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Entwurf zum Löschen abrufen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Posteingang prüfen": {
+      "main": [
+        [
+          {
+            "node": "Verbindung melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entwurf zum Löschen abrufen": {
+      "main": [
+        [
+          {
+            "node": "Löschen prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Löschen prüfen": {
+      "main": [
+        [
+          {
+            "node": "Entwurf löschen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entwurf löschen?": {
+      "main": [
+        [
+          {
+            "node": "Entwurf löschen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Löschung melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entwurf löschen": {
+      "main": [
+        [
+          {
+            "node": "Löschung melden",
             "type": "main",
             "index": 0
           }

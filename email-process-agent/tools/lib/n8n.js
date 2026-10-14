@@ -123,12 +123,12 @@ class Workflow {
 	}
 
 	/**
-	 * Data-Table-Node. op: get | insert | update. bedingungen: [[spalte, bedingung, wert], ...]
+	 * Data-Table-Node. op: get | insert | update | upsert | deleteRows. bedingungen: [[spalte, bedingung, wert], ...]
 	 * Schreibende Operationen übernehmen das Eingabe-Item 1:1 als Zeile (autoMapInputData).
 	 */
 	tabelle(name, position, op, tabelle, { bedingungen = [], match = 'allConditions', alle = false, limit = 1, sortierung } = {}, extra = {}) {
 		const p = { resource: 'row', operation: op, dataTableId: { __rl: true, mode: 'name', value: tabelle } };
-		if (op === 'get' || op === 'update' || op === 'deleteRows') {
+		if (op === 'get' || op === 'update' || op === 'upsert' || op === 'deleteRows') {
 			p.matchType = match;
 			p.filters = { conditions: bedingungen.map(([keyName, condition, keyValue]) => (keyValue === undefined ? { keyName, condition } : { keyName, condition, keyValue })) };
 		}
@@ -141,7 +141,7 @@ class Workflow {
 				p.orderByDirection = sortierung[1];
 			}
 		}
-		if (op === 'insert' || op === 'update') {
+		if (op === 'insert' || op === 'update' || op === 'upsert') {
 			p.columns = { mappingMode: 'autoMapInputData', value: {}, matchingColumns: [], schema: [] };
 			p.options = {};
 		}

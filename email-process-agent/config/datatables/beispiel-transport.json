@@ -34,7 +34,8 @@
    "freigabe_erinnerung_stunden": 4,
    "freigabe_ablauf_stunden": 48,
    "postfach_workflow_id": "<ID_DES_POSTFACH_WORKFLOWS>",
-   "freigabe_basis_url": ""
+   "freigabe_basis_url": "",
+   "stille_alarm_stunden": 24
   }
  ],
  "epa_config_pflichtfelder": [

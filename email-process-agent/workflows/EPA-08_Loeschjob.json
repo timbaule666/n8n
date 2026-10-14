@@ -1,0 +1,1165 @@
+{
+  "name": "EPA-08 Löschjob",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## EPA-08 Löschjob (Datenschutz, Phase F)\n**Zweck:** Löscht Daten nach Ablauf der Aufbewahrung (src/loeschen.js). Nichts wird gelöscht, was noch bearbeitet wird.\n**Vorgänge:** nur Status \"Abgeschlossen\" oder \"Ignoriert\" und seit aufbewahrung_tage (Config je Kunde) unverändert. Danach die zugehörigen Freigaben, Freigabe-Links und Audit-Einträge. Offene und eskalierte Vorgänge bleiben immer erhalten.\n**Weitere Daten:** Dedupe-Einträge (epa_verarbeitete_mails) nach aufbewahrung_tage, Fehlerlog nach 90 Tagen.\n**Postfach:** Ersetzte Rückfrage-Entwürfe (nie gesendet, nicht mehr gültig) werden über die EPA-00-Kopie gelöscht, aber nur, wenn es nachweislich ein Entwurf mit der passenden Freigabe-Kennung ist (landet in \"Gelöschte Elemente\"). Eingegangene Mails werden nie gelöscht.\n**Grenzen je Lauf:** 200 Vorgänge, 50 Entwürfe; der Rest folgt in der nächsten Nacht. Ergebnis (nur Zähler) in epa_system_status, Zeile \"loeschjob\".\n**Trigger:** täglich 02:15 (Europe/Berlin). Zusätzlich Aufruf mit \"jetzt\" und \"probelauf\" (true = nur anzeigen, nichts löschen).\n**Nicht hier:** n8n-Ausführungsdaten (enthalten Mail-Inhalte) über die Aufbewahrung in den n8n-Einstellungen begrenzen, siehe Inbetriebnahme.",
+        "width": 960,
+        "height": 420,
+        "color": 7
+      },
+      "id": "57c458c5-cd8a-4f76-a207-8df3e8b61309",
+      "name": "Notiz Zweck",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -120,
+        -620
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "15 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "b196ed83-89a8-4595-acd0-18a6fe6fde86",
+      "name": "Täglich nachts",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "jetzt",
+              "type": "string"
+            },
+            {
+              "name": "probelauf",
+              "type": "boolean"
+            }
+          ]
+        }
+      },
+      "id": "6d86fce8-e757-469e-a533-dca2bf2b69d7",
+      "name": "Bei Aufruf (Test/manuell)",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId),\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst zeilen = [\n\t\t`<b>EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)}</b> (${escapeHtml(e.klasse)})`,\n\t\t`Workflow: ${escapeHtml(e.workflow_name || e.workflow_id || '?')}`,\n\t\t`Node: ${escapeHtml(e.node || '?')}`,\n\t\t`Vorgang: ${escapeHtml(e.vorgangs_id || '–')}`,\n\t\t`Meldung: ${escapeHtml(e.meldung || '–')}`,\n\t\te.retrybar ? 'Hinweis: vorübergehender Fehler, erneuter Versuch kann helfen.' : 'Hinweis: dauerhafter Fehler, bitte prüfen.',\n\t];\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n\n// ----- Node-Logik -----\nconst e = $input.first().json || {};\nlet jetzt = new Date().toISOString();\nif (typeof e.jetzt === 'string' && e.jetzt.trim()) {\n\tif (!Number.isFinite(new Date(e.jetzt).getTime())) throw fehlerklassen.epaFehler('UNGUELTIGES_FORMAT', null, 'Eingabe \"jetzt\" ist kein gültiger Zeitpunkt');\n\tjetzt = new Date(e.jetzt).toISOString();\n}\nreturn [{ json: { jetzt, probelauf: e.probelauf === true } }];\n"
+      },
+      "id": "ebddc065-1dd7-4835-a4cd-4808eebe1be7",
+      "name": "Lauf vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_vorgaenge"
+        },
+        "matchType": "anyCondition",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "Abgeschlossen"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "Ignoriert"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "ba904e64-127e-401f-afec-2bc4efab268d",
+      "name": "Abgeschlossene Vorgänge lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigaben"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": []
+        },
+        "returnAll": true
+      },
+      "id": "eec72f8b-4f41-40ea-a57a-edaf0c372454",
+      "name": "Freigaben lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_config_allgemein"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": []
+        },
+        "returnAll": true
+      },
+      "id": "d54bb7f6-8a51-484f-a1e7-1d1e2600c5e3",
+      "name": "Configs lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/loeschen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst loeschen = (() => {\nconst module = { exports: {} };\n// Lösch- und Aufräumjob (Masterprompt 7, Bauplan Datenschutz): Daten nur so lange wie nötig.\n// - Vorgänge in einem Endstatus (\"Abgeschlossen\", \"Ignoriert\") nach aufbewahrung_tage seit der letzten Änderung,\n//   samt Audit, Freigaben und Freigabe-Links. Offene oder eskalierte Vorgänge werden nie automatisch gelöscht.\n// - Dedupe-Einträge (epa_verarbeitete_mails) nach aufbewahrung_tage.\n// - Fehlerlog nach 90 Tagen (enthält nur IDs und technische Meldungen).\n// - Ersetzte Rückfrage-Entwürfe im Postfach (nie gesendet, nie mehr gültig). Gelöscht wird nur, was nachweislich\n//   ein Entwurf ist und die passende Freigabe-Kennung trägt. Outlook verschiebt ihn in \"Gelöschte Elemente\".\n\nconst ENDSTATUS = Object.freeze(['Abgeschlossen', 'Ignoriert']);\nconst FEHLERLOG_TAGE = 90;\nconst MAX_VORGAENGE = 200;\nconst MAX_ENTWUERFE = 50;\nconst TAG = 86400000;\n\nfunction ms(t) {\n\tif (t === null || t === undefined || t === '') return NaN;\n\tconst x = new Date(t).getTime();\n\treturn Number.isFinite(x) ? x : NaN;\n}\n\n/**\n * @param {object} p\n * @param {string} p.jetzt\n * @param {object[]} p.vorgaenge  Zeilen aus epa_vorgaenge (mit updatedAt)\n * @param {object[]} p.freigaben  Zeilen aus epa_freigaben\n * @param {object} p.configs      kunde_id -> { aufbewahrung_tage, postfach, postfach_workflow_id } (auch inaktive Kunden)\n */\nfunction planen({ jetzt, vorgaenge, freigaben, configs, maxVorgaenge = MAX_VORGAENGE, maxEntwuerfe = MAX_ENTWUERFE }) {\n\tconst t = ms(jetzt);\n\tif (!Number.isFinite(t)) throw new Error(`Ungültiger Zeitpunkt \"${jetzt}\"`);\n\tconst ohneConfig = new Set();\n\tconst tage = (kunde) => {\n\t\tconst c = configs[kunde];\n\t\tconst n = c ? Number(c.aufbewahrung_tage) : NaN;\n\t\tif (!(n > 0)) {\n\t\t\tohneConfig.add(kunde);\n\t\t\treturn null;\n\t\t}\n\t\treturn n;\n\t};\n\n\t// Ersetzte Entwürfe, die noch im Postfach liegen\n\tconst offeneEntwuerfe = (freigaben || []).filter((f) => f && f.status === 'ersetzt' && f.entwurf_id && !f.entwurf_entfernt_am);\n\tconst entwuerfe = [];\n\tfor (const f of offeneEntwuerfe) {\n\t\tconst c = configs[f.kunde_id];\n\t\tif (!c || !c.postfach_workflow_id || !c.postfach) continue;\n\t\tif (entwuerfe.length >= maxEntwuerfe) break;\n\t\tentwuerfe.push({ kunde_id: f.kunde_id, vorgangs_id: f.vorgangs_id, freigabe_id: f.freigabe_id, entwurf_id: f.entwurf_id, postfach: c.postfach, postfach_workflow_id: c.postfach_workflow_id });\n\t}\n\tconst entwurfOffen = new Set(offeneEntwuerfe.map((f) => `${f.kunde_id}|${f.vorgangs_id}`));\n\n\t// Vorgänge nach Ablauf der Aufbewahrung\n\tconst zuLoeschen = [];\n\tlet zurueckgestellt = 0;\n\tfor (const v of vorgaenge || []) {\n\t\tif (!v || !ENDSTATUS.includes(v.status)) continue;\n\t\tconst n = tage(v.kunde_id);\n\t\tif (n === null) continue;\n\t\tconst stand = ms(v.updatedAt);\n\t\tif (!Number.isFinite(stand) || stand + n * TAG > t) continue;\n\t\t// Erst den alten Entwurf aus dem Postfach entfernen, dann die Freigabe (sonst ginge die Zuordnung verloren).\n\t\tif (entwurfOffen.has(`${v.kunde_id}|${v.vorgangs_id}`)) {\n\t\t\tzurueckgestellt += 1;\n\t\t\tcontinue;\n\t\t}\n\t\tzuLoeschen.push({ kunde_id: v.kunde_id, vorgangs_id: v.vorgangs_id });\n\t}\n\tconst vorgaengeListe = zuLoeschen.slice(0, maxVorgaenge);\n\tconst schluessel = new Set(vorgaengeListe.map((v) => `${v.kunde_id}|${v.vorgangs_id}`));\n\tconst freigabeIds = (freigaben || []).filter((f) => f && schluessel.has(`${f.kunde_id}|${f.vorgangs_id}`)).map((f) => ({ kunde_id: f.kunde_id, vorgangs_id: f.vorgangs_id, freigabe_id: f.freigabe_id }));\n\n\tconst mailGrenzen = Object.keys(configs).map((k) => ({ kunde_id: k, n: tage(k) })).filter((x) => x.n !== null)\n\t\t.map((x) => ({ kunde_id: x.kunde_id, grenze: new Date(t - x.n * TAG).toISOString() }));\n\n\treturn {\n\t\tvorgaenge: vorgaengeListe,\n\t\tfreigaben: freigabeIds,\n\t\tentwuerfe,\n\t\tmail_grenzen: mailGrenzen,\n\t\tfehler_grenze: new Date(t - FEHLERLOG_TAGE * TAG).toISOString(),\n\t\tzurueckgestellt,\n\t\tverschoben: Math.max(0, zuLoeschen.length - maxVorgaenge) + Math.max(0, offeneEntwuerfe.length - entwuerfe.length),\n\t\tohne_config: [...ohneConfig].sort(),\n\t};\n}\n\n/**\n * Darf der Entwurf gelöscht werden? Antwort von GET /messages/{id} mit fullResponse.\n * @returns {{ loeschen: boolean, erledigt: boolean, grund: string }}\n */\nfunction entwurfPruefen(antwort, freigabeId, eigenschaftId) {\n\tconst status = Number(antwort && antwort.statusCode);\n\tif (status === 404) return { loeschen: false, erledigt: true, grund: 'nicht_mehr_vorhanden' };\n\tif (status !== 200) return { loeschen: false, erledigt: false, grund: `http_${status || 'unbekannt'}` };\n\tconst b = (antwort && antwort.body) || {};\n\tif (b.isDraft !== true) return { loeschen: false, erledigt: true, grund: 'kein_entwurf' };\n\tconst prop = (b.singleValueExtendedProperties || []).find((p) => String(p.id).toLowerCase() === String(eigenschaftId).toLowerCase());\n\tif (!prop || prop.value !== freigabeId) return { loeschen: false, erledigt: true, grund: 'kennung_passt_nicht' };\n\treturn { loeschen: true, erledigt: true, grund: 'entwurf_geloescht' };\n}\n\nfunction zusammenfassung(plan) {\n\treturn {\n\t\tvorgaenge: plan.vorgaenge.length,\n\t\tfreigaben: plan.freigaben.length,\n\t\tentwuerfe: plan.entwuerfe.length,\n\t\tzurueckgestellt: plan.zurueckgestellt,\n\t\tverschoben: plan.verschoben,\n\t\tohne_config: plan.ohne_config,\n\t\tfehler_grenze: plan.fehler_grenze,\n\t};\n}\n\nmodule.exports = { ENDSTATUS, FEHLERLOG_TAGE, MAX_VORGAENGE, MAX_ENTWUERFE, planen, entwurfPruefen, zusammenfassung };\nreturn module.exports;\n})();\n// ===== Ende src/loeschen.js =====\n\n// ----- Node-Logik -----\n// Auch inaktive Kunden: die Aufbewahrungsfrist gilt weiter. Ohne gültige Frist wird für den Kunden nichts gelöscht.\nconst l = $('Lauf vorbereiten').first().json;\nconst zeilen = (n) => $(n).all().map((i) => i.json).filter((z) => z && z.id !== undefined);\nconst configs = {};\nfor (const c of zeilen('Configs lesen')) {\n\tconst pwf = /^[A-Za-z0-9]{8,32}$/.test(String(c.postfach_workflow_id || '')) ? c.postfach_workflow_id : null;\n\tconst postfach = /^[^@<>\\s]+@[^@<>\\s]+$/.test(String(c.postfach || '')) ? String(c.postfach).toLowerCase() : null;\n\tconfigs[c.kunde_id] = { aufbewahrung_tage: Number(c.aufbewahrung_tage), postfach, postfach_workflow_id: pwf };\n}\nconst p = loeschen.planen({ jetzt: l.jetzt, vorgaenge: zeilen('Abgeschlossene Vorgänge lesen'), freigaben: zeilen('Freigaben lesen'), configs });\nconst grenzen = {};\nfor (const g of p.mail_grenzen) grenzen[g.kunde_id] = g.grenze;\nreturn [{ json: { ...p, grenzen, probelauf: l.probelauf, zusammenfassung: loeschen.zusammenfassung(p) } }];\n"
+      },
+      "id": "c05f881b-7a0b-4e36-a70d-1e7103079bed",
+      "name": "Löschplan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d15d4164-bce5-470b-af3a-bea928400411",
+              "leftValue": "={{ $json.probelauf }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b15f24b9-ae02-4c31-a4a2-dc8610c5564a",
+      "name": "Probelauf?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst p = $('Löschplan').first().json;\nreturn [{ json: { ergebnis: 'probelauf', ...p.zusammenfassung, vorgaenge_ids: p.vorgaenge.map((v) => v.vorgangs_id), entwuerfe_freigaben: p.entwuerfe.map((e) => e.freigabe_id) } }];\n"
+      },
+      "id": "672be9b9-cde6-4e0d-ab53-59d08cec70a5",
+      "name": "Ergebnis: Probelauf",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst p = $('Löschplan').first().json;\nreturn p.entwuerfe.length ? p.entwuerfe.map((e) => ({ json: { ...e, vorhanden: true } })) : [{ json: { vorhanden: false } }];\n"
+      },
+      "id": "880c6a20-ab71-4053-a0f6-f61d5c46aac0",
+      "name": "Entwürfe aufteilen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7a1ec8e0-07df-43cb-aa0c-871bfaecdaff",
+              "leftValue": "={{ $json.vorhanden }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d501eae2-3fd0-48df-aad5-e453d8cc14e8",
+      "name": "Entwürfe zu löschen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1760,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.postfach_workflow_id }}"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "aktion": "entwurf_loeschen",
+            "postfach": "={{ $json.postfach }}",
+            "graph_id": "",
+            "internet_message_id": "",
+            "entwurf_id": "={{ $json.entwurf_id }}",
+            "freigabe_id": "={{ $json.freigabe_id }}",
+            "vorgangs_id": "={{ $json.vorgangs_id }}",
+            "html": ""
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "aktion",
+              "displayName": "aktion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "postfach",
+              "displayName": "postfach",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "graph_id",
+              "displayName": "graph_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "internet_message_id",
+              "displayName": "internet_message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "entwurf_id",
+              "displayName": "entwurf_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "freigabe_id",
+              "displayName": "freigabe_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "html",
+              "displayName": "html",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "915a6669-631b-413a-a076-5fd0986c1ccf",
+      "name": "Entwurf im Postfach löschen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1980,
+        -100
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\n// Erledigt = gelöscht, schon weg oder kein passender Entwurf (dann nie wieder anfassen). Fehler: nächste Nacht erneut.\nconst auftraege = $('Entwürfe aufteilen').all().map((i) => i.json);\nconst jetzt = new Date().toISOString();\nconst erledigt = $input.all().map((it, i) => ({ r: it.json || {}, a: auftraege[i] })).filter((x) => x.a && !x.r.error && x.r.erledigt === true);\nreturn erledigt.length ? erledigt.map((x) => ({ json: { freigabe_id: x.a.freigabe_id, entwurf_entfernt_am: jetzt } })) : [{ json: { freigabe_id: '__keiner__', entwurf_entfernt_am: jetzt } }];\n"
+      },
+      "id": "b9fe331d-41ee-4e2a-a982-e2009c9b7b70",
+      "name": "Entwürfe vermerken (Daten)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigaben"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "freigabe_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.freigabe_id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "ersetzt"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "1d7ac611-dac9-41cd-aed0-640cddfcc18c",
+      "name": "Entwürfe vermerken",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2420,
+        -100
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst p = $('Löschplan').first().json;\nconst liste = p.vorgaenge.map((v) => ({ json: { ...v, grenze: p.grenzen[v.kunde_id] } }));\nreturn liste.length ? liste : [{ json: { kunde_id: '__keiner__', vorgangs_id: '__keiner__', grenze: new Date(0).toISOString() } }];\n"
+      },
+      "id": "45ecbcc3-f6c7-4c7e-a800-1396be772737",
+      "name": "Vorgänge (Aufträge)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        0
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_vorgaenge"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.kunde_id }}"
+            },
+            {
+              "keyName": "vorgangs_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.vorgangs_id }}"
+            },
+            {
+              "keyName": "updatedAt",
+              "condition": "lt",
+              "keyValue": "={{ $json.grenze }}"
+            }
+          ]
+        }
+      },
+      "id": "e328f9f6-72fc-4553-a3a3-8308388becdf",
+      "name": "Vorgänge löschen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2860,
+        0
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst weg = new Set($('Vorgänge löschen').all().map((i) => i.json).filter((z) => z && z.id !== undefined).map((z) => z.kunde_id + '|' + z.vorgangs_id));\nconst p = $('Löschplan').first().json;\nconst liste = p.freigaben.filter((f) => weg.has(f.kunde_id + '|' + f.vorgangs_id)).map((f) => ({ json: { kunde_id: f.kunde_id, freigabe_id: f.freigabe_id } }));\nreturn liste.length ? liste : [{ json: { kunde_id: '__keiner__', freigabe_id: '__keiner__' } }];\n"
+      },
+      "id": "ad7b2d8e-100f-439b-aac3-aa340b33dddd",
+      "name": "Links (Aufträge)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3080,
+        0
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigabe_tokens"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.kunde_id }}"
+            },
+            {
+              "keyName": "freigabe_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.freigabe_id }}"
+            }
+          ]
+        }
+      },
+      "id": "ac111f7b-d437-4995-a13e-4ed52ab2cdcf",
+      "name": "Links löschen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        3300,
+        0
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst weg = new Set($('Vorgänge löschen').all().map((i) => i.json).filter((z) => z && z.id !== undefined).map((z) => z.kunde_id + '|' + z.vorgangs_id));\nconst liste = [...weg].map((k) => { const [kunde_id, vorgangs_id] = k.split('|'); return { json: { kunde_id, vorgangs_id } }; });\nreturn liste.length ? liste : [{ json: { kunde_id: '__keiner__', vorgangs_id: '__keiner__' } }];\n"
+      },
+      "id": "d7839287-1a80-49fc-a296-ee88a5bf228a",
+      "name": "Freigaben (Aufträge)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3520,
+        0
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigaben"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.kunde_id }}"
+            },
+            {
+              "keyName": "vorgangs_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.vorgangs_id }}"
+            }
+          ]
+        }
+      },
+      "id": "4f082f4d-3bc7-4b8b-a01c-cf9a0ccc63f4",
+      "name": "Freigaben löschen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        3740,
+        0
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst weg = new Set($('Vorgänge löschen').all().map((i) => i.json).filter((z) => z && z.id !== undefined).map((z) => z.kunde_id + '|' + z.vorgangs_id));\nconst liste = [...weg].map((k) => { const [kunde_id, vorgangs_id] = k.split('|'); return { json: { kunde_id, vorgangs_id } }; });\nreturn liste.length ? liste : [{ json: { kunde_id: '__keiner__', vorgangs_id: '__keiner__' } }];\n"
+      },
+      "id": "732cdfe8-a072-4b27-af19-98b24c7b8043",
+      "name": "Audit (Aufträge)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3960,
+        0
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_audit_log"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.kunde_id }}"
+            },
+            {
+              "keyName": "vorgangs_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.vorgangs_id }}"
+            }
+          ]
+        }
+      },
+      "id": "8c8a38b5-7fcc-4caf-ad26-a1c1e3a2acfb",
+      "name": "Audit löschen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        4180,
+        0
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst p = $('Löschplan').first().json;\nconst liste = p.mail_grenzen.map((g) => ({ json: g }));\nreturn liste.length ? liste : [{ json: { kunde_id: '__keiner__', grenze: new Date(0).toISOString() } }];\n"
+      },
+      "id": "bdff05d5-9120-45c4-ac48-b9c7d086c03f",
+      "name": "Dedupe (Aufträge)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4400,
+        0
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_verarbeitete_mails"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.kunde_id }}"
+            },
+            {
+              "keyName": "createdAt",
+              "condition": "lt",
+              "keyValue": "={{ $json.grenze }}"
+            }
+          ]
+        }
+      },
+      "id": "1481c6e6-5dac-4d6b-a20e-4b929224a897",
+      "name": "Dedupe-Einträge löschen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        4620,
+        0
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: { grenze: $('Löschplan').first().json.fehler_grenze } }];\n"
+      },
+      "id": "fe879112-ac4d-4a28-ad21-83df894b421b",
+      "name": "Fehlerlog (Auftrag)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4840,
+        0
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_fehler_log"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "createdAt",
+              "condition": "lt",
+              "keyValue": "={{ $json.grenze }}"
+            }
+          ]
+        }
+      },
+      "id": "4d34d82a-db6a-4572-aed9-ca9b22f0a254",
+      "name": "Fehlerlog löschen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        5060,
+        0
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\n// Nur Zähler speichern, keine Inhalte.\nconst zahl = (n) => $(n).isExecuted ? $(n).all().filter((i) => i.json && i.json.id !== undefined).length : 0;\nconst p = $('Löschplan').first().json;\nconst ergebnis = {\n\tvorgaenge: zahl('Vorgänge löschen'), freigaben: zahl('Freigaben löschen'), links: zahl('Links löschen'), audit: zahl('Audit löschen'),\n\tdedupe: zahl('Dedupe-Einträge löschen'), fehlerlog: zahl('Fehlerlog löschen'), entwuerfe: zahl('Entwürfe vermerken'),\n\tzurueckgestellt: p.zurueckgestellt, verschoben: p.verschoben, ohne_config: p.ohne_config,\n};\nreturn [{ json: { schluessel: 'loeschjob', letzter_lauf: new Date().toISOString(), letztes_ergebnis: JSON.stringify(ergebnis) } }];\n"
+      },
+      "id": "c5ba2c40-c5b5-4d55-abef-63893ad74ab0",
+      "name": "Lauf abschließen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5280,
+        0
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_system_status"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "schluessel",
+              "condition": "eq",
+              "keyValue": "loeschjob"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "bee5f6cd-690d-46e5-a573-1aa6b53ba7b7",
+      "name": "Ergebnis vermerken",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        5500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: { ergebnis: 'geloescht', ...JSON.parse($('Lauf abschließen').first().json.letztes_ergebnis) } }];\n"
+      },
+      "id": "168cdc92-ecd5-457e-a278-08f7a67f27fa",
+      "name": "Ergebnis melden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5720,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Täglich nachts": {
+      "main": [
+        [
+          {
+            "node": "Lauf vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bei Aufruf (Test/manuell)": {
+      "main": [
+        [
+          {
+            "node": "Lauf vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lauf vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Abgeschlossene Vorgänge lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Abgeschlossene Vorgänge lesen": {
+      "main": [
+        [
+          {
+            "node": "Freigaben lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigaben lesen": {
+      "main": [
+        [
+          {
+            "node": "Configs lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configs lesen": {
+      "main": [
+        [
+          {
+            "node": "Löschplan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Löschplan": {
+      "main": [
+        [
+          {
+            "node": "Probelauf?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Probelauf?": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis: Probelauf",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Entwürfe aufteilen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entwürfe aufteilen": {
+      "main": [
+        [
+          {
+            "node": "Entwürfe zu löschen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entwürfe zu löschen?": {
+      "main": [
+        [
+          {
+            "node": "Entwurf im Postfach löschen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Vorgänge (Aufträge)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entwurf im Postfach löschen": {
+      "main": [
+        [
+          {
+            "node": "Entwürfe vermerken (Daten)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entwürfe vermerken (Daten)": {
+      "main": [
+        [
+          {
+            "node": "Entwürfe vermerken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entwürfe vermerken": {
+      "main": [
+        [
+          {
+            "node": "Vorgänge (Aufträge)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorgänge (Aufträge)": {
+      "main": [
+        [
+          {
+            "node": "Vorgänge löschen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorgänge löschen": {
+      "main": [
+        [
+          {
+            "node": "Links (Aufträge)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Links (Aufträge)": {
+      "main": [
+        [
+          {
+            "node": "Links löschen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Links löschen": {
+      "main": [
+        [
+          {
+            "node": "Freigaben (Aufträge)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigaben (Aufträge)": {
+      "main": [
+        [
+          {
+            "node": "Freigaben löschen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigaben löschen": {
+      "main": [
+        [
+          {
+            "node": "Audit (Aufträge)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audit (Aufträge)": {
+      "main": [
+        [
+          {
+            "node": "Audit löschen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audit löschen": {
+      "main": [
+        [
+          {
+            "node": "Dedupe (Aufträge)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedupe (Aufträge)": {
+      "main": [
+        [
+          {
+            "node": "Dedupe-Einträge löschen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedupe-Einträge löschen": {
+      "main": [
+        [
+          {
+            "node": "Fehlerlog (Auftrag)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fehlerlog (Auftrag)": {
+      "main": [
+        [
+          {
+            "node": "Fehlerlog löschen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fehlerlog löschen": {
+      "main": [
+        [
+          {
+            "node": "Lauf abschließen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lauf abschließen": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis vermerken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ergebnis vermerken": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "timezone": "Europe/Berlin"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

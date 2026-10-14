@@ -16,6 +16,10 @@ function mockServer({ port = 0 } = {}) {
 		sendeFehler: null, // 'vorher' = 500 ohne Versand, 'nachher' = Versand erfolgt, Antwort trotzdem 500
 		chats: [], // { freigeber, chat_id, content }
 		chatFehlerFuer: new Set(), // Freigeber, deren Chat nicht geöffnet werden kann (403)
+		meFehler: null, // HTTP-Status für GET /me (Watchdog: Teams-Credential ungültig)
+		modelleFehler: null, // HTTP-Status für GET /v1/models (Watchdog: KI-Anbieter)
+		postfachFehler: null, // HTTP-Status für GET .../mailFolders/inbox (Watchdog: Outlook-Credential)
+		geloescht: [], // per DELETE entfernte Nachrichten-IDs
 		zaehler: 0,
 	};
 
@@ -56,7 +60,7 @@ function mockServer({ port = 0 } = {}) {
 
 	function teams(req, url, body, res, json) {
 		const pfad = url.pathname.replace(/^\/graph\/v1\.0/, '');
-		if (pfad === '/me' && req.method === 'GET') return json(200, { id: 'dienstkonto-id' });
+		if (pfad === '/me' && req.method === 'GET') return zustand.meFehler ? json(zustand.meFehler, { error: { code: 'InvalidAuthenticationToken', message: 'Mock' } }) : json(200, { id: 'dienstkonto-id' });
 		if (pfad === '/chats' && req.method === 'POST') {
 			const m = (body.members || []).map((x) => String(x['user@odata.bind'] || '').match(/users\('([^']+)'\)/)).filter(Boolean).map((x) => x[1].replace(/''/g, "'"));
 			const freigeber = m.find((x) => x !== 'dienstkonto-id');
@@ -95,6 +99,9 @@ function mockServer({ port = 0 } = {}) {
 			const treffer = zustand.gesendet.filter((d) => m && d.props['EPA-Freigabe-ID'] === m[1]);
 			return json(200, { value: treffer.map((d) => ({ id: 'sent-' + d.id, internetMessageId: d.internetMessageId })) });
 		}
+		if (teile[5] === 'mailFolders' && teile[6] === 'inbox' && teile.length === 7) {
+			return zustand.postfachFehler ? json(zustand.postfachFehler, { error: { code: 'ErrorAccessDenied', message: 'Mock' } }) : json(200, { id: 'inbox' });
+		}
 		if (teile[5] === 'mailFolders') return json(200, { value: [{ id: 'ordner-archiv', displayName: 'EPA-Archiv' }, { id: 'ordner-x', displayName: 'Anderes' }] });
 		if (teile[5] === 'messages' && teile.length === 6 && req.method === 'GET') {
 			const m = filter.match(/^internetMessageId eq '(.*)'$/);
@@ -103,9 +110,18 @@ function mockServer({ port = 0 } = {}) {
 		}
 		const entwurf = zustand.entwuerfe.get(teile[6]);
 		if (entwurf) {
+			if (entwurf.geloescht) return json(404, { error: { code: 'ErrorItemNotFound' } });
 			if (teile.length === 7 && req.method === 'GET') {
 				if (entwurf.gesendet) return json(404, { error: { code: 'ErrorItemNotFound' } });
-				return json(200, { id: entwurf.id, isDraft: true, internetMessageId: entwurf.internetMessageId });
+				const props = /singleValueExtendedProperties/.test(url.searchParams.get('$expand') || '') && entwurf.props['EPA-Freigabe-ID']
+					? { singleValueExtendedProperties: [{ id: 'String {00020329-0000-0000-c000-000000000046} Name EPA-Freigabe-ID', value: entwurf.props['EPA-Freigabe-ID'] }] } : {};
+				return json(200, { id: entwurf.id, isDraft: true, internetMessageId: entwurf.internetMessageId, ...props });
+			}
+			if (teile.length === 7 && req.method === 'DELETE') {
+				entwurf.geloescht = true;
+				zustand.geloescht.push(entwurf.id);
+				res.writeHead(204);
+				return res.end();
 			}
 			if (teile.length === 7 && req.method === 'PATCH') {
 				if (entwurf.gesendet) return json(404, { error: { code: 'ErrorItemNotFound' } });
@@ -128,6 +144,11 @@ function mockServer({ port = 0 } = {}) {
 		const eintrag = zustand.graphMails.get(teile[6]);
 		if (teile[5] !== 'messages' || !eintrag) return json(404, { error: { code: 'ErrorItemNotFound', message: 'not found' } });
 		if (teile.length === 7 && req.method === 'GET') return json(200, eintrag.mail);
+		if (teile.length === 7 && req.method === 'DELETE') {
+			zustand.geloescht.push(teile[6]);
+			res.writeHead(204);
+			return res.end();
+		}
 		if (teile[7] === 'createReply' && req.method === 'POST') {
 			const id = 'draft-' + (++zustand.zaehler);
 			const d = { id, subject: 'RE: ' + eintrag.mail.subject, body: { contentType: 'HTML', content: '<p>Zitat</p>' }, toRecipients: [eintrag.mail.from], internetMessageId: '<' + id + '@spedition.example>', isDraft: true, props: {}, gesendet: false, patches: 0, zu: teile[6] };
@@ -163,6 +184,10 @@ function mockServer({ port = 0 } = {}) {
 			}
 			const url = new URL(req.url, 'http://127.0.0.1');
 			if (url.pathname === '/v1/chat/completions' && req.method === 'POST') return llm(req, body, res);
+			if (url.pathname === '/v1/models' && req.method === 'GET') {
+				res.writeHead(zustand.modelleFehler || 200, { 'content-type': 'application/json' });
+				return res.end(JSON.stringify(zustand.modelleFehler ? { error: { message: 'Mock-Fehler' } } : { data: [{ id: 'mock-modell' }] }));
+			}
 			if (url.pathname.startsWith('/graph/v1.0/')) return graph(req, url, body, res);
 			res.writeHead(404);
 			res.end();

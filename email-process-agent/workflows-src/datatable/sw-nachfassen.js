@@ -12,6 +12,8 @@ function existiert(ausdruck) {
 
 module.exports = function () {
 	const wf = new Workflow('EPA SW Nachfassen');
+	// Härtung (M6): Erfolgreiche Ausführungen enthalten Klartext-Links bzw. Mail-Text und werden nicht gespeichert.
+	wf.settings.saveDataSuccessExecution = 'none';
 
 	wf.notiz('Notiz Zweck', [-80, -560], [
 		'## EPA SW Nachfassen (Phase E, eine Aufgabe)',

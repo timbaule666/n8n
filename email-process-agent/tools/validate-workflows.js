@@ -33,7 +33,8 @@ function pruefeWorkflow(json, alleNamen) {
 		if (n.type === 'n8n-nodes-base.dataTable') {
 			const t = n.parameters.dataTableId;
 			if (!t || t.mode !== 'name' || !/^epa_[a-z_]+$/.test(t.value)) fehler.push(`${n.name}: Data Table muss per Name (epa_…) referenziert sein`);
-			if (['update'].includes(n.parameters.operation) && !(n.parameters.filters && n.parameters.filters.conditions.length)) fehler.push(`${n.name}: Update ohne Bedingung`);
+			if (['update', 'upsert', 'deleteRows'].includes(n.parameters.operation) && !(n.parameters.filters && n.parameters.filters.conditions.length)) fehler.push(`${n.name}: ${n.parameters.operation} ohne Bedingung`);
+			if (n.parameters.operation === 'deleteRows' && n.parameters.matchType !== 'allConditions') fehler.push(`${n.name}: Löschen nur mit "alle Bedingungen"`);
 		}
 		if (n.type === 'n8n-nodes-base.executeWorkflow') {
 			const w = n.parameters.workflowId;
@@ -60,6 +61,31 @@ function pruefeWorkflow(json, alleNamen) {
 		if (n.type !== 'n8n-nodes-base.stickyNote' && !verbunden.has(n.name)) fehler.push(`${n.name}: nicht verbunden`);
 	}
 	if (!json.nodes.some((n) => n.type === 'n8n-nodes-base.stickyNote')) fehler.push('Sticky Note mit Zweck fehlt');
+	fehler.push(...haertung(json));
+	return fehler;
+}
+
+// Härtung (M6)
+const WEBHOOK_ERLAUBT = new Set(['EPA-07 Freigabe-Endpunkt']);
+const SECRET_MUSTER = [
+	[/sk-(proj-)?[A-Za-z0-9_-]{20,}/, 'OpenAI-Schlüssel'],
+	[/eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\./, 'JWT/Access-Token'],
+	[/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'privater Schlüssel'],
+	[/\b(client_secret|password|passwort|api_key|apikey)"\s*:\s*"(?!<)[^"=][^"]{5,}"/i, 'Passwort/Secret-Feld'],
+	[/https?:\/\/[^\s"'/]*:[^\s"'@/]+@/, 'Zugangsdaten in URL'],
+];
+
+function haertung(json) {
+	const fehler = [];
+	const text = JSON.stringify(json);
+	for (const [re, was] of SECRET_MUSTER) if (re.test(text)) fehler.push(`möglicher Klartext-Secret (${was})`);
+	if (json.settings.callerPolicy !== 'workflowsFromSameOwner') fehler.push('settings.callerPolicy muss workflowsFromSameOwner sein');
+	for (const n of json.nodes) {
+		if (n.type === 'n8n-nodes-base.webhook' && !WEBHOOK_ERLAUBT.has(json.name)) fehler.push(`${n.name}: öffentlicher Webhook außerhalb von EPA-07`);
+	}
+	// Wer Freigabe-Links erzeugt oder anzeigt, darf erfolgreiche Ausführungen nicht speichern (Klartext-Token).
+	const token = json.nodes.some((n) => n.type === 'n8n-nodes-base.code' && /tokenErzeugen\(crypto\)/.test(n.parameters.jsCode)) || json.nodes.some((n) => n.type === 'n8n-nodes-base.webhook');
+	if (token && json.settings.saveDataSuccessExecution !== 'none') fehler.push('erzeugt/verarbeitet Freigabe-Links: settings.saveDataSuccessExecution muss "none" sein');
 	return fehler;
 }
 
@@ -85,4 +111,4 @@ if (require.main === module) {
 	process.exit(ok ? 0 : 1);
 }
 
-module.exports = { pruefeWorkflow, pruefeAlle };
+module.exports = { pruefeWorkflow, pruefeAlle, haertung };

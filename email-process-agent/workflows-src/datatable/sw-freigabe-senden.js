@@ -15,6 +15,8 @@ function teams(wf, name, pos, methode, url, body) {
 
 module.exports = function () {
 	const wf = new Workflow('EPA SW Freigabe senden');
+	// Härtung (M6): Erfolgreiche Ausführungen enthalten Klartext-Links bzw. Mail-Text und werden nicht gespeichert.
+	wf.settings.saveDataSuccessExecution = 'none';
 
 	wf.notiz('Notiz Zweck', [-80, -420], [
 		'## EPA SW Freigabe senden',
