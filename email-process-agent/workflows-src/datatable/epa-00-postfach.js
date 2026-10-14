@@ -54,7 +54,7 @@ module.exports = function () {
 		authentication: 'microsoftOutlookOAuth2Api',
 		event: 'messageReceived',
 		output: 'fields',
-		fields: ['id', 'receivedDateTime'],
+		fields: ['receivedDateTime'], // Graph liefert die id immer mit; 'id' ist hier kein zulässiger Wert
 		filters: { foldersToInclude: ['inbox'], readStatus: 'both' },
 		options: {},
 	});

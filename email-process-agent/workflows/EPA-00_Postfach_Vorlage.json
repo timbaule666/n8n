@@ -30,7 +30,6 @@
         "event": "messageReceived",
         "output": "fields",
         "fields": [
-          "id",
           "receivedDateTime"
         ],
         "filters": {

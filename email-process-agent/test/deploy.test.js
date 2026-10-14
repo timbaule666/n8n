@@ -100,3 +100,13 @@ test('Deploy-Reihenfolge: EPA-05 zuerst, Sub-Workflows vor Aufrufern, Zyklus erk
 	assert.deepEqual(namen, ['SW A', 'EPA-05 Error-Handler', 'SW B', 'EPA-02', 'EPA-01']);
 	assert.throws(() => deployReihenfolge([wf('X', 'Y'), wf('Y', 'X')]), /Zyklisch/);
 });
+
+test('Markierung " *" (Credentials fehlen) wird beim Abgleich ignoriert und bei Updates beibehalten', () => {
+	const { grundName } = require('../tools/deploy');
+	assert.equal(grundName('EPA-05 Error-Handler *'), 'EPA-05 Error-Handler');
+	assert.equal(grundName('EPA-05 Error-Handler'), 'EPA-05 Error-Handler');
+	const wf = h.workflow('EPA_SW_Status_setzen.json');
+	assert.equal(verknuepfen(wf, IDS, { name: `${wf.name} *`, nodes: [] }).name, `${wf.name} *`);
+	assert.equal(verknuepfen(wf, IDS, { name: wf.name, nodes: [] }).name, wf.name);
+	assert.equal(verknuepfen(wf, IDS, null).name, wf.name);
+});

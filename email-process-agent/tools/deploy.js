@@ -114,6 +114,11 @@ function deployReihenfolge(workflows) {
 	return out;
 }
 
+// Ein " *" am Namensende markiert in n8n Workflows, denen noch Credentials fehlen. Es gehört nicht zum Namen
+// im Repo: beim Abgleich wird es ignoriert und bei Updates beibehalten.
+const MARKE = /\s*\*$/;
+const grundName = (name) => String(name).replace(MARKE, '');
+
 function verknuepfen(wf, ids, bestehend, { errorWorkflowSetzen = true, credentialsJeTyp = {} } = {}) {
 	const alt = new Map((bestehend?.nodes || []).map((n) => [n.name, n]));
 	const nodes = wf.nodes.map((n) => {
@@ -139,17 +144,17 @@ function verknuepfen(wf, ids, bestehend, { errorWorkflowSetzen = true, credentia
 	});
 	const settings = { ...wf.settings };
 	if (wf.name !== ERROR_WORKFLOW && errorWorkflowSetzen) settings.errorWorkflow = ids[ERROR_WORKFLOW];
-	return { name: wf.name, nodes, connections: wf.connections, settings };
+	return { name: bestehend && MARKE.test(bestehend.name) ? `${wf.name} *` : wf.name, nodes, connections: wf.connections, settings };
 }
 
 async function deploy({ basis, schluessel, trocken = false, ordner = 'workflows', log = console.log }) {
 	const lokal = ladeLokal(ordner);
 	const remote = await alleWorkflows(basis, schluessel);
-	const doppelt = remote.filter((w, i) => remote.findIndex((x) => x.name === w.name) !== i).map((w) => w.name);
+	const doppelt = remote.filter((w, i) => remote.findIndex((x) => grundName(x.name) === grundName(w.name)) !== i).map((w) => grundName(w.name));
 	const betroffen = doppelt.filter((n) => lokal.some((w) => w.name === n));
 	if (betroffen.length) throw new Error(`Mehrere Workflows mit gleichem Namen in n8n: ${betroffen.join(', ')}. Bitte bereinigen.`);
 
-	const ids = Object.fromEntries(remote.filter((w) => lokal.some((l) => l.name === w.name)).map((w) => [w.name, w.id]));
+	const ids = Object.fromEntries(remote.filter((w) => lokal.some((l) => l.name === grundName(w.name))).map((w) => [grundName(w.name), w.id]));
 
 	// 1. Fehlende Workflows anlegen (zunächst ohne Verknüpfungen), damit alle IDs bekannt sind
 	for (const wf of lokal) {
@@ -220,4 +225,4 @@ if (require.main === module) {
 	});
 }
 
-module.exports = { deploy, verknuepfen, eindeutigeCredentials, credSchluessel, deployReihenfolge };
+module.exports = { deploy, verknuepfen, eindeutigeCredentials, credSchluessel, deployReihenfolge, grundName };

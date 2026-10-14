@@ -38,6 +38,8 @@ Das Skript legt alle 17 Workflows an bzw. aktualisiert sie anhand des Namens, ve
 | Teams-Dienstkonto | Microsoft Teams OAuth2 | SW Benachrichtigen, SW Freigabe senden (3 Graph-Nodes), EPA-05 und EPA-06 („Teams prüfen“, Kanal-Nodes) |
 | Outlook je Postfach | Microsoft Outlook OAuth2 | nur in der EPA-00-Kopie des Kunden (Trigger und alle Graph-Nodes) |
 
+**Markierung in n8n:** Workflows, denen noch Credentials fehlen, tragen ein „ *“ am Namensende (z. B. „EPA-05 Error-Handler *“). Nach dem Zuweisen das Sternchen im Namen entfernen. `tools/deploy.js` ignoriert das Sternchen beim Abgleich und lässt es bei Updates stehen.
+
 Teams-IDs eintragen: in EPA-05 „Entwickler-Kanal alarmieren“ und EPA-06 „Betriebskanal benachrichtigen“ das Team (GUID, `groupId=…` im Link) und den Kanal (`19:…@thread.tacv2`). Kanalnachrichten gehen nur mit delegiertem OAuth2; das Dienstkonto muss Mitglied der Kanäle sein. Freigeber müssen im selben Tenant sein.
 
 ## 5. Kunde konfigurieren
