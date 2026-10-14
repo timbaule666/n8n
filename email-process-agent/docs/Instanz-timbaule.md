@@ -97,3 +97,9 @@ Tims privates Microsoft-Konto hat keine Teams-Lizenz. Microsoft antwortet auf Gr
 - `epa-ki-test` (Prüfstand) ebenfalls auf telegram_test, damit der Watchdog Teams nicht prüft.
 - EPA-05 und EPA-06 sind **veröffentlicht**. Ihre Teams-Nodes („Entwickler-Kanal alarmieren“, „Betriebskanal benachrichtigen“) sind nur in dieser Instanz deaktiviert, weil sie ohne Team-ID nicht veröffentlicht werden können. Ein erneutes Deploy aktiviert sie wieder; danach erneut deaktivieren oder Team-IDs eintragen.
 - Watchdog-Lauf: Meldung per Telegram zugestellt, einziger Befund CRON_NIE (EPA-04 noch aus).
+
+## Stufe 3 gestartet (2026-10-14, ca. 21:20)
+- Ordner `EPA-Archiv` im Testpostfach angelegt (oberste Ebene). Tims alte Mails liegen im Ordner „Archiv“, im Posteingang liegt nur eine alte Mail vom 27.08.; sie wird nicht verarbeitet (der Trigger holt nur neue Mails, seit Einschalten keine Ausführung).
+- Postfach-Kopie „EPA-00 Postfach timbaule666@outlook.com (Test)“, ID `RXWxIBLIIOdXtBcO`, Outlook-Credential übernommen, in `epa-test.postfach_workflow_id` eingetragen.
+- Error Workflow EPA-05 in allen EPA-Workflows gesetzt.
+- Veröffentlicht: alle SW-Workflows, EPA-01, EPA-02, EPA-03, EPA-04, EPA-05, EPA-06, EPA-07, EPA-T1, EPA-T2 und die Postfach-Kopie. Nicht veröffentlicht: EPA-00-Vorlage, EPA-08 Löschjob (für E12 manuell).

@@ -114,7 +114,7 @@ Echtes Postfach, aber jede Rückfrage wird bewusst geprüft (das ist ohnehin Pfl
 | K2 | 2026-10-14 | Klassifizierung 15/15 (100 %); 9 von 10 Feldern 100 %, Ladungsart 60 %; keine falschen und keine erfundenen Werte | Lauf STUFE1-L2 nach den Korrekturen; Details unten |
 | K2 | 2026-10-14 | Klassifizierung 15/15; 9 von 10 Feldern 100 % (Ladungsart jetzt 5/5); Ansprechpartner 87,5 %, 1 erfundener Wert (S13) | Lauf STUFE1-L3 mit geschärftem Hinweis Ladungsart; Details unten |
 | K2 | 2026-10-14 | 3 Läufe hintereinander: jeweils Klassifizierung 15/15 und alle 10 Felder 100 %, keine falschen oder erfundenen Werte | Läufe STUFE1-L4 bis L6 mit Regel `person`; **Stufe 1 bestanden** |
-| E1–E12 | | | |
+| E1–E12 | 2026-10-14 | gestartet | Testkunde `epa-test`, Postfach-Kopie aktiv, Meldungen und Freigabe-Links per Telegram |
 
 ## Lauf STUFE1-L1 (2026-10-14): Auswertung
 Kunde `epa-ki-test` (reiner Prüfstand-Kunde, Beispiel-Config Transport), 15 synthetische Fälle, 27 KI-Aufrufe, Dauer ca. 1 Minute, keine technischen Fehler.
