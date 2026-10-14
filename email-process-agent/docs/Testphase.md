@@ -63,6 +63,7 @@ Echtes Postfach, aber jede Rückfrage wird bewusst geprüft (das ist ohnehin Pfl
 | K2 | 2026-10-14 | Klassifizierung 14/15 (93,3 %); 8 von 10 Feldern 100 %, Ansprechpartner 87,5 %, Ladungsart 20 %; keine falschen Werte, 1 erfundener Wert | Lauf STUFE1-L1, gpt-4o-mini-2024-07-18, Prompts v1; Details unten |
 | K2 | 2026-10-14 | Klassifizierung 15/15 (100 %); 9 von 10 Feldern 100 %, Ladungsart 60 %; keine falschen und keine erfundenen Werte | Lauf STUFE1-L2 nach den Korrekturen; Details unten |
 | K2 | 2026-10-14 | Klassifizierung 15/15; 9 von 10 Feldern 100 % (Ladungsart jetzt 5/5); Ansprechpartner 87,5 %, 1 erfundener Wert (S13) | Lauf STUFE1-L3 mit geschärftem Hinweis Ladungsart; Details unten |
+| K2 | 2026-10-14 | 3 Läufe hintereinander: jeweils Klassifizierung 15/15 und alle 10 Felder 100 %, keine falschen oder erfundenen Werte | Läufe STUFE1-L4 bis L6 mit Regel `person`; **Stufe 1 bestanden** |
 | E1–E12 | | | |
 
 ## Lauf STUFE1-L1 (2026-10-14): Auswertung
@@ -111,4 +112,22 @@ Geändert: `extraktions_hinweis` der Ladungsart („Einzahl, auch wenn nur mit A
 
 **Befund S13:** Hinweis und Mail sind in L2 und L3 gleich, das Ergebnis aber nicht. Die KI befolgt den Hinweis „keine Teamnamen“ also nicht zuverlässig. Bei einem Pflichtfeld ist das relevant: Ein erfundener Ansprechpartner unterdrückt die Rückfrage.
 
-**Vorschlag (noch nicht umgesetzt):** Eine feste Prüfung im Code (`src/pflichtfelder.js`) statt eines weiteren Hinweises. Feldtyp `person` oder eine Regel `keine_muster` für Text: Werte, die mit „Team“, „Abteilung“, „Firma“, „Ihr …“ beginnen oder eine Rechtsform enthalten (GmbH, AG, KG …), gelten als fehlend. Danach mehrere Läufe hintereinander, um die Schwankung zu messen.
+**Umgesetzt (Commit af345bb, siehe unten):** Eine feste Prüfung im Code (`src/pflichtfelder.js`) statt eines weiteren Hinweises. Feldtyp `person` oder eine Regel `keine_muster` für Text: Werte, die mit „Team“, „Abteilung“, „Firma“, „Ihr …“ beginnen oder eine Rechtsform enthalten (GmbH, AG, KG …), gelten als fehlend. Danach mehrere Läufe hintereinander, um die Schwankung zu messen.
+
+## Läufe STUFE1-L4 bis L6 (2026-10-14): feste Prüfung für Personennamen
+Geändert (Commit af345bb): Textfelder können die Regel `"person": true` haben. Dann wird die Anrede entfernt. Team-, Abteilungs- und Firmennamen („Team …“, „…team“, „Einkauf“, „GmbH“, „KG“ …) gelten als fehlend, und es folgt eine Rückfrage. In der Beispiel-Config ist die Regel für Ansprechpartner aktiv. In der Cloud sind die Config-Prüfung (SW Config laden), EPA-01, EPA-03, EPA-04, EPA-06 und EPA-T1 aktualisiert.
+
+Drei Läufe hintereinander, um die Schwankung der KI zu messen:
+
+| Lauf | Klassifizierung | Felder mit 100 % | falsch | zu viel | technische Fehler |
+|---|---|---|---|---|---|
+| L4 | 15/15 | 10/10 | 0 | 0 | 0 |
+| L5 | 15/15 | 10/10 | 0 | 0 | 0 |
+| L6 | 15/15 | 10/10 | 0 | 0 | 0 |
+
+**Ergebnis:** Stufe 1 ist bestanden. Die Zielwerte aus K3 wurden in drei Läufen hintereinander erreicht. Grenzen dieser Aussage:
+- Die 15 Fälle sind synthetisch und von mir geschrieben.
+- Echte Mails sind unordentlicher (Weiterleitungen, Tabellen, PDF-Anhänge, Tippfehler).
+- Aussagekräftig wird es erst mit Stufe 2 (50–100 echte, anonymisierte Mails).
+
+Kosten der Stufe 1 insgesamt: 6 Läufe mit je ca. 27 KI-Aufrufen mit gpt-4o-mini.
