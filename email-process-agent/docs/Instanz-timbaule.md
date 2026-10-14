@@ -23,7 +23,7 @@ Stand 2026-10-14 (M6). Speicher: **n8n Data Tables** (persönliches Projekt).
 | EPA-08 Löschjob | `SKBmXLzixbf2Unl4` | 30 | Entwurf, bewusst nicht veröffentlicht: erst nach Probelauf und Freigabe durch dich |
 | EPA-07 Freigabe-Endpunkt | `xj4e8E82vccdoiXl` | 41 | **veröffentlicht**, Link: `https://timbaule.app.n8n.cloud/webhook/epa-freigabe` (Probe: ungültiger Link → 404-Seite) |
 
-M6: eingespielt aus `workflows/` vom Commit `f3a7fb3` (M5: `cf2bfa8`, M4: `8d36300`, M3: `1bccce8`, M2: `50f1cce`, M1: `b195eb6`), direkt von GitHub geladen. Danach wurde jeder Node mit der Quelle abgeglichen (Typ, Version, Parameter): 0 Abweichungen.
+M6: eingespielt aus `workflows/` vom Commit `f3a7fb3`, EPA-07 danach aus `302cd9f` (M5: `cf2bfa8`, M4: `8d36300`, M3: `1bccce8`, M2: `50f1cce`, M1: `b195eb6`), direkt von GitHub geladen. Danach wurde jeder Node mit der Quelle abgeglichen (Typ, Version, Parameter): 0 Abweichungen.
 
 ## Data Tables
 | Tabelle | ID | Inhalt |

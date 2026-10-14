@@ -36,7 +36,7 @@ Stand 2026-10-14. n8n 2.43.4, Data Tables.
    - L03 Löschen nach Frist: offene und eskalierte Vorgänge bleiben
    - H01 Sicherheits-Header
 3. **Gesamtlauf:** siehe Abschnitt „Regression“ unten.
-4. **Cloud:** Alle 17 Workflows sind auf dem Stand von Commit `f3a7fb3`. Der Abgleich jedes Nodes mit der Quelle ergab 0 Abweichungen. Die Einstellungen (keine Erfolgsdaten speichern, Zeitzone) sind übernommen, die neuen Spalten angelegt.
+4. **Cloud:** Alle 17 Workflows sind auf dem Stand von Commit `f3a7fb3`, EPA-07 auf `302cd9f`. Der Abgleich jedes Nodes mit der Quelle ergab 0 Abweichungen. Die Einstellungen (keine Erfolgsdaten speichern, Zeitzone) sind übernommen, die neuen Spalten angelegt.
 
 ## Offen / zu verifizieren
 - **Lokal nicht prüfbar:** Die Watchdog-Meldung im Teams-Kanal wurde lokal nur als Zustellversuch geprüft (Dummy-Credential).
