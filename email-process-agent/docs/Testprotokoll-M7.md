@@ -11,5 +11,6 @@ Das Mock-LLM liefert festgelegte Antworten, der Mock-Graph simuliert Postfach (E
 | G02 | Abgelaufenes Token beim Postfach (401): als AUTH_FEHLER gemeldet, kein Vorgang | Fehlerlog: 401 AUTH_FEHLER; Kein Vorgang: 0 | Fehlerlog: 401 AUTH_FEHLER; Kein Vorgang: 0 | ja |
 | G03 | LLM-Timeout: 3 Versuche mit Zeitlimit, dann 504 ZEITUEBERSCHREITUNG, Vorgang gesichert (Eskaliert / Manuell) | Fehlerlog: 504 ZEITUEBERSCHREITUNG; KI-Versuche: 3; Vorgang gesichert: Eskaliert / Manuell | Fehlerlog: 504 ZEITUEBERSCHREITUNG; KI-Versuche: 3; Vorgang gesichert: Eskaliert / Manuell | ja |
 | G04 | Fehlender Textbaustein in der Config: Konfigurationsfehler (424) mit Alarm, keine geratene Rückfrage, kein Entwurf | Fehlerlog: 424 KONFIGURATIONSFEHLER; Kein Entwurf: 30; Keine Freigabe: 0; Feld genannt: ja | Fehlerlog: 424 KONFIGURATIONSFEHLER; Kein Entwurf: 30; Keine Freigabe: 0; Feld genannt: ja | ja |
+| Q01 | KI-Prüfstand (EPA-T1): Klassifizierung und Felder gegen Sollwerte, Ergebnisse gespeichert, keine Vorgänge/Mails | Klassifizierung: 2/2; Felder: Start_PLZ 1r, Ziel_PLZ 1m, Gewicht 1f, Telefon 1r, Abholdatum 1l; KI-Aufrufe (K/E): 2/1; Bericht: ja; Ergebnisse gespeichert: 2; Keine Vorgänge, keine Mails: 148/14 | Klassifizierung: 2/2; Felder: Start_PLZ 1r, Ziel_PLZ 1m, Gewicht 1f, Telefon 1r, Abholdatum 1l; KI-Aufrufe (K/E): 2/1; Bericht: ja; Ergebnisse gespeichert: 2; Keine Vorgänge, keine Mails: 148/14 | ja |
 
-**Ergebnis:** 4 von 4 Szenarien bestanden.
+**Ergebnis:** 5 von 5 Szenarien bestanden.

@@ -50,9 +50,11 @@ async function betriebSzenarien(ctx) {
 	}
 
 	// ---------------------------------------------------------------- Watchdog
-	// Testinstanz: liegengebliebene Vorgänge anderer Testläufe (z. B. M1) würden jeden Lauf als "hängend" melden.
-	for (const st of ['Neu', 'In Prüfung', 'Lücken erkannt']) {
-		await api('PATCH', `/data-tables/${ids.epa_vorgaenge}/rows/update`, { filter: { type: 'and', filters: [{ columnName: 'status', condition: 'eq', value: st }, { columnName: 'kunde_id', condition: 'neq', value: KUNDE }] }, data: { status: 'Eskaliert / Manuell' } });
+	// Testinstanz: liegengebliebene Vorgänge anderer Testkunden (z. B. M1) würden jeden Lauf als "hängend" melden.
+	// Ebenso Vorgänge auf der Arbeitsliste: nach 24 Stunden erschienen sie sonst als Befund ARBEITSLISTE.
+	// Nur lokale Testdaten anderer Testkunden; sie werden abgeschlossen.
+	for (const st of ['Neu', 'In Prüfung', 'Lücken erkannt', 'Zuordnung unklar', 'Klassifizierung unklar', 'Eskaliert / Manuell', 'Bereit zur Bearbeitung', 'Freigabe ausstehend']) {
+		await api('PATCH', `/data-tables/${ids.epa_vorgaenge}/rows/update`, { filter: { type: 'and', filters: [{ columnName: 'status', condition: 'eq', value: st }, { columnName: 'kunde_id', condition: 'neq', value: KUNDE }] }, data: { status: 'Abgeschlossen' } });
 	}
 
 	// Andere aktive Kunden der Testinstanz (z. B. "beispiel-transport" aus M1) zeigen auf das echte OpenAI: für die
