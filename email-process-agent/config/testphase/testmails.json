@@ -1331,5 +1331,34 @@
   ],
   "soll": {},
   "notiz": "Nur eine Telegram-Nachricht (Freigabe mit Übersicht)"
+ },
+ "K04": {
+  "nr": "K04",
+  "art": "neu",
+  "betreff": "Transportanfrage Bielefeld – Kassel",
+  "absender_name": "Markus Hoffmann",
+  "text": "Guten Tag,\n\nwir bitten um ein Angebot für folgenden Transport:\n\nAbholung: 33602 Bielefeld\nLieferung: 34117 Kassel\nAbholdatum: 05.11.2026\nWare: 2 Paletten, Gesamtgewicht 650 kg\n\nAnsprechpartner ist Markus Hoffmann, erreichbar unter 0521 5550404.\n\nMit freundlichen Grüßen\nMarkus Hoffmann\nVersand, Beispiel Handel GmbH",
+  "erwartet": [
+   "bereit"
+  ],
+  "soll": {
+   "Start_PLZ": "33602",
+   "Ziel_PLZ": "34117",
+   "Abholdatum": "2026-11-05",
+   "Gewicht_kg": "650"
+  },
+  "notiz": "Vollständig: grüne Outlook-Markierung \"AI Geprüft\""
+ },
+ "K05": {
+  "nr": "K05",
+  "art": "neu",
+  "betreff": "Einladung zur Weihnachtsfeier 2026",
+  "absender_name": "Claudia Wagner",
+  "text": "Liebe Geschäftspartner,\n\nwir laden Sie herzlich zu unserer Weihnachtsfeier am 11.12.2026 ab 18 Uhr in unserem Lager ein. Für Essen und Getränke ist gesorgt.\n\nWir freuen uns auf Sie!\n\nHerzliche Grüße\nClaudia Wagner\nBeispiel Spedition GmbH",
+  "erwartet": [
+   "ignoriert"
+  ],
+  "soll": {},
+  "notiz": "Keine Anfrage: keine Meldung, Mail bleibt im Posteingang, keine Markierung"
  }
 }
