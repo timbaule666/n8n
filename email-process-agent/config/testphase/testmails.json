@@ -1360,5 +1360,27 @@
   ],
   "soll": {},
   "notiz": "Keine Anfrage: keine Meldung, Mail bleibt im Posteingang, keine Markierung"
+ },
+ "K06": {
+  "nr": "K06",
+  "art": "neu",
+  "betreff": "Farbtest Rot Gelb Grün",
+  "absender_name": "Lena Krüger",
+  "text": "Hallo,\n\nwir bräuchten am 18.11.2026 einen Transport von 3 Paletten (950 kg) von 28195 Bremen nach 26122 Oldenburg.\n\nViele Grüße\nLena Krüger",
+  "erwartet": [
+   "luecken"
+  ],
+  "soll": {},
+  "notiz": "Telefon fehlt: rot (Freigabe ausstehend) -> nach Freigabe gelb (Warten auf Kunde) -> nach K06b grün"
+ },
+ "K06b": {
+  "nr": "K06b",
+  "art": "antwort",
+  "text": "Hallo,\n\nSie erreichen mich unter 0421 5550606.\n\nViele Grüße\nLena Krüger",
+  "erwartet": [
+   "antwort_bereit"
+  ],
+  "soll": {},
+  "notiz": "Antwort auf K06: Markierung wird grün"
  }
 }
