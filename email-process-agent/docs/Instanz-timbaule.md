@@ -139,3 +139,11 @@ Tims privates Microsoft-Konto hat keine Teams-Lizenz. Microsoft antwortet auf Gr
 - **Testmails K04/K05 (2026-10-15):**
   - K04, vollständige Anfrage (V-2026-0084): „bereit“, Markierung „AI Geprüft“ gesetzt.
   - K05, Einladung (V-2026-0085): still „ignoriert“, keine Meldung, Mail bleibt im Posteingang.
+- **Abschluss-Meldung mit Verlauf (2026-10-15):** Wird eine Anfrage durch eine Antwort vollständig, enthält die Telegram-Meldung:
+  - Kunde
+  - erste Anfrage (Datum + Outlook-Link)
+  - Antwort (Datum + Link)
+  - Rückfrage-Runden
+  - „Bisherige Informationen“ und „Nachgeforderte Informationen“
+
+  Neue Spalten `erste_mail_am` und `erste_mail_link` in epa_vorgaenge. Gilt für Vorgänge ab 19:00; bei V-2026-0086 sind die Werte nachgetragen.
