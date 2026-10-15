@@ -569,3 +569,16 @@ Eine Rückfrage zu M30 (V-2026-0047) wurde vor der Korrektur freigegeben und in 
 | T04b (Teilantwort, 1. Versuch) | – | ❌ als neue Mail eingestuft (V-2026-0071). Ursache: Die Kandidatensuche lieferte nur die 20 zuletzt geänderten Vorgänge des Absenders. Der Test-Absender hatte über 60 offene Vorgänge, so fiel der genannte Vorgang V-2026-0018 heraus. **Behoben** (Commit f8b57d4): Starke Hinweise (Message-ID, genannte Vorgangs-ID, Konversation) sind immer Kandidaten, Data Table und Postgres. |
 | T04b (2. Versuch) | V-2026-0072 | Zuordnung unklar: V-2026-0018 hat 145 Punkte, der fälschlich angelegte V-2026-0071 aus derselben Konversation 80. Das ist vorsichtig und richtig; eine Folge des ersten Fehlers. |
 | A22, A29, A30 | – | nicht versendet, weil die Rückfragen zu V-2026-0067/68/69 noch nicht freigegeben waren (der Workflow antwortet nur auf eine vorhandene Rückfrage) |
+
+### Nur Anfragen bearbeiten (Klassifizierung v2)
+
+**Entscheidung von Tim:** Mails, die sicher keine Anfrage sind, lösen keine Meldung „Klassifizierung unklar“ mehr aus. Bearbeitet werden nur Anfragen.
+
+**Befund:** Die KI stufte Beschwerden (M47), Rückrufbitten (T19, M46), eine leere Mail (V-2026-0076) und einen Lieferschein ohne Auftrag (V-2026-0059) als „unklar“ ein. Prompt v1 nannte Beschwerden und kurze Mails ausdrücklich als Beispiele für „unklar“.
+
+**Maßnahme:** Prompt `prompts/v2/klassifizierung.md`.
+- „keine_anfrage“ umfasst jetzt auch Beschwerden, Rückrufbitten ohne Leistungsanfrage, allgemeine Fragen, Bestätigungen, leere und kontextlose Mails. Diese Mails werden still als „Ignoriert“ abgelegt (Archivordner, nie gelöscht).
+- „unklar“ gilt nur noch, wenn die Mail eine Anfrage sein könnte (z. B. nicht lesbarer Anhang, Angaben ohne erkennbaren Vorgang). Nur dann kommt eine Meldung.
+- Unverändert: Liegt die Konfidenz unter der Schwelle (0,75), kommt weiterhin eine Meldung, weil die Einstufung dann nicht sicher ist.
+
+Testerwartungen angepasst: M46, M47 → `ignoriert`; KI-Testfall S11 → `keine_anfrage`.

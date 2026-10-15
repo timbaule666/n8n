@@ -35,7 +35,7 @@ M6: eingespielt aus `workflows/` vom Commit `f3a7fb3`, EPA-07 danach aus `302cd9
 | epa_audit_log | `sfxpMPAFEHqHA8Of` | leer |
 | epa_fehler_log | `p6qBzQhHBJFe4sT4` | leer |
 | epa_verarbeitete_mails | `Be0xzQpjxTlYWuOg` | leer (Dedupe, M2) |
-| epa_prompts | `RLIt1PFeEq9CJsST` | klassifizierung/v1, extraktion/v1, entwurf/v1 (Prüfsummen wie im Repo) |
+| epa_prompts | `RLIt1PFeEq9CJsST` | klassifizierung/v1 und v2, extraktion/v1, entwurf/v1 (Prüfsummen wie im Repo); epa-test nutzt klassifizierung/v2 |
 | epa_freigaben | `HDUhqBQV5ZxG6lzl` | leer (M3; ab M5 Spalten `erinnert_am`, `erneuert_am`; ab M6 `entwurf_entfernt_am`) |
 | epa_freigabe_tokens | `y7kKOYkDuAo7r5lr` | leer (nur SHA-256-Hashes; ab M5 Spalte `ablauf`) |
 | epa_test_ki_faelle | `wfEcVNTEmqgX4MZk` | 15 synthetische KI-Testfälle (S01–S15) |

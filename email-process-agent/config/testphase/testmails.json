@@ -1059,7 +1059,7 @@
   "absender_name": "Werner Haas",
   "text": "Guten Tag,\n\nbitte rufen Sie mich zurück, es geht um eine Sache, die wir am Telefon besprochen hatten.\n\nWerner Haas",
   "erwartet": [
-   "klassifizierung_unklar"
+   "ignoriert"
   ],
   "soll": {},
   "notiz": ""
@@ -1071,7 +1071,6 @@
   "absender_name": "Doris Klein",
   "text": "Guten Tag,\n\ndie Lieferung von letzter Woche kam zwei Tage zu spät. Das hat bei uns zu Problemen geführt.\nBitte nehmen Sie dazu Stellung.\n\nDoris Klein",
   "erwartet": [
-   "klassifizierung_unklar",
    "ignoriert"
   ],
   "soll": {},
