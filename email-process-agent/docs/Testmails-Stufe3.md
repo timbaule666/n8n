@@ -529,3 +529,33 @@ Fehler-Log: leer.
 1. **Sprache der Rückfrage:** Sie folgt der Kunden-Config (`sprache`), nicht der Sprache der Mail. Eine englische Anfrage bekommt also eine deutsche Rückfrage.
 2. **Anrede:** Sie nutzt den Absendernamen, z. B. „Guten Tag Dispo-Team“. Besser wäre: der erkannte Ansprechpartner, sonst neutral.
 3. **Ansprechpartner nur mit Vornamen** („Max“): reicht das?
+
+---
+
+## Lauf 2 (15.10.2026): 50 weitere Testmails M01–M50
+
+Vorlagen und Sollwerte stehen in `config/testphase/testmails.json`. EPA-T3 lädt sie aus dem Repo. Ausgewertet wird mit:
+
+```
+node tools/testmails-auswerten.js --vorgaenge=<Export epa_vorgaenge>.json --mails=<Export epa_verarbeitete_mails>.json --ab=<Startzeit>
+```
+
+**Vorher umgesetzt** (Entscheidungen von Tim):
+
+- **Sprache:** Die Rückfrage geht in der Sprache der Kundenmail raus, wenn die Config Übersetzungen dafür hat. Das ist die neue Config-Spalte `uebersetzungen`; epa-test hat Englisch.
+- **Anrede:** Sie nutzt den erkannten Ansprechpartner. Ist keiner erkannt, bleibt sie neutral („Guten Tag,“).
+- **Name:** Vor- und Nachname, wenn sie angegeben sind.
+  - Steht in der Mail nur der Vorname, wird er aus dem Absendernamen ergänzt, aber nur wenn er dazu passt.
+  - Nur wegen des Nachnamens wird nicht nachgefragt.
+
+**Ergebnis:** 47/50 wie erwartet, 361/374 Felder richtig, Fehler-Log leer. Die Fälle mit Ladungsart „Maschine“ und die Grenzfälle M47/M48 sind wie vorgesehen behandelt.
+
+| Befund | Fall | Maßnahme | Nachtest |
+|---|---|---|---|
+| Englische Rückfrage mit deutscher KI-Einleitung (Mischsprache) | M29, M30 | Die KI-Hülle wird auf die Sprache geprüft. Passt sie nicht, gilt die feste Vorlage in der Antwortsprache. | R29, R30 ✅ komplett Englisch |
+| Die KI hat PLZ aus dem Ortsnamen ergänzt („Essen“ → 45127) | M22 | PLZ und Telefon müssen wörtlich in der Mail stehen. Sonst ist der Wert ungültig und es kommt eine Rückfrage. | R22 ✅ Rückfrage nach beiden PLZ |
+| Anfrage nur im PDF wurde als „unklar“ eingestuft | M36 | Die Klassifizierung sieht jetzt einen Auszug der Anhänge (1000 Zeichen je Anhang). | R36 ✅ Anfrage erkannt, Rückfrage nur nach Telefon |
+| Zwei mögliche Abholorte („Köln oder Bonn“): KI nahm Köln | M25 | Offen. Das ist eine Grenze der KI und deterministisch kaum abzufangen. Der Freigeber sieht die Daten vor der Bearbeitung. | – |
+| PDF-Ort „Osnabrueck“ | M35 | Kein Fehler: Der Testgenerator schreibt PDFs ohne Umlaute, der Sollwert ist korrigiert. | – |
+
+Eine Rückfrage zu M30 (V-2026-0047) wurde vor der Korrektur freigegeben und in Mischsprache versendet. Das betrifft nur das Testpostfach.
