@@ -1228,5 +1228,63 @@
   },
   "notiz": "Wiederholung von M36 nach Korrektur. PDF ohne Telefon",
   "pdf": "Abholauftrag\nAbholung: 33098 Paderborn\nZiel: 59555 Lippstadt\nTermin: 07.12.2026\n3 Pakete, 450 kg\nKontakt: Ralf Engel"
+ },
+ "A19": {
+  "art": "antwort",
+  "text": "Hallo,\n\nmeine Telefonnummer ist 0511 5552019.\n\nGruß\nBernd Schulze",
+  "erwartet": [
+   "antwort_bereit"
+  ],
+  "soll": {
+   "Telefon": "05115552019"
+  },
+  "notiz": "Antwort auf Rückfrage zu M19"
+ },
+ "A22": {
+  "art": "antwort",
+  "text": "Guten Tag,\n\nAbholung ist in 45127 Essen, Lieferung nach 47051 Duisburg.\n\nKarin Lehmann",
+  "erwartet": [
+   "antwort_bereit"
+  ],
+  "soll": {
+   "Start_PLZ": "45127",
+   "Ziel_PLZ": "47051"
+  },
+  "notiz": "Antwort auf Rückfrage zu R22"
+ },
+ "A29": {
+  "art": "antwort",
+  "text": "Hello,\n\npickup would be on 2026-12-10, you can reach me at +44 20 5552029.\n\nBest regards\nJames Taylor",
+  "erwartet": [
+   "antwort_bereit"
+  ],
+  "soll": {
+   "Abholdatum": "2026-12-10",
+   "Telefon": "+44205552029"
+  },
+  "notiz": "Englische Antwort auf R29"
+ },
+ "A23": {
+  "art": "antwort",
+  "text": "Hallo,\n\nAnsprechpartnerin ist Frau Sabine Ott.\n\nIhr Einkauf",
+  "erwartet": [
+   "antwort_bereit"
+  ],
+  "soll": {
+   "Ansprechpartner": "Sabine Ott"
+  },
+  "notiz": "Antwort auf Rückfrage zu M23"
+ },
+ "A30": {
+  "art": "antwort",
+  "text": "Hi,\n\nthe total weight is about 85 kg.\n\nEmily",
+  "erwartet": [
+   "antwort_bereit"
+  ],
+  "soll": {
+   "Gewicht_kg": "85",
+   "Ansprechpartner": "Emily Clark"
+  },
+  "notiz": "Antwort auf R30 nur mit Vornamen: Ansprechpartner bleibt Emily Clark"
  }
 }
