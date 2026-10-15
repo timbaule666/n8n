@@ -245,21 +245,36 @@ return zeilen.length ? zeilen.map((j) => ({ json: j })) : [{ json: { leer: true 
 		conditions: bedingungen([bedingung(`={{ ${Z}.ergebnis }}`, { type: 'string', operation: 'equals' }, 'luecken')]),
 		options: {},
 	});
+	// Übersicht zur Antwort für die Freigabe-Nachricht: so kommt bei einer neuen Rückfrage nur eine Nachricht.
+	const uebersicht = wf.code('Übersicht für Freigabe', [4070, -120], ['antwort'], `
+const z = $('Zusammenführen').first().json;
+const v = $('Vorgang lesen').first().json.vorgang;
+const mail = $('Bei Aufruf').first().json.mail;
+let html = antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, mail, merge: z.merge, entscheidung: { weg: z.ergebnis, freigabe_ersetzen: z.freigabe_ersetzen }, ohneRueckfrageText: true });
+if (z.verdacht_manipulation) html += '<br>⚠️ Die Mail enthält möglicherweise Anweisungen an die KI (Manipulationsversuch).';
+return [{ json: { kontext_html: html } }];
+`);
 	const rueckfrage = wf.aufruf('Rückfrage anfordern', [4180, -120], 'EPA-02 Rückfrage anfordern', [
 		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
 		['vorgangs_id', 'string', `={{ ${V}.vorgangs_id }}`],
 		['art', 'string', 'rueckfrage'],
 		['referenz', 'string', `={{ ${E}.referenz }}`],
+		['kontext_html', 'string', '={{ $json.kontext_html }}'],
 	], { onError: 'continueRegularOutput', alwaysOutputData: true });
-	const mAusw = wf.code('Meldung: ausgewertet', [4400, -40], ['antwort'], `
+	const mAusw = wf.code('Meldung: ausgewertet', [4400, -40], ['antwort', 'eingang'], `
 const z = $('Zusammenführen').first().json;
 const v = $('Vorgang lesen').first().json.vorgang;
 const mail = $('Bei Aufruf').first().json.mail;
 const r = $('Rückfrage anfordern').isExecuted ? $('Rückfrage anfordern').first().json : null;
 let html = antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, mail, merge: z.merge, entscheidung: { weg: z.ergebnis, freigabe_ersetzen: z.freigabe_ersetzen }, rueckfrage: r });
 if (z.verdacht_manipulation) html += '<br>⚠️ Die Mail enthält möglicherweise Anweisungen an die KI (Manipulationsversuch).';
-return [{ json: { anlass: 'antwort_' + z.ergebnis, nachricht_html: html, ergebnis: z.ergebnis } }];
+// Neue Rückfrage samt Übersicht ist beim Freigeber angekommen: keine zweite Nachricht.
+return [{ json: { anlass: 'antwort_' + z.ergebnis, nachricht_html: html, ergebnis: z.ergebnis, stumm: z.ergebnis === 'luecken' && eingang.meldungInFreigabe(r) } }];
 `);
+	const meldenFrage = wf.node('Meldung senden?', 'n8n-nodes-base.if', [4510, -40], {
+		conditions: bedingungen([bedingung('={{ $json.stumm }}', { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: { looseTypeValidation: true },
+	});
 
 	// ---------------------------------------------------------------- Meldung und Ergebnis
 	const informieren = wf.aufruf('Mitarbeiter informieren', [4620, 100], 'EPA SW Benachrichtigen', [
@@ -276,7 +291,7 @@ return [{ json: { anlass: 'antwort_' + z.ergebnis, nachricht_html: html, ergebni
 	const MELDUNGEN = ['Meldung: nur zugeordnet', 'Meldung: keine Angaben', 'Meldung: Extraktion fehlgeschlagen', 'Meldung: ausgewertet'];
 	const ergebnis = wf.code('Ergebnis melden', [4840, 100], [], `
 const quelle = ${JSON.stringify(MELDUNGEN)}.find((n) => $(n).isExecuted);
-return [{ json: { ergebnis: $(quelle).first().json.ergebnis, vorgangs_id: $('Vorgang lesen').first().json.vorgang.vorgangs_id, benachrichtigt: $input.first().json.gesendet === true } }];
+return [{ json: { ergebnis: $(quelle).first().json.ergebnis, vorgangs_id: $('Vorgang lesen').first().json.vorgang.vorgangs_id, benachrichtigt: $input.first().json.gesendet === true || $input.first().json.stumm === true } }];
 `);
 
 	wf.kette(trigger, config, vorgang, weg, anhaengen, verarbeiten);
@@ -296,9 +311,11 @@ return [{ json: { ergebnis: $(quelle).first().json.ergebnis, vorgangs_id: $('Vor
 	wf.verbinde(mergeFrage, statusZiel, 0);
 	wf.verbinde(mergeFrage, mergeAudit, 1);
 	wf.kette(mergeAudit, statusZiel, lueckenFrage);
-	wf.verbinde(lueckenFrage, rueckfrage, 0);
+	wf.verbinde(lueckenFrage, uebersicht, 0);
 	wf.verbinde(lueckenFrage, mAusw, 1);
-	wf.kette(rueckfrage, mAusw, informieren);
+	wf.kette(uebersicht, rueckfrage, mAusw, meldenFrage);
+	wf.verbinde(meldenFrage, ergebnis, 0);
+	wf.verbinde(meldenFrage, informieren, 1);
 	wf.kette(mNur, informieren, ergebnis);
 	return wf;
 };

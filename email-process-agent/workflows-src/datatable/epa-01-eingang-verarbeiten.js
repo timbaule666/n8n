@@ -309,12 +309,22 @@ return [{ json: {
 		conditions: bedingungen([bedingung(`={{ ${P}.weg }}`, { type: 'string', operation: 'equals' }, 'luecken')]),
 		options: {},
 	});
+	// Übersicht zur Mail für die Freigabe-Nachricht: so kommt bei einer Rückfrage nur eine Nachricht.
+	const uebersicht = wf.code('Übersicht für Freigabe', [4730, 40], ['eingang'], `
+const config = $('Config laden').first().json.config;
+const k = $('Klasse auswerten').first().json;
+const p = $('Pflichtfelder prüfen').first().json;
+const v = $('Vorgang anlegen').first().json.vorgang;
+const mail = $('Mail normalisieren').first().json.mail;
+return [{ json: { kontext_html: eingang.meldungGeprueft(v.vorgangs_id, mail, config.vorgangstypen[k.vorgangstyp], p.pruefung, { verdacht_manipulation: p.verdacht_manipulation, ohneRueckfrageText: true }) } }];
+`);
 	// Fehler in EPA-02 meldet EPA-05 selbst (Alarm, Vorgang sichern); die Mailverarbeitung läuft weiter.
 	const rueckfrage = wf.aufruf('Rückfrage anfordern', [4840, 40], 'EPA-02 Rückfrage anfordern', [
 		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
 		['vorgangs_id', 'string', `={{ ${V}.vorgangs_id }}`],
 		['art', 'string', 'rueckfrage'],
 		['referenz', 'string', `={{ ${MID} }}`],
+		['kontext_html', 'string', '={{ $json.kontext_html }}'],
 	], { onError: 'continueRegularOutput', alwaysOutputData: true });
 	const mGeprueft = wf.code('Meldung: geprüft', [5060, 120], ['eingang'], `
 const config = $('Config laden').first().json.config;
@@ -328,13 +338,20 @@ const html = p.weg === 'extraktion_fehlgeschlagen'
 		verdacht_manipulation: p.verdacht_manipulation,
 		rueckfrage: $('Rückfrage anfordern').isExecuted ? $('Rückfrage anfordern').first().json : null,
 	});
+const r = $('Rückfrage anfordern').isExecuted ? $('Rückfrage anfordern').first().json : null;
 return [{ json: {
 	vorgangs_id: v.vorgangs_id,
 	anlass: p.weg,
 	nachricht_html: html,
+	// Rückfrage samt Übersicht ist beim Freigeber angekommen: keine zweite Nachricht.
+	stumm: p.weg === 'luecken' && eingang.meldungInFreigabe(r),
 	ergebnis: { ergebnis: p.weg, vorgangs_id: v.vorgangs_id },
 } }];
 `);
+	const meldenFrage = wf.node('Meldung senden?', 'n8n-nodes-base.if', [5170, 120], {
+		conditions: bedingungen([bedingung('={{ $json.stumm }}', { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: { looseTypeValidation: true },
+	});
 
 	// ---------------------------------------------------------------- Meldung und Abschluss
 	const MELDUNGEN = ['Meldung: Zuordnung unklar', 'Meldung: Klassifizierung unklar', 'Meldung: geprüft'];
@@ -352,7 +369,7 @@ return [{ json: {
 	const nachMeldung = wf.code('Ergebnis nach Meldung', [5500, 0], [], `
 const MELDUNGEN = ${JSON.stringify(MELDUNGEN)};
 const quelle = MELDUNGEN.find((n) => $(n).isExecuted);
-return [{ json: { ...$(quelle).first().json.ergebnis, benachrichtigt: $input.first().json.gesendet === true } }];
+return [{ json: { ...$(quelle).first().json.ergebnis, benachrichtigt: $input.first().json.gesendet === true || $input.first().json.stumm === true } }];
 `);
 
 	const abschluss = wf.code('Abschluss vorbereiten', [5720, -200], [], `
@@ -395,9 +412,11 @@ return [{ json: {
 	wf.kette(mKlasse, informieren);
 	wf.kette(kiIgnoriert, abschluss);
 	wf.kette(extrahieren, pruefen, speichern, statusPruefung, lueckenFrage);
-	wf.verbinde(lueckenFrage, rueckfrage, 0);
+	wf.verbinde(lueckenFrage, uebersicht, 0);
 	wf.verbinde(lueckenFrage, mGeprueft, 1);
-	wf.kette(rueckfrage, mGeprueft, informieren);
+	wf.kette(uebersicht, rueckfrage, mGeprueft, meldenFrage);
+	wf.verbinde(meldenFrage, nachMeldung, 0);
+	wf.verbinde(meldenFrage, informieren, 1);
 	wf.kette(informieren, nachMeldung, abschluss);
 	wf.kette(abschluss, abschliessen, melden);
 	return wf;

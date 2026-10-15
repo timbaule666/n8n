@@ -152,7 +152,7 @@ function esc(s) {
 	return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
-function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrage, alterStatus, fristNeu }) {
+function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrage, alterStatus, fristNeu, ohneRueckfrageText }) {
 	const titel = {
 		bereit: 'Antwort eingegangen – Anfrage jetzt vollständig',
 		luecken: 'Antwort eingegangen – es fehlen noch Angaben',
@@ -175,7 +175,8 @@ function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrag
 		z.push('Die Antwort enthält keine verwertbaren Angaben (z. B. Vertröstung). Der Vorgang bleibt unverändert.' + (fristNeu ? ` Antwortfrist verlängert bis ${esc(fristNeu)}.` : ''));
 	} else if (entscheidung.weg === 'luecken') {
 		z.push('Weiter offen:<ul>' + merge.fehlende.map((f) => `<li>${esc(f.anzeigename)}: ${esc(f.grund)}</li>`).join('') + '</ul>');
-		if (rueckfrage && rueckfrage.ergebnis === 'freigabe_angefordert') z.push(`Die nächste Rückfrage liegt zur Freigabe bereit (Link an ${esc(rueckfrage.zugestellt)} Freigeber).`);
+		if (ohneRueckfrageText) { /* Übersicht für die Freigabe-Nachricht */ }
+		else if (rueckfrage && rueckfrage.ergebnis === 'freigabe_angefordert') z.push(`Die nächste Rückfrage liegt zur Freigabe bereit (Link an ${esc(rueckfrage.zugestellt)} Freigeber).`);
 		else if (rueckfrage && rueckfrage.ergebnis === 'eskaliert_max_runden') z.push('<b>Maximale Anzahl Rückfragen erreicht – bitte manuell klären.</b>');
 		else z.push('<b>Die nächste Rückfrage konnte nicht automatisch vorbereitet werden – bitte manuell klären.</b>');
 	}

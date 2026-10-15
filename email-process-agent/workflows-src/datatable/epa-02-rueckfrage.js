@@ -18,7 +18,7 @@ module.exports = function () {
 		'**Max. Runden:** Ist max_runden erreicht, wird nicht mehr gefragt: Status "Eskaliert / Manuell" und Meldung im Kanal.',
 		'**Erinnerung (art = erinnerung, M5):** Aufruf durch EPA-04, wenn der Kunde die Frist verpasst hat (Status "Warten auf Kunde"). Text aus fester Vorlage ohne KI, gleiche Bausteine, gleicher Freigabeweg. Rundenzähler bleibt, nach dem Versand zählt EPA-07 die Erinnerung.',
 		'**Trigger:** Aufruf durch EPA-01/EPA-03 (Lücken) bzw. EPA-04 über EPA SW Nachfassen (Erinnerung).',
-		'**Eingaben:** kunde_id, vorgangs_id, art (rueckfrage | erinnerung), referenz. **Ausgabe:** { ergebnis, freigabe_id, zugestellt }',
+		'**Eingaben:** kunde_id, vorgangs_id, art (rueckfrage | erinnerung), referenz, kontext_html (optional: Übersicht zur Mail; dann ist die Freigabe-Nachricht die einzige Meldung). **Ausgabe:** { ergebnis, freigabe_id, zugestellt }',
 		'**Hinweis Sicherheit:** Der Klartext-Link steht nur in den Ausführungsdaten dieses Laufs. Ausführungsdaten-Aufbewahrung in n8n begrenzen.',
 	].join('\n'), { breite: 900, hoehe: 400 });
 
@@ -27,6 +27,7 @@ module.exports = function () {
 		['vorgangs_id', 'string'],
 		['art', 'string'],
 		['referenz', 'string'],
+		['kontext_html', 'string'],
 	]);
 	const config = wf.aufruf('Config laden', [220, 0], 'EPA SW Config laden', [
 		['kunde_id', 'string', '={{ $json.kunde_id }}'],
@@ -217,7 +218,7 @@ const basis = freigabe.basisUrl($execution.resumeUrl, config.freigabe_basis_url)
 const ablaufText = DateTime.fromISO(z.ablauf).setZone(config.zeitzone).toFormat('dd.LL.yyyy, HH:mm');
 return z.tokens.map((t) => ({ json: {
 	freigeber: t.freigeber,
-	nachricht_html: freigabe.nachrichtFreigeber({ vorgang: v, freigabe: fg, fehlende: r.fehlende.map((f) => ({ anzeigename: f.anzeigename || f.feldname })), link: freigabe.link(basis, t.token), ablaufText, art: r.art }),
+	nachricht_html: freigabe.nachrichtFreigeber({ vorgang: v, freigabe: fg, fehlende: r.fehlende.map((f) => ({ anzeigename: f.anzeigename || f.feldname })), link: freigabe.link(basis, t.token), ablaufText, art: r.art, kontext_html: r.art === 'rueckfrage' ? $('Bei Aufruf').first().json.kontext_html : null }),
 } }));
 `);
 	const senden = wf.aufruf('Freigeber benachrichtigen', [3520, 120], 'EPA SW Freigabe senden', [

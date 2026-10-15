@@ -123,12 +123,20 @@ const ANLASS = Object.freeze({
 	freigabe_erneuern: 'Der bisherige Link ist abgelaufen und gilt nicht mehr. Hier ist ein neuer persönlicher Link.',
 });
 
-function nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art, anlass }) {
+/**
+ * Nachricht an einen Freigeber. kontext_html (optional, vom Aufrufer erzeugt, bereits escaped) ist die Übersicht
+ * zur Mail (erkannte und fehlende Angaben, Warnhinweise). Dann ersetzt diese eine Nachricht die sonst zusätzliche
+ * Eingangsmeldung, und die Liste der fehlenden Angaben steht nicht doppelt drin.
+ */
+function nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art, anlass, kontext_html: kontext }) {
 	const liste = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}</li>`).join('');
 	const titel = art === 'erinnerung' ? 'Erinnerung an den Kunden freigeben' : 'Rückfrage an den Kunden freigeben';
 	const hinweis = ANLASS[anlass] ? `<i>${esc(ANLASS[anlass])}</i><br>` : '';
-	return `${hinweis}<b>${esc(titel)}: ${esc(vorgang.vorgangs_id)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>Fehlende Angaben:<ul>${liste}</ul>` +
-		`<a href="${esc(url)}">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Persönlicher Link, einmal verwendbar, gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;
+	const link = `<a href="${esc(url)}">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Persönlicher Link, einmal verwendbar, gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;
+	if (kontext && typeof kontext === 'string' && kontext.trim()) {
+		return `${hinweis}${kontext}<br><br><b>${esc(titel)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>` + link;
+	}
+	return `${hinweis}<b>${esc(titel)}: ${esc(vorgang.vorgangs_id)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>Fehlende Angaben:<ul>${liste}</ul>` + link;
 }
 
 module.exports = {

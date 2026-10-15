@@ -84,3 +84,11 @@ test('Archivieren nur bei aussortierten Mails, nie bei unklaren', () => {
 	for (const c of ['ignoriert', 'ignoriert_auto_antwort', 'ignoriert_gesperrt']) assert.equal(e.archivieren(c), true, c);
 	for (const c of ['klassifizierung_unklar', 'zuordnung_unklar', 'duplikat', 'ignoriert_eigene_mail', 'bereit', 'luecken', 'zugeordnet']) assert.equal(e.archivieren(c), false, c);
 });
+
+test('Eine Nachricht je Rückfrage: Eingangsmeldung entfällt nur, wenn die Freigabe angekommen ist', () => {
+	const e = require('../src/eingang');
+	assert.equal(e.meldungInFreigabe({ ergebnis: 'freigabe_angefordert', zugestellt: 1 }), true);
+	assert.equal(e.meldungInFreigabe({ ergebnis: 'freigabe_angefordert', zugestellt: 0 }), false, 'nicht zugestellt: Eingangsmeldung bleibt');
+	assert.equal(e.meldungInFreigabe({ ergebnis: 'eskaliert_max_runden' }), false);
+	assert.equal(e.meldungInFreigabe(null), false, 'EPA-02 fehlgeschlagen: Eingangsmeldung bleibt');
+});

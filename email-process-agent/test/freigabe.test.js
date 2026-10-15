@@ -87,3 +87,14 @@ test('Teams-Nachricht an den Freigeber', () => {
 	assert.match(n, /<li>Telefon<\/li>/);
 	assert.match(n, /einmal verwendbar/);
 });
+
+test('Freigabe-Nachricht mit Übersicht ersetzt die zusätzliche Eingangsmeldung (eine Nachricht je Rückfrage)', () => {
+	const fg = { empfaenger: 'kunde@x.example', betreff: 'RE: Anfrage [V-2026-0001]' };
+	const ohne = f.nachrichtFreigeber({ vorgang: { vorgangs_id: 'V-2026-0001' }, freigabe: fg, fehlende: [{ anzeigename: 'Telefon' }], link: 'https://x.example/f?t=1', ablaufText: '17.10.2026, 10:00', art: 'rueckfrage' });
+	assert.match(ohne, /Fehlende Angaben:<ul><li>Telefon<\/li>/);
+	const mit = f.nachrichtFreigeber({ vorgang: { vorgangs_id: 'V-2026-0001' }, freigabe: fg, fehlende: [{ anzeigename: 'Telefon' }], link: 'https://x.example/f?t=1', ablaufText: '17.10.2026, 10:00', art: 'rueckfrage', kontext_html: '<b>Anfrage mit Lücken erkannt</b><br>Fehlende oder ungültige Pflichtangaben:<ul><li>Telefon: fehlt</li></ul>' });
+	assert.match(mit, /^<b>Anfrage mit Lücken erkannt<\/b>/);
+	assert.match(mit, /<b>Rückfrage an den Kunden freigeben<\/b><br>An: kunde@x\.example/);
+	assert.match(mit, /Entwurf ansehen, bearbeiten oder freigeben/);
+	assert.doesNotMatch(mit, /Fehlende Angaben:<ul>/, 'Liste nicht doppelt');
+});

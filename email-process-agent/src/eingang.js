@@ -133,7 +133,8 @@ function meldungGeprueft(vorgangsId, mail, felder, pruefung, extra = {}) {
 	if (!pruefung.vollstaendig) {
 		html += '<br>Fehlende oder ungültige Pflichtangaben:<ul>' + pruefung.fehlende.map((f) => `<li>${esc(f.anzeigename)}: ${esc(f.grund)}</li>`).join('') + '</ul>';
 		const r = extra.rueckfrage;
-		if (r && r.ergebnis === 'freigabe_angefordert') html += `Die Rückfrage liegt als Entwurf zur Freigabe bereit (persönlicher Link an ${r.zugestellt} Freigeber per Teams-Chat${r.fallback ? '; Standardvorlage verwendet' : ''}).`;
+		if (extra.ohneRueckfrageText) { /* Übersicht für die Freigabe-Nachricht: der Rückfrage-Teil folgt dort */ }
+		else if (r && r.ergebnis === 'freigabe_angefordert') html += `Die Rückfrage liegt als Entwurf zur Freigabe bereit (persönlicher Link an ${r.zugestellt} Freigeber per Teams-Chat${r.fallback ? '; Standardvorlage verwendet' : ''}).`;
 		else if (r && r.ergebnis === 'eskaliert_max_runden') html += 'Die maximale Anzahl Rückfragen ist erreicht: bitte manuell klären.';
 		else html += '<b>Die Rückfrage konnte nicht automatisch vorbereitet werden – bitte manuell klären.</b> Details im Fehlerlog.';
 	}
@@ -149,7 +150,13 @@ function meldungExtraktionFehlgeschlagen(vorgangsId, mail, fehlercode) {
 		`<br>Die KI hat zweimal keine gültige Antwort geliefert (${esc(fehlercode)}). Der Vorgang steht auf "Eskaliert / Manuell".` + warnungen(mail);
 }
 
+/** true, wenn die Rückfrage-Freigabe samt Übersicht mindestens einen Freigeber erreicht hat: dann keine zweite Meldung. */
+function meldungInFreigabe(rueckfrage) {
+	return Boolean(rueckfrage && rueckfrage.ergebnis === 'freigabe_angefordert' && Number(rueckfrage.zugestellt) > 0);
+}
+
 module.exports = {
+	meldungInFreigabe,
 	ARCHIVIEREN_BEI,
 	archivieren,
 	dedupeEntscheiden,
