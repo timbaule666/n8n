@@ -38,7 +38,8 @@
    "freigabe_basis_url": "",
    "stille_alarm_stunden": 0,
    "uebersetzungen": "",
-   "outlook_kategorien": ""
+   "outlook_kategorien": "",
+   "config_sheet": ""
   }
  ],
  "epa_config_pflichtfelder": [

@@ -1,0 +1,333 @@
+{
+  "name": "EPA-10 Regel-Sheet anlegen",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## EPA-10 Regel-Sheet anlegen\n**Zweck:** Legt für einen Kunden ein Google Sheet mit seinen aktuellen Regeln an (Reiter \"Allgemein\", \"Pflichtfelder\", \"Status\") und trägt die Sheet-ID in `config_sheet` ein. Danach übernimmt \"EPA-09 Regeln aus Google Sheets\" Änderungen automatisch.\n**Aufruf:** manuell mit `kunde_id`. Hat der Kunde schon ein Sheet, wird kein zweites angelegt.\n**Danach:** Sheet in Google Drive für den Kunden freigeben (Bearbeiten). Nur die Personen, die Regeln ändern dürfen.\n**Einrichten:** Google-Sheets-Credential in \"Sheet anlegen\" und \"Spaltenbreite anpassen\" zuweisen.",
+        "width": 680,
+        "height": 260,
+        "color": 7
+      },
+      "id": "4e321cb3-1ecd-477c-a5cd-f61b1dbc7867",
+      "name": "Notiz Zweck",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -420
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "kunde_id",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "ab574b9e-7190-4923-adab-756bf430a6b1",
+      "name": "Bei Aufruf",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_config_allgemein"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Bei Aufruf').first().json.kunde_id }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "id": "7be15d1d-ebe5-4a24-ae5a-21ae183dddfb",
+      "name": "Config-Zeile lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        220,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_config_pflichtfelder"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Bei Aufruf').first().json.kunde_id }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "c0198089-486a-4fc3-a272-5d57a7b0736c",
+      "name": "Pflichtfelder lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/configSheet.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst configSheet = (() => {\nconst module = { exports: {} };\n// Kunden-Regeln in einem Google Sheet (Reiter \"Allgemein\", \"Pflichtfelder\", \"Status\").\n// Der Kunde pflegt nur die fachlichen Einstellungen. Technik und Sicherheit (Postfach, Kanal, Freigeber,\n// KI-Profil, Prompt-Versionen …) bleiben in der Data Table und können über das Sheet nicht geändert werden.\n// Ablauf (EPA SW Regeln abgleichen): Sheet lesen -> abgleichen() -> komplette neue Config mit\n// configValidator.validiereConfig prüfen -> nur wenn fehlerfrei schreiben. Pflichtfelder werden nie gelöscht,\n// fehlende Zeilen werden nur deaktiviert.\n\nconst TAGE = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];\nconst LISTE = /[\\n,;]+/;\n\n/**\n * Einstellungen im Reiter \"Allgemein\": [Spalte, Bezeichnung im Sheet, Art, Erklärung].\n * Art: text | zahl | janein | liste | daten | sonder (Geschäftszeiten, Markierungen).\n */\nconst EINSTELLUNGEN = Object.freeze([\n\t['anrede_stil', 'Anrede', 'text', '\"Sie\" oder \"Du\"'],\n\t['sprache', 'Sprache', 'text', 'Standardsprache der Rückfragen, z. B. \"de\" (Kundenmails in Englisch werden auf Englisch beantwortet, wenn Übersetzungen eingerichtet sind)'],\n\t['signatur', 'Signatur', 'text', 'Grußformel und Unterschrift unter jeder Rückfrage (Zeilenumbrüche erlaubt)'],\n\t['ki_hinweistext', 'KI-Hinweis', 'text', 'Hinweis unter jeder Rückfrage, dass die Mail KI-gestützt vorbereitet wurde'],\n\t['frist_stunden', 'Antwortfrist Kunde (Stunden)', 'zahl', 'So lange wartet der Agent auf die Antwort des Kunden'],\n\t['frist_nur_geschaeftszeit', 'Frist nur in Geschäftszeiten', 'janein', '\"ja\": Nur Stunden innerhalb der Geschäftszeiten zählen'],\n\t['max_runden', 'Maximale Rückfrage-Runden', 'zahl', 'Danach übernimmt ein Mitarbeiter'],\n\t['erinnerung_intervall_stunden', 'Erinnerung nach (Stunden)', 'zahl', 'Abstand der Erinnerungen an den Kunden'],\n\t['anzahl_erinnerungen', 'Anzahl Erinnerungen', 'zahl', '0 = keine Erinnerung'],\n\t['arbeitstage', 'Arbeitstage', 'sonder', 'z. B. \"Mo, Di, Mi, Do, Fr\"'],\n\t['geschaeftszeit_von', 'Geschäftszeit von', 'sonder', 'Format HH:MM, z. B. 08:00'],\n\t['geschaeftszeit_bis', 'Geschäftszeit bis', 'sonder', 'Format HH:MM, z. B. 17:00'],\n\t['feiertage_region', 'Bundesland für Feiertage', 'text', 'Kürzel, z. B. NW, BY, HH (leer = keine gesetzlichen Feiertage)'],\n\t['zusaetzliche_feiertage', 'Zusätzliche freie Tage', 'daten', 'Daten als TT.MM.JJJJ, durch Komma getrennt (z. B. Betriebsferien)'],\n\t['absender_allowlist', 'Absender immer prüfen', 'liste', 'Adressen oder @domain.de, deren Mails nie automatisch aussortiert werden'],\n\t['absender_blocklist', 'Absender ignorieren', 'liste', 'Adressen oder @domain.de, deren Mails nie bearbeitet werden (sie bleiben im Postfach)'],\n\t['freigabe_erinnerung_stunden', 'Erinnerung an Freigeber nach (Stunden)', 'zahl', 'Wenn eine Rückfrage so lange nicht freigegeben wurde'],\n\t['freigabe_ablauf_stunden', 'Freigabe-Link gültig (Stunden)', 'zahl', 'Danach muss die Rückfrage neu angefordert werden'],\n\t['aufbewahrung_tage', 'Daten aufbewahren (Tage)', 'zahl', 'Danach werden abgeschlossene Vorgänge im System gelöscht (Mails im Postfach nie)'],\n\t['archivordner', 'Ordner für aussortierte Mails', 'text', 'Leer = aussortierte Mails bleiben im Posteingang (empfohlen). Mails werden nie gelöscht.'],\n\t['markierung_bereit', 'Outlook-Markierung \"bereit\"', 'sonder', 'Grüne Markierung, wenn eine Anfrage vollständig ist (leer = keine)'],\n\t['markierung_rueckfrage', 'Outlook-Markierung \"Rückfrage\"', 'sonder', 'Rote Markierung, solange eine Rückfrage läuft (leer = keine)'],\n]);\n\n/** Spalten im Reiter \"Pflichtfelder\" (Kopfzeile). */\nconst PFLICHT_SPALTEN = Object.freeze([\n\t['vorgangstyp', 'Vorgangstyp'],\n\t['feldname', 'Feldname'],\n\t['anzeigename', 'Anzeigename'],\n\t['typ', 'Typ'],\n\t['pflicht', 'Pflicht'],\n\t['resolution_textbaustein', 'Rückfrage-Text'],\n\t['extraktions_hinweis', 'Hinweis für die KI'],\n\t['werte', 'Erlaubte Werte'],\n\t['reihenfolge', 'Reihenfolge'],\n\t['aktiv', 'Aktiv'],\n]);\n\nconst FARBE_BEREIT = 'preset4';\nconst FARBE_RUECKFRAGE = 'preset0';\nconst STATUS_BEREIT = ['Bereit zur Bearbeitung'];\nconst STATUS_RUECKFRAGE = ['Freigabe ausstehend', 'Warten auf Kunde'];\n\nconst zelle = (v) => (v === null || v === undefined ? '' : String(v)).trim();\n\nfunction jsonOder(roh, ersatz) {\n\tif (roh && typeof roh === 'object') return roh;\n\tif (typeof roh !== 'string' || !roh.trim()) return ersatz;\n\ttry { return JSON.parse(roh); } catch { return ersatz; }\n}\n\nfunction janein(v) {\n\tconst s = zelle(v).toLowerCase();\n\tif (['ja', 'j', 'x', 'true', 'wahr', '1', 'yes'].includes(s)) return true;\n\tif (['nein', 'n', '', 'false', 'falsch', '0', 'no'].includes(s)) return false;\n\treturn null;\n}\n\nfunction zahlAus(v) {\n\tconst s = zelle(v).replace(/\\s/g, '').replace(',', '.');\n\tif (!/^-?\\d+(\\.\\d+)?$/.test(s)) return null;\n\treturn Number(s);\n}\n\n// ---------------------------------------------------------------- Config -> Sheet\n\nfunction datumDe(iso) {\n\tconst m = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(iso);\n\treturn m ? `${m[3]}.${m[2]}.${m[1]}` : iso;\n}\n\n/** Werte der Einstellungen aus einer Config-Zeile (für das Sheet). */\nfunction einstellungsWerte(a) {\n\tconst gz = jsonOder(a.geschaeftszeiten, {});\n\tconst kat = jsonOder(a.outlook_kategorien, {});\n\tconst name = (liste) => { for (const s of liste) if (kat[s] && kat[s].name) return kat[s].name; return ''; };\n\tconst w = {\n\t\tarbeitstage: Array.isArray(gz.tage) ? gz.tage.map((t) => TAGE[t - 1]).filter(Boolean).join(', ') : '',\n\t\tgeschaeftszeit_von: gz.von || '',\n\t\tgeschaeftszeit_bis: gz.bis || '',\n\t\tmarkierung_bereit: name(STATUS_BEREIT),\n\t\tmarkierung_rueckfrage: name(STATUS_RUECKFRAGE),\n\t};\n\tfor (const [spalte, , art] of EINSTELLUNGEN) {\n\t\tif (art === 'sonder') continue;\n\t\tconst v = a[spalte];\n\t\tif (art === 'janein') w[spalte] = v === true ? 'ja' : 'nein';\n\t\telse if (art === 'liste') w[spalte] = (jsonOder(v, []) || []).join(', ');\n\t\telse if (art === 'daten') w[spalte] = (jsonOder(v, []) || []).map(datumDe).join(', ');\n\t\telse w[spalte] = v === null || v === undefined ? '' : String(v);\n\t}\n\treturn w;\n}\n\n/** Inhalt der drei Reiter als Tabellen (Listen von Zeilen). */\nfunction sheetInhalt(allgemein, pflichtfelder) {\n\tconst w = einstellungsWerte(allgemein || {});\n\tconst ue = jsonOder((allgemein || {}).uebersetzungen, {}) || {};\n\tconst sprachen = Object.keys(ue);\n\tconst reiterAllgemein = [['Einstellung', 'Wert', 'Erklärung'], ...EINSTELLUNGEN.map(([s, label, , erkl]) => [label, w[s] ?? '', erkl])];\n\tfor (const l of sprachen) {\n\t\treiterAllgemein.push([`Signatur (${l})`, ue[l].signatur || '', `Signatur für Rückfragen auf Mails in der Sprache \"${l}\"`]);\n\t\treiterAllgemein.push([`KI-Hinweis (${l})`, ue[l].ki_hinweistext || '', `KI-Hinweis für Rückfragen in der Sprache \"${l}\"`]);\n\t}\n\tconst zeilen = (pflichtfelder || []).slice().sort((x, y) => (x.reihenfolge || 0) - (y.reihenfolge || 0));\n\tconst reiterPflicht = [[...PFLICHT_SPALTEN.map(([, k]) => k), ...sprachen.map((l) => `Rückfrage-Text (${l})`)], ...zeilen.map((z) => {\n\t\tconst regel = jsonOder(z.validierungsregel, {}) || {};\n\t\tconst v = { ...z, pflicht: z.pflicht ? 'ja' : 'nein', aktiv: z.aktiv === false ? 'nein' : 'ja', werte: Array.isArray(regel.werte) ? regel.werte.join(', ') : '' };\n\t\treturn [...PFLICHT_SPALTEN.map(([s]) => (v[s] === null || v[s] === undefined ? '' : String(v[s]))), ...sprachen.map((l) => ((ue[l].textbausteine || {})[z.feldname] || ''))];\n\t})];\n\treturn { Allgemein: reiterAllgemein, Pflichtfelder: reiterPflicht, Status: statusZeilen({ ergebnis: 'Angelegt', meldungen: [] }) };\n}\n\n/** Body für POST https://sheets.googleapis.com/v4/spreadsheets (neues Sheet mit drei Reitern). */\nfunction anlegenBody(titel, inhalt) {\n\tconst zeile = (werte) => ({ values: werte.map((v) => ({ userEnteredValue: { stringValue: String(v) } })) });\n\tconst reiter = (name, daten, fixiert) => ({\n\t\tproperties: { title: name, gridProperties: { frozenRowCount: fixiert ? 1 : 0 } },\n\t\tdata: [{ startRow: 0, startColumn: 0, rowData: daten.map(zeile) }],\n\t});\n\treturn {\n\t\tproperties: { title: titel, locale: 'de_DE' },\n\t\tsheets: [reiter('Allgemein', inhalt.Allgemein, true), reiter('Pflichtfelder', inhalt.Pflichtfelder, true), reiter('Status', inhalt.Status, false)],\n\t};\n}\n\n// ---------------------------------------------------------------- Sheet -> Config\n\nfunction tageAus(text, fehler) {\n\t// \"Mo\", \"Montag\", \"mo\" -> Index; Bereiche wie \"Mo-Fr\" oder \"Montag - Freitag\"\n\tconst tag = (s) => TAGE.indexOf(s.slice(0, 1).toUpperCase() + s.slice(1, 2).toLowerCase());\n\tconst teile = zelle(text).split(LISTE).map((t) => t.trim()).filter(Boolean);\n\tconst tage = [];\n\tfor (const t of teile) {\n\t\tconst bereich = /^([A-Za-zä]+)\\s*-\\s*([A-Za-zä]+)$/.exec(t);\n\t\tif (bereich) {\n\t\t\tconst a = tag(bereich[1]); const b = tag(bereich[2]);\n\t\t\tif (a < 0 || b < 0 || b < a) { fehler.push(`Arbeitstage: \"${t}\" ist ungültig (Mo, Di, Mi, Do, Fr, Sa, So)`); continue; }\n\t\t\tfor (let i = a; i <= b; i++) tage.push(i + 1);\n\t\t\tcontinue;\n\t\t}\n\t\tconst i = tag(t);\n\t\tif (i < 0) fehler.push(`Arbeitstage: \"${t}\" ist kein Wochentag (Mo, Di, Mi, Do, Fr, Sa, So)`);\n\t\telse tage.push(i + 1);\n\t}\n\treturn [...new Set(tage)].sort((x, y) => x - y);\n}\n\nfunction datenAus(text, fehler, label) {\n\tconst out = [];\n\tfor (const t of zelle(text).split(LISTE).map((x) => x.trim()).filter(Boolean)) {\n\t\tlet m = /^(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})$/.exec(t);\n\t\tif (m) { out.push(`${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`); continue; }\n\t\tm = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(t);\n\t\tif (m) { out.push(t); continue; }\n\t\tfehler.push(`${label}: \"${t}\" ist kein Datum (TT.MM.JJJJ)`);\n\t}\n\treturn out;\n}\n\n/** Liest den Reiter \"Allgemein\" (Zeilen [Einstellung, Wert, …]) in { spalte: wert }. */\nfunction allgemeinLesen(zeilen, fehler, hinweise) {\n\tconst nachLabel = new Map(EINSTELLUNGEN.map((e) => [e[1].toLowerCase(), e]));\n\tconst werte = {};\n\t(zeilen || []).slice(1).forEach((z, i) => {\n\t\tconst label = zelle(z && z[0]);\n\t\tif (!label) return;\n\t\tconst sp = /^(Signatur|KI-Hinweis) \\(([a-z]{2})\\)$/i.exec(label);\n\t\tif (sp) {\n\t\t\tconst l = sp[2].toLowerCase();\n\t\t\tconst ziel = (werte.__sprachen = werte.__sprachen || {});\n\t\t\tziel[l] = { ...(ziel[l] || {}), [sp[1].toLowerCase() === 'signatur' ? 'signatur' : 'ki_hinweistext']: zelle(z[1]).replace(/\\r\\n/g, '\\n') };\n\t\t\treturn;\n\t\t}\n\t\tconst e = nachLabel.get(label.toLowerCase());\n\t\tif (!e) { hinweise.push(`Allgemein, Zeile ${i + 2}: Einstellung \"${label}\" ist unbekannt und wird ignoriert`); return; }\n\t\tif (e[0] in werte) { fehler.push(`Allgemein: Einstellung \"${e[1]}\" steht doppelt im Sheet`); return; }\n\t\twerte[e[0]] = z.length > 1 ? z[1] : '';\n\t});\n\tfor (const [s, label] of EINSTELLUNGEN) if (!(s in werte)) fehler.push(`Allgemein: Zeile \"${label}\" fehlt`);\n\treturn werte;\n}\n\n/** Neue Werte für epa_config_allgemein aus den Sheet-Werten (nur die Spalten, die der Kunde pflegen darf). */\nfunction allgemeinUmsetzen(werte, alt, fehler) {\n\tconst neu = {};\n\tfor (const [spalte, label, art] of EINSTELLUNGEN) {\n\t\tif (art === 'sonder' || !(spalte in werte)) continue;\n\t\tconst roh = werte[spalte];\n\t\tif (art === 'text') neu[spalte] = zelle(roh).replace(/\\r\\n/g, '\\n');\n\t\telse if (art === 'zahl') {\n\t\t\tconst z = zahlAus(roh);\n\t\t\tif (z === null) fehler.push(`${label}: \"${zelle(roh)}\" ist keine Zahl`);\n\t\t\telse neu[spalte] = z;\n\t\t} else if (art === 'janein') {\n\t\t\tconst b = janein(roh);\n\t\t\tif (b === null) fehler.push(`${label}: bitte \"ja\" oder \"nein\" eintragen`);\n\t\t\telse neu[spalte] = b;\n\t\t} else if (art === 'liste') {\n\t\t\tneu[spalte] = JSON.stringify(zelle(roh).split(LISTE).map((x) => x.trim().toLowerCase()).filter(Boolean));\n\t\t} else if (art === 'daten') {\n\t\t\tneu[spalte] = JSON.stringify(datenAus(roh, fehler, label));\n\t\t}\n\t}\n\tif (neu.feiertage_region === '') neu.feiertage_region = null;\n\tif ('arbeitstage' in werte || 'geschaeftszeit_von' in werte || 'geschaeftszeit_bis' in werte) {\n\t\tconst gzAlt = jsonOder(alt.geschaeftszeiten, {}) || {};\n\t\tconst gz = { ...gzAlt, tage: tageAus(werte.arbeitstage, fehler), von: zelle(werte.geschaeftszeit_von), bis: zelle(werte.geschaeftszeit_bis) };\n\t\tneu.geschaeftszeiten = JSON.stringify(gz);\n\t}\n\tif ('markierung_bereit' in werte || 'markierung_rueckfrage' in werte) {\n\t\tconst kat = {};\n\t\tconst bereit = zelle(werte.markierung_bereit);\n\t\tconst rueck = zelle(werte.markierung_rueckfrage);\n\t\tif (bereit) for (const s of STATUS_BEREIT) kat[s] = { name: bereit, farbe: FARBE_BEREIT };\n\t\tif (rueck) for (const s of STATUS_RUECKFRAGE) kat[s] = { name: rueck, farbe: FARBE_RUECKFRAGE };\n\t\tneu.outlook_kategorien = Object.keys(kat).length ? JSON.stringify(kat) : '';\n\t}\n\treturn neu;\n}\n\n/** Liest den Reiter \"Pflichtfelder\" (Kopfzeile + Zeilen) und baut die neuen Tabellenzeilen. */\nfunction pflichtUmsetzen(zeilen, alt, kundeId, fehler) {\n\tconst kopf = (zeilen && zeilen[0] ? zeilen[0] : []).map((k) => zelle(k).toLowerCase());\n\tconst index = {};\n\tfor (const [s, k] of PFLICHT_SPALTEN) {\n\t\tconst i = kopf.indexOf(k.toLowerCase());\n\t\tif (i < 0 && s !== 'werte') fehler.push(`Pflichtfelder: Spalte \"${k}\" fehlt in der Kopfzeile`);\n\t\tindex[s] = i;\n\t}\n\tconst sprachSpalten = [];\n\tkopf.forEach((k, i) => { const m = /^rückfrage-text \\(([a-z]{2})\\)$/.exec(k); if (m) sprachSpalten.push([m[1], i]); });\n\tif (fehler.length) return [];\n\tconst altNach = new Map((alt || []).map((z) => [`${z.vorgangstyp}.${z.feldname}`, z]));\n\tconst out = [];\n\tconst gesehen = new Set();\n\t(zeilen || []).slice(1).forEach((z, i) => {\n\t\tconst wert = (s) => (index[s] >= 0 ? zelle(z[index[s]]) : '');\n\t\tif (PFLICHT_SPALTEN.every(([s]) => !wert(s))) return; // Leerzeile\n\t\tconst nr = i + 2;\n\t\tconst vorgangstyp = wert('vorgangstyp');\n\t\tconst feldname = wert('feldname');\n\t\tconst schluessel = `${vorgangstyp}.${feldname}`;\n\t\tif (gesehen.has(schluessel)) { fehler.push(`Pflichtfelder, Zeile ${nr}: Feld \"${feldname}\" steht doppelt`); return; }\n\t\tgesehen.add(schluessel);\n\t\tconst vorher = altNach.get(schluessel);\n\t\tconst pflicht = janein(wert('pflicht'));\n\t\tif (pflicht === null) fehler.push(`Pflichtfelder, Zeile ${nr}: Pflicht bitte \"ja\" oder \"nein\"`);\n\t\tconst aktivRoh = wert('aktiv');\n\t\tconst aktiv = aktivRoh === '' ? true : janein(aktivRoh);\n\t\tif (aktiv === null) fehler.push(`Pflichtfelder, Zeile ${nr}: Aktiv bitte \"ja\" oder \"nein\"`);\n\t\tconst reihenfolgeRoh = wert('reihenfolge');\n\t\tconst reihenfolge = reihenfolgeRoh === '' ? (vorher ? vorher.reihenfolge : (out.length + 1) * 10) : zahlAus(reihenfolgeRoh);\n\t\tif (reihenfolge === null) fehler.push(`Pflichtfelder, Zeile ${nr}: Reihenfolge ist keine Zahl`);\n\t\tconst regel = { ...(jsonOder(vorher && vorher.validierungsregel, {}) || {}) };\n\t\tconst typ = wert('typ').toLowerCase();\n\t\tif (typ === 'enum') {\n\t\t\tconst liste = wert('werte').split(LISTE).map((x) => x.trim()).filter(Boolean);\n\t\t\tif (liste.length) regel.werte = liste;\n\t\t} else delete regel.werte;\n\t\tconst zeile = {\n\t\t\tkunde_id: kundeId,\n\t\t\tvorgangstyp,\n\t\t\tfeldname,\n\t\t\tanzeigename: wert('anzeigename'),\n\t\t\ttyp,\n\t\t\tpflicht: pflicht === true,\n\t\t\tvalidierungsregel: JSON.stringify(regel),\n\t\t\tresolution_textbaustein: wert('resolution_textbaustein'),\n\t\t\textraktions_hinweis: wert('extraktions_hinweis'),\n\t\t\tplatzhalter_muster: vorher && typeof vorher.platzhalter_muster === 'string' ? vorher.platzhalter_muster : '[]',\n\t\t\treihenfolge: reihenfolge ?? 0,\n\t\t\taktiv: aktiv !== false,\n\t\t};\n\t\tconst texte = Object.fromEntries(sprachSpalten.map(([l, i]) => [l, zelle(z[i])]));\n\t\tout.push({ id: vorher ? vorher.id : null, zeile, texte });\n\t});\n\t// Felder, die im Sheet fehlen, werden deaktiviert, nie gelöscht.\n\tfor (const z of alt || []) {\n\t\tif (!gesehen.has(`${z.vorgangstyp}.${z.feldname}`) && z.aktiv !== false) {\n\t\t\tconst { id, createdAt, updatedAt, ...rest } = z;\n\t\t\tout.push({ id, zeile: { ...rest, aktiv: false }, entfernt: true });\n\t\t}\n\t}\n\treturn out;\n}\n\nconst SPALTEN_PFLICHT = ['vorgangstyp', 'feldname', 'anzeigename', 'typ', 'pflicht', 'validierungsregel', 'resolution_textbaustein', 'extraktions_hinweis', 'platzhalter_muster', 'reihenfolge', 'aktiv'];\n\n/**\n * Gleicht das Sheet mit der Config ab.\n * @param {object} p\n * @param {object} p.allgemein       Zeile aus epa_config_allgemein\n * @param {object[]} p.pflichtfelder alle Zeilen des Kunden aus epa_config_pflichtfelder (auch inaktive)\n * @param {Array[]} p.reiterAllgemein Werte des Reiters \"Allgemein\" (Zeilen)\n * @param {Array[]} p.reiterPflicht   Werte des Reiters \"Pflichtfelder\" (Zeilen)\n * @param {function} p.validieren    (allgemein, aktivePflichtfelder) => { gueltig, fehler }\n * @returns {{ fehler: string[], hinweise: string[], allgemein_update: object, pflicht_ops: object[], aenderungen: string[] }}\n */\nfunction abgleichen({ allgemein, pflichtfelder, reiterAllgemein, reiterPflicht, validieren }) {\n\tconst fehler = [];\n\tconst hinweise = [];\n\tconst alt = allgemein || {};\n\tconst werte = allgemeinLesen(reiterAllgemein, fehler, hinweise);\n\tconst neu = allgemeinUmsetzen(werte, alt, fehler);\n\tconst pflicht = pflichtUmsetzen(reiterPflicht, pflichtfelder, alt.kunde_id, fehler);\n\tconst leer = { fehler, hinweise, allgemein_update: {}, pflicht_ops: [], aenderungen: [] };\n\tif (fehler.length) return leer;\n\n\tconst gleich = (a, b) => (a === null || a === undefined || a === '' ? '' : String(a)) === (b === null || b === undefined || b === '' ? '' : String(b));\n\tconst labelVon = Object.fromEntries(EINSTELLUNGEN.map(([s, l]) => [s, l]));\n\tlabelVon.geschaeftszeiten = 'Geschäftszeiten';\n\tlabelVon.outlook_kategorien = 'Outlook-Markierungen';\n\tconst allgemeinUpdate = {};\n\tconst aenderungen = [];\n\tfor (const [s, v] of Object.entries(neu)) {\n\t\tconst json = ['geschaeftszeiten', 'outlook_kategorien', 'absender_allowlist', 'absender_blocklist', 'zusaetzliche_feiertage'].includes(s);\n\t\tconst k = (x) => (x ? kanonisch(jsonOder(x, x)) : '');\n\t\tif (json ? k(alt[s]) !== k(v) : !gleich(alt[s], v)) { allgemeinUpdate[s] = v; aenderungen.push(`${labelVon[s] || s} geändert`); }\n\t}\n\tconst ops = [];\n\tconst altNachId = new Map((pflichtfelder || []).map((z) => [z.id, z]));\n\tfor (const p of pflicht) {\n\t\tif (!p.id) { ops.push({ aktion: 'insert', id: null, zeile: p.zeile }); aenderungen.push(`Feld \"${p.zeile.feldname}\" neu`); continue; }\n\t\tconst vorher = altNachId.get(p.id) || {};\n\t\tconst diff = {};\n\t\tconst norm = (s, v) => (s === 'validierungsregel' ? JSON.stringify(jsonOder(v, {}) || {}) : v);\n\t\tfor (const s of SPALTEN_PFLICHT) if (!gleich(norm(s, vorher[s]), norm(s, p.zeile[s]))) diff[s] = p.zeile[s];\n\t\tif (!Object.keys(diff).length) continue;\n\t\tops.push({ aktion: 'update', id: p.id, zeile: diff });\n\t\taenderungen.push(p.entfernt ? `Feld \"${p.zeile.feldname}\" deaktiviert (fehlt im Sheet)` : `Feld \"${p.zeile.feldname}\" geändert (${Object.keys(diff).join(', ')})`);\n\t}\n\n\t// Die komplette neue Config muss gültig sein, sonst wird nichts übernommen.\n\tconst pflichtNeu = new Map((pflichtfelder || []).map((z) => [z.id, { ...z }]));\n\tfor (const op of ops) {\n\t\tif (op.aktion === 'insert') pflichtNeu.set(`neu-${pflichtNeu.size}`, { ...op.zeile });\n\t\telse pflichtNeu.set(op.id, { ...pflichtNeu.get(op.id), ...op.zeile });\n\t}\n\tconst ueAlt = jsonOder(alt.uebersetzungen, {}) || {};\n\tconst sheetSprachen = werte.__sprachen || {};\n\tconst spaltenSprachen = new Set(pflicht.flatMap((p) => Object.keys(p.texte || {})));\n\tconst sprachen = [...new Set([...Object.keys(ueAlt), ...Object.keys(sheetSprachen), ...spaltenSprachen])];\n\tif (sprachen.length) {\n\t\tconst aktive = [...pflichtNeu.values()].filter((z) => z.aktiv !== false);\n\t\tconst textVon = new Map(pflicht.map((p) => [`${p.zeile.vorgangstyp}.${p.zeile.feldname}`, p.texte || {}]));\n\t\tconst ueNeu = {};\n\t\tfor (const l of sprachen) {\n\t\t\tconst e = ueAlt[l] || {};\n\t\t\tconst tb = {};\n\t\t\tfor (const f of aktive) {\n\t\t\t\tconst t = (textVon.get(`${f.vorgangstyp}.${f.feldname}`) || {})[l];\n\t\t\t\ttb[f.feldname] = spaltenSprachen.has(l) ? (t || '') : ((e.textbausteine || {})[f.feldname] || '');\n\t\t\t}\n\t\t\tueNeu[l] = { ...e, signatur: (sheetSprachen[l] || {}).signatur ?? e.signatur ?? '', ki_hinweistext: (sheetSprachen[l] || {}).ki_hinweistext ?? e.ki_hinweistext ?? '', textbausteine: tb };\n\t\t}\n\t\tif (kanonisch(ueNeu) !== kanonisch(ueAlt)) { allgemeinUpdate.uebersetzungen = JSON.stringify(ueNeu); aenderungen.push('Übersetzungen geändert'); }\n\t}\n\tconst pruefung = validieren({ ...alt, ...allgemeinUpdate }, [...pflichtNeu.values()].filter((z) => z.aktiv !== false));\n\tif (!pruefung.gueltig) return { ...leer, fehler: pruefung.fehler.map(lesbar) };\n\treturn { fehler, hinweise, allgemein_update: allgemeinUpdate, pflicht_ops: ops, aenderungen };\n}\n\n/** Technische Feldnamen der Config-Prüfung in Sheet-Bezeichnungen übersetzen. */\nfunction lesbar(meldung) {\n\tlet m = String(meldung);\n\tfor (const [s, label] of EINSTELLUNGEN) m = m.replace(new RegExp(`^${s}(?=[:.])`), `\"${label}\"`);\n\tm = m.replace(/^geschaeftszeiten\\.tage/, '\"Arbeitstage\"').replace(/^geschaeftszeiten\\.von/, '\"Geschäftszeit von\"').replace(/^geschaeftszeiten\\.bis/, '\"Geschäftszeit bis\"').replace(/^geschaeftszeiten/, 'Geschäftszeiten');\n\tm = m.replace(/^uebersetzungen\\.([a-z]{2})\\.textbausteine\\.([^:]+): fehlt/, 'Pflichtfelder: \"Rückfrage-Text ($1)\" für $2 fehlt');\n\tm = m.replace(/^uebersetzungen\\.([a-z]{2})\\.signatur/, '\"Signatur ($1)\"').replace(/^uebersetzungen\\.([a-z]{2})\\.ki_hinweistext/, '\"KI-Hinweis ($1)\"');\n\tm = m.replace(/^pflichtfelder\\[([^\\]]*)\\]/, 'Pflichtfelder ($1)').replace(/resolution_textbaustein/, 'Rückfrage-Text');\n\treturn m;\n}\n\n/** Zeilen für den Reiter \"Status\" (feste Länge, damit alte Meldungen überschrieben werden). */\nfunction statusZeilen({ zeit = '', ergebnis, meldungen = [] }) {\n\tconst z = [['Letzte Prüfung', zeit], ['Ergebnis', ergebnis], ['', ''], ['Meldungen', '']];\n\tfor (const m of meldungen.slice(0, 25)) z.push(['', m]);\n\twhile (z.length < 30) z.push(['', '']);\n\treturn z;\n}\n\n/** JSON mit sortierten Schlüsseln (Vergleich unabhängig von der Reihenfolge). */\nfunction kanonisch(x) {\n\tif (Array.isArray(x)) return `[${x.map(kanonisch).join(',')}]`;\n\tif (x && typeof x === 'object') return `{${Object.keys(x).sort().map((k) => `${JSON.stringify(k)}:${kanonisch(x[k])}`).join(',')}}`;\n\treturn JSON.stringify(x);\n}\n\n/** Kurzer Fingerabdruck (FNV-1a), um gleiche Fehler nicht bei jedem Lauf erneut zu melden. */\nfunction fingerabdruck(text) {\n\tlet h = 0x811c9dc5;\n\tfor (const c of new TextEncoder().encode(String(text))) { h ^= c; h = Math.imul(h, 0x01000193) >>> 0; }\n\treturn h.toString(16).padStart(8, '0');\n}\n\nmodule.exports = { EINSTELLUNGEN, PFLICHT_SPALTEN, sheetInhalt, anlegenBody, abgleichen, statusZeilen, fingerabdruck, lesbar };\nreturn module.exports;\n})();\n// ===== Ende src/configSheet.js =====\n\n// ----- Node-Logik -----\nconst allg = $('Config-Zeile lesen').first().json || {};\nif (!allg.kunde_id) throw new Error('Config für ' + $('Bei Aufruf').first().json.kunde_id + ' nicht gefunden');\nif (typeof allg.config_sheet === 'string' && allg.config_sheet.trim()) throw new Error('Kunde hat schon ein Regel-Sheet: https://docs.google.com/spreadsheets/d/' + allg.config_sheet.trim());\nconst pf = $('Pflichtfelder lesen').all().map((i) => i.json).filter((z) => z && z.feldname);\nreturn [{ json: { body: configSheet.anlegenBody('EPA Regeln – ' + allg.kunde_id, configSheet.sheetInhalt(allg, pf)) } }];\n"
+      },
+      "id": "00c1e323-dfc7-4686-aaba-7be9caa0ac0d",
+      "name": "Inhalt bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://sheets.googleapis.com/v4/spreadsheets",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "id": "2706cc5a-0924-42f3-a1f7-1c345237cb46",
+      "name": "Sheet anlegen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $json.spreadsheetId }}:batchUpdate",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ requests: $json.sheets.map((s) => ({ autoResizeDimensions: { dimensions: { sheetId: s.properties.sheetId, dimension: \"COLUMNS\", startIndex: 0, endIndex: 14 } } })) }) }}",
+        "options": {}
+      },
+      "id": "05771dd1-c081-4854-a91e-049f50876b2d",
+      "name": "Spaltenbreite anpassen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: { config_sheet: $('Sheet anlegen').first().json.spreadsheetId } }];\n"
+      },
+      "id": "e229db21-8c31-4b56-ae46-c92a405277d0",
+      "name": "Sheet-ID vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_config_allgemein"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Bei Aufruf').first().json.kunde_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "59dd9196-5aa0-47c4-adcc-775cfe79c7fe",
+      "name": "Sheet-ID speichern",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1540,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst id = $('Sheet anlegen').first().json.spreadsheetId;\nreturn [{ json: { kunde_id: $('Bei Aufruf').first().json.kunde_id, sheet_id: id, url: 'https://docs.google.com/spreadsheets/d/' + id + '/edit' } }];\n"
+      },
+      "id": "dc86651f-269b-4d83-a5b8-566bdac8ba74",
+      "name": "Ergebnis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Bei Aufruf": {
+      "main": [
+        [
+          {
+            "node": "Config-Zeile lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config-Zeile lesen": {
+      "main": [
+        [
+          {
+            "node": "Pflichtfelder lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pflichtfelder lesen": {
+      "main": [
+        [
+          {
+            "node": "Inhalt bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inhalt bauen": {
+      "main": [
+        [
+          {
+            "node": "Sheet anlegen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet anlegen": {
+      "main": [
+        [
+          {
+            "node": "Spaltenbreite anpassen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spaltenbreite anpassen": {
+      "main": [
+        [
+          {
+            "node": "Sheet-ID vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet-ID vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Sheet-ID speichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet-ID speichern": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

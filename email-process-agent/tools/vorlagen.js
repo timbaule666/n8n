@@ -51,6 +51,7 @@ const ALLGEMEIN = {
 	stille_alarm_stunden: 0,
 	uebersetzungen: '',
 	outlook_kategorien: '',
+	config_sheet: '',
 };
 
 const PFLICHTFELD = {

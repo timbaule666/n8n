@@ -28,6 +28,10 @@ const M2 = [
 	['epa-04-nachfassen', 'EPA-04_Nachfassen_und_Eskalation.json'],
 	['epa-06-watchdog', 'EPA-06_Watchdog.json'],
 	['epa-08-loeschjob', 'EPA-08_Loeschjob.json'],
+	// Kunden-Regeln aus Google Sheets
+	['sw-regeln-abgleichen', 'EPA_SW_Regeln_abgleichen.json'],
+	['epa-09-regeln-sheets', 'EPA-09_Regeln_aus_Google_Sheets.json'],
+	['epa-10-regel-sheet-anlegen', 'EPA-10_Regel-Sheet_anlegen.json'],
 	// Testphase: KI-Qualitäts-Prüfstand (keine Nebenwirkungen)
 	['epa-t1-ki-qualitaet', 'EPA-T1_KI-Qualitaet_pruefen.json'],
 	// Nur interne Tests ohne Microsoft-365-Lizenz (Kunden nutzen Teams)

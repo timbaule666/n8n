@@ -1,0 +1,243 @@
+{
+  "name": "EPA-09 Regeln aus Google Sheets",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## EPA-09 Regeln aus Google Sheets\n**Zweck:** Kunden pflegen ihre Regeln (Signatur, Fristen, Geschäftszeiten, Pflichtfelder, Rückfrage-Texte …) selbst in einem Google Sheet. Alle 15 Minuten werden Änderungen geprüft und übernommen.\n**Welche Kunden:** alle mit `config_sheet` (Sheet-ID) in epa_config_allgemein, auch noch nicht aktive (Einrichtung).\n**Je Kunde:** \"EPA SW Regeln abgleichen\". Ein Fehler bei einem Kunden hält die anderen nicht auf.\n**Manuell:** Aufruf mit `kunde_id` gleicht nur diesen Kunden sofort ab.\n**Neues Sheet:** \"EPA-10 Regel-Sheet anlegen\".",
+        "width": 680,
+        "height": 280,
+        "color": 7
+      },
+      "id": "3c77c8e7-a405-48db-a823-755d525a68bd",
+      "name": "Notiz Zweck",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -420
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "997a1f31-42c5-4028-a12a-7dfb38773fca",
+      "name": "Alle 15 Minuten",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "kunde_id",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "3ee639b3-c4a8-43c9-adfd-8bf39e9e4296",
+      "name": "Bei Aufruf (Test/manuell)",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_config_allgemein"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": []
+        },
+        "returnAll": true
+      },
+      "id": "976bb6c1-af30-486f-abce-25405f105e55",
+      "name": "Configs lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        220,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst nur = $('Bei Aufruf (Test/manuell)').isExecuted ? String($('Bei Aufruf (Test/manuell)').first().json.kunde_id || '').trim() : '';\nreturn $input.all()\n\t.map((i) => i.json)\n\t.filter((c) => c && c.kunde_id && typeof c.config_sheet === 'string' && c.config_sheet.trim())\n\t.filter((c) => !nur || c.kunde_id === nur)\n\t.map((c) => ({ json: { kunde_id: c.kunde_id, sheet_id: c.config_sheet.trim() } }));\n"
+      },
+      "id": "b2e5a036-d058-4047-a06f-b1afa1a4c226",
+      "name": "Kunden mit Sheet",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Regeln abgleichen",
+          "cachedResultName": "EPA SW Regeln abgleichen"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $json.kunde_id }}",
+            "sheet_id": "={{ $json.sheet_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "sheet_id",
+              "displayName": "sheet_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "d4d7fbe4-25e3-4cf1-a1b4-f80ab3c7bfe1",
+      "name": "Regeln abgleichen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        660,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: { kunden: $input.all().map((i) => i.json) } }];\n"
+      },
+      "id": "eebaa93f-93d0-4031-a889-20059c3b7171",
+      "name": "Ergebnis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Alle 15 Minuten": {
+      "main": [
+        [
+          {
+            "node": "Configs lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bei Aufruf (Test/manuell)": {
+      "main": [
+        [
+          {
+            "node": "Configs lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configs lesen": {
+      "main": [
+        [
+          {
+            "node": "Kunden mit Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kunden mit Sheet": {
+      "main": [
+        [
+          {
+            "node": "Regeln abgleichen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Regeln abgleichen": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS epa_config_allgemein (
     -- optionale Übersetzungen für Rückfragen in der Sprache der Kundenmail (siehe configValidator)
     uebersetzungen                          JSONB NOT NULL DEFAULT '{}',
     -- optionale Outlook-Kategorien je Status (siehe src/kategorien.js)
-    outlook_kategorien                      JSONB NOT NULL DEFAULT '{}'
+    outlook_kategorien                      JSONB NOT NULL DEFAULT '{}',
+    config_sheet                            TEXT NOT NULL DEFAULT ''  -- optional: Google-Sheet-ID der Kunden-Regeln
 );
 CREATE UNIQUE INDEX IF NOT EXISTS epa_config_allgemein_postfach_uq ON epa_config_allgemein (lower(postfach));
 

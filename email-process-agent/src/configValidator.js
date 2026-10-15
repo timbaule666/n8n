@@ -273,6 +273,8 @@ function validiereConfig(allgemein, pflichtfelder, optionen = {}) {
 		llm_profil: pruefeLlmProfil(a.llm_profil, fehler),
 		prompt_versionen: parseJson(a.prompt_versionen, 'prompt_versionen', fehler) || {},
 		archivordner: typeof a.archivordner === 'string' ? a.archivordner.trim() : '', // leer = Mails nie verschieben
+		// Optional: ID des Google Sheets, aus dem "EPA-09 Regeln aus Google Sheets" die Kunden-Regeln übernimmt
+		config_sheet: typeof a.config_sheet === 'string' ? a.config_sheet.trim() : '',
 		aufbewahrung_tage: zahl(a.aufbewahrung_tage, 'aufbewahrung_tage', fehler, { min: 1, max: 3650, ganz: true }),
 		anhang_limits: parseJson(a.anhang_limits, 'anhang_limits', fehler) || {},
 		leerantwort_fristverlaengerung_stunden: zahl(a.leerantwort_fristverlaengerung_stunden ?? 0, 'leerantwort_fristverlaengerung_stunden', fehler, { min: 0, max: 2000 }),
@@ -282,6 +284,7 @@ function validiereConfig(allgemein, pflichtfelder, optionen = {}) {
 		stille_alarm_stunden: zahl(a.stille_alarm_stunden ?? 0, 'stille_alarm_stunden', fehler, { min: 0, max: 2000 }),
 		vorgangstypen: pruefePflichtfelder(pflichtfelder, fehler),
 	};
+	if (config.config_sheet && !/^[A-Za-z0-9_-]{20,100}$/.test(config.config_sheet)) fehler.push('config_sheet: keine gültige Google-Sheet-ID (der Teil der URL zwischen /d/ und /edit)');
 	config.uebersetzungen = pruefeUebersetzungen(a.uebersetzungen, config, fehler);
 	config.outlook_kategorien = pruefeKategorien(a.outlook_kategorien, fehler);
 	for (const liste of ['absender_allowlist', 'absender_blocklist']) {

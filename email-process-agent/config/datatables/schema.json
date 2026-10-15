@@ -38,7 +38,8 @@
       "freigabe_basis_url": "string",
       "stille_alarm_stunden": "number",
       "uebersetzungen": "string",
-      "outlook_kategorien": "string"
+      "outlook_kategorien": "string",
+      "config_sheet": "string"
     },
     "epa_config_pflichtfelder": {
       "kunde_id": "string",
