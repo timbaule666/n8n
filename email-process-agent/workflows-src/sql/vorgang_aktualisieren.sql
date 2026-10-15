@@ -22,6 +22,7 @@ upd AS (
         bearbeiter            = CASE WHEN a.a ? 'bearbeiter' THEN a.a->>'bearbeiter' ELSE v.bearbeiter END,
         freigabe_id_aktuell   = CASE WHEN a.a ? 'freigabe_id_aktuell' THEN (a.a->>'freigabe_id_aktuell')::uuid ELSE v.freigabe_id_aktuell END,
         spoofing_hinweis      = CASE WHEN a.a ? 'spoofing_hinweis' THEN a.a->>'spoofing_hinweis' ELSE v.spoofing_hinweis END,
+        sprache               = CASE WHEN a.a ? 'sprache' THEN a.a->>'sprache' ELSE v.sprache END,
         version               = v.version + 1,
         geaendert_am          = now()
     FROM a

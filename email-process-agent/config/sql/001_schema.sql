@@ -41,7 +41,9 @@ CREATE TABLE IF NOT EXISTS epa_config_allgemein (
     freigabe_erinnerung_stunden             NUMERIC NOT NULL DEFAULT 4,
     freigabe_ablauf_stunden                 NUMERIC NOT NULL DEFAULT 48,
     erstellt_am                             TIMESTAMPTZ NOT NULL DEFAULT now(),
-    geaendert_am                            TIMESTAMPTZ NOT NULL DEFAULT now()
+    geaendert_am                            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- optionale Übersetzungen für Rückfragen in der Sprache der Kundenmail (siehe configValidator)
+    uebersetzungen                          JSONB NOT NULL DEFAULT '{}'
 );
 CREATE UNIQUE INDEX IF NOT EXISTS epa_config_allgemein_postfach_uq ON epa_config_allgemein (lower(postfach));
 
@@ -118,6 +120,7 @@ CREATE TABLE IF NOT EXISTS epa_vorgaenge (
     bearbeiter             TEXT,
     freigabe_id_aktuell    UUID,
     spoofing_hinweis       TEXT,
+    sprache                TEXT,
     version                INTEGER NOT NULL DEFAULT 1,
     lock_bis               TIMESTAMPTZ,
     lock_durch             TEXT,

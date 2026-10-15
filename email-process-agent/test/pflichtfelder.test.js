@@ -154,3 +154,17 @@ test('Datum ohne Jahr: von der KI ergänztes Jahr wird verworfen, wenn es nicht 
 	assert.equal(pf.jahrNichtImText('2023-11-03', 'Lieferung 13.11. und 3.11.'), '3.11.');
 	assert.equal(pf.jahrNichtImText('2023-11-03', 'Lieferung 13.11.'), null, 'Tag 13 ist nicht Tag 3');
 });
+
+test('Ansprechpartner nur mit Vornamen: vollständiger Name aus dem Absendernamen, wenn er passt', () => {
+	const felder = [{ feldname: 'Ansprechpartner', anzeigename: 'Ansprechpartner', typ: 'text', pflicht: true, validierungsregel: { min_laenge: 2, max_laenge: 80, person: true } }];
+	const p = (wert, absenderName) => pf.pruefen({ Ansprechpartner: { wert, quelle: 'Mailtext', konfidenz: 0.9 } }, felder, { absenderName }).daten.Ansprechpartner.wert;
+	assert.equal(p('Max', 'Max Müller'), 'Max Müller');
+	assert.equal(p('Müller', 'Max Müller'), 'Max Müller');
+	assert.equal(p('Herr Müller', 'Max Müller'), 'Max Müller');
+	assert.equal(p('Max', 'Tim Baule'), 'Max', 'passt nicht: bleibt, wie genannt (keine Rückfrage wegen Nachname)');
+	assert.equal(p('Max', 'Dispo-Team'), 'Max');
+	assert.equal(p('Max', 'max@firma.example'), 'Max');
+	assert.equal(p('Max', undefined), 'Max');
+	assert.equal(p('Max Muster', 'Max Müller'), 'Max Muster', 'vollständige Angaben aus der Mail bleiben');
+	assert.equal(pf.nameVervollstaendigen('Max', 'Einkauf GmbH'), null);
+});

@@ -168,3 +168,21 @@ test('Testkanal telegram_test: Chat-ID und Zuordnung je Freigeber werden normali
 	assert.equal(r.gueltig, true, fehlerText(r));
 	assert.deepEqual(r.config.benachrichtigung, { kanal: 'telegram_test', chat_id: '123456789', telegram_workflow_id: 'AbCdEf123456', freigeber_chat_ids: { 'chef@firma.de': '-100200300' } });
 });
+
+test('uebersetzungen: optional, vollständig je Sprache', () => {
+	const b = JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'config', 'datatables', 'beispiel-transport.json'), 'utf8'));
+	const basis = { ...b.epa_config_allgemein[0], postfach: 'a@b.de', freigeber: '["c@b.de"]' };
+	const pf = b.epa_config_pflichtfelder;
+	assert.equal(validiereConfig({ ...basis, uebersetzungen: '' }, pf).gueltig, true);
+	assert.deepEqual(validiereConfig({ ...basis, uebersetzungen: undefined }, pf).config.uebersetzungen, {});
+	const en = JSON.parse(basis.uebersetzungen).en;
+	const ohneTel = { ...en, textbausteine: { ...en.textbausteine } };
+	delete ohneTel.textbausteine.Telefon;
+	const f = (u) => validiereConfig({ ...basis, uebersetzungen: JSON.stringify(u) }, pf).fehler.join('|');
+	assert.match(f({ en: ohneTel }), /uebersetzungen\.en\.textbausteine\.Telefon: fehlt/);
+	assert.match(f({ en: { ...en, textbausteine: { ...en.textbausteine, Foo: 'x' } } }), /textbausteine\.Foo: Feld ist unbekannt/);
+	assert.match(f({ en: { ...en, signatur: '' } }), /uebersetzungen\.en\.signatur/);
+	assert.match(f({ de: en }), /bereits die Hauptsprache/);
+	assert.match(f({ english: en }), /ISO-Code/);
+	assert.match(f([1]), /muss ein Objekt/);
+});

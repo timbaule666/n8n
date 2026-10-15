@@ -36,7 +36,8 @@
       "freigabe_ablauf_stunden": "number",
       "postfach_workflow_id": "string",
       "freigabe_basis_url": "string",
-      "stille_alarm_stunden": "number"
+      "stille_alarm_stunden": "number",
+      "uebersetzungen": "string"
     },
     "epa_config_pflichtfelder": {
       "kunde_id": "string",
@@ -74,6 +75,7 @@
       "bearbeiter": "string",
       "freigabe_id_aktuell": "string",
       "spoofing_hinweis": "string",
+      "sprache": "string",
       "version": "number",
       "lock_bis": "date",
       "lock_durch": "string",

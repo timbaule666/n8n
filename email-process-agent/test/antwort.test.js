@@ -112,3 +112,15 @@ test('Meldung: escaped, Konflikte, offene Felder, Rückfrage-Status', () => {
 	assert.match(a.meldungAntwort({ vorgangs_id: 'V-1', mail: {}, merge: merge({}), entscheidung: { weg: 'keine_daten' }, fristNeu: '21.10.2026, 10:00' }), /verlängert bis 21\.10\.2026/);
 	assert.match(a.meldungAntwort({ vorgangs_id: 'V-1', mail: {}, entscheidung: { weg: 'nur_melden' }, alterStatus: 'Eskaliert / Manuell' }), /nicht automatisch ausgewertet/);
 });
+
+test('Antwort ergänzt den Ansprechpartner um den Nachnamen: Übernahme statt Widerspruch', () => {
+	const felder = [{ feldname: 'Ansprechpartner', anzeigename: 'Ansprechpartner', typ: 'text', pflicht: true, validierungsregel: { person: true } }];
+	const alt = { Ansprechpartner: { wert: 'Max', roh: 'Max', quelle: 'Mailtext', konfidenz: 0.9 } };
+	const neu = (wert) => ({ daten: { Ansprechpartner: { wert, roh: wert, quelle: 'Mailtext', konfidenz: 0.9 } }, fehlende: [], hinweise: [] });
+	const m = a.zusammenfuehren(alt, neu('Max Müller'), felder, {});
+	assert.equal(m.daten.Ansprechpartner.wert, 'Max Müller');
+	assert.equal(m.konflikte_neu.length, 0);
+	assert.deepEqual(m.uebernommen.map((u) => [u.alt, u.neu]), [['Max', 'Max Müller']]);
+	assert.equal(a.zusammenfuehren(alt, neu('Tim Baule'), felder, {}).konflikte_neu.length, 1, 'anderer Name bleibt Widerspruch');
+	assert.equal(a.nameErgaenzt('Max Müller', 'Max'), false);
+});

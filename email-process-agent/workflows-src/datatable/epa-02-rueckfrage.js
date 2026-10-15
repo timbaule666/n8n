@@ -58,7 +58,9 @@ if (!felder) throw fehler('KONFIGURATIONSFEHLER', \`Vorgangstyp "\${v.vorgangsty
 const fehlende = (v.fehlende_felder || []).filter((f) => f && f.feldname);
 if (!fehlende.length) throw fehler('UNGUELTIGES_FORMAT', 'Keine fehlenden Felder vermerkt');
 let bs;
-try { bs = entwurf.bausteine(fehlende, felder); } catch (err) { throw fehler('KONFIGURATIONSFEHLER', err.message); }
+// Antwortsprache = Sprache der Kundenmail, wenn die Config dafür Übersetzungen hat (sonst Hauptsprache).
+const cfg = entwurf.sprachConfig(config, v.sprache);
+try { bs = entwurf.bausteine(fehlende, felder, cfg.textbausteine); } catch (err) { throw fehler('KONFIGURATIONSFEHLER', err.message); }
 // Erinnerung: gleiche Runde (die Rückfrage dieser Runde ist schon gesendet); der Rundenzähler steigt nicht.
 const runde = Number(v.rundenzaehler || 0) + (art === 'erinnerung' ? 0 : 1);
 const max = Number(config.max_runden);
@@ -70,8 +72,8 @@ return [{ json: {
 	runde,
 	max_runden: max,
 	fehlende,
-	name: entwurf.sichererName(v.absender_name),
-	kontext: { anrede_stil: config.anrede_stil, sprache: config.sprache, name: entwurf.sichererName(v.absender_name), betreff: v.betreff || '', luecken: bs.map((b) => b.anzeigename), runde },
+	name: entwurf.ansprechpartner(v.extrahierte_daten, felder),
+	kontext: { anrede_stil: config.anrede_stil, sprache: cfg.sprache, name: entwurf.ansprechpartner(v.extrahierte_daten, felder), betreff: v.betreff || '', luecken: bs.map((b) => b.anzeigename), runde },
 } }];
 `);
 	const eskalieren = wf.node('Max. Runden erreicht?', 'n8n-nodes-base.if', [880, 0], {
@@ -137,9 +139,10 @@ const erinnerung = r.art === 'erinnerung';
 const l = erinnerung ? {} : $input.first().json || {};
 const huelle = l.ok === true ? l.ergebnis : null;
 const felder = config.vorgangstypen[v.vorgangstyp];
+const cfg = entwurf.sprachConfig(config, v.sprache);
 const e = erinnerung
-	? entwurf.erinnerungBauen({ config, felder, fehlende: r.fehlende, name: r.name })
-	: entwurf.entwurfBauen(huelle, { config, felder, fehlende: r.fehlende, name: r.name });
+	? entwurf.erinnerungBauen({ config: cfg, felder, fehlende: r.fehlende, name: r.name })
+	: entwurf.entwurfBauen(huelle, { config: cfg, felder, fehlende: r.fehlende, name: r.name });
 const tokens = config.freigeber.map((f) => ({ freigeber: f, ...freigabe.tokenErzeugen(crypto) }));
 return [{ json: {
 	...e,

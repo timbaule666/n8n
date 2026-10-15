@@ -282,6 +282,7 @@ function validiereConfig(allgemein, pflichtfelder, optionen = {}) {
 		stille_alarm_stunden: zahl(a.stille_alarm_stunden ?? 0, 'stille_alarm_stunden', fehler, { min: 0, max: 2000 }),
 		vorgangstypen: pruefePflichtfelder(pflichtfelder, fehler),
 	};
+	config.uebersetzungen = pruefeUebersetzungen(a.uebersetzungen, config, fehler);
 	for (const liste of ['absender_allowlist', 'absender_blocklist']) {
 		if (!Array.isArray(config[liste])) fehler.push(`${liste}: muss eine Liste sein`);
 	}
@@ -289,6 +290,36 @@ function validiereConfig(allgemein, pflichtfelder, optionen = {}) {
 		fehler.push('freigabe_erinnerung_stunden: muss kleiner als freigabe_ablauf_stunden sein');
 	}
 	return fehler.length ? { gueltig: false, fehler, config: null } : { gueltig: true, fehler: [], config };
+}
+
+/**
+ * Optionale Übersetzungen für Rückfragen in der Sprache der Kundenmail, z. B. Englisch:
+ * { "en": { "signatur": "...", "ki_hinweistext": "...", "textbausteine": { "<Feldname>": "..." } } }
+ * Jede Sprache braucht Signatur, KI-Hinweis und einen Textbaustein für jedes aktive Feld, sonst gilt die Config als fehlerhaft.
+ */
+function pruefeUebersetzungen(roh, config, fehler) {
+	if (roh === undefined || roh === null || roh === '') return {};
+	const u = parseJson(roh, 'uebersetzungen', fehler);
+	if (!u || typeof u !== 'object' || Array.isArray(u)) {
+		if (u !== null) fehler.push('uebersetzungen: muss ein Objekt { "<sprache>": {...} } sein');
+		return {};
+	}
+	const feldnamen = new Set(Object.values(config.vorgangstypen || {}).flat().map((f) => f.feldname));
+	const out = {};
+	for (const [sprache, e] of Object.entries(u)) {
+		const p = `uebersetzungen.${sprache}`;
+		if (!/^[a-z]{2}$/.test(sprache)) { fehler.push(`${p}: Sprache als ISO-Code mit zwei Buchstaben, z. B. "en"`); continue; }
+		if (sprache === config.sprache) { fehler.push(`${p}: ist bereits die Hauptsprache (sprache)`); continue; }
+		if (!e || typeof e !== 'object' || Array.isArray(e)) { fehler.push(`${p}: muss ein Objekt sein`); continue; }
+		const sig = text(e.signatur, `${p}.signatur`, fehler);
+		const ki = text(e.ki_hinweistext, `${p}.ki_hinweistext`, fehler);
+		const tb = e.textbausteine && typeof e.textbausteine === 'object' && !Array.isArray(e.textbausteine) ? e.textbausteine : null;
+		if (!tb) { fehler.push(`${p}.textbausteine: fehlt`); continue; }
+		for (const f of feldnamen) if (typeof tb[f] !== 'string' || !tb[f].trim()) fehler.push(`${p}.textbausteine.${f}: fehlt`);
+		for (const f of Object.keys(tb)) if (!feldnamen.has(f)) fehler.push(`${p}.textbausteine.${f}: Feld ist unbekannt`);
+		out[sprache] = { signatur: sig, ki_hinweistext: ki, textbausteine: tb };
+	}
+	return out;
 }
 
 module.exports = { FELDTYPEN, REGEL_SCHLUESSEL, LLM_AUFGABEN, validiereConfig };

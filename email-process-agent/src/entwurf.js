@@ -23,14 +23,42 @@ function sichererName(name) {
 	return /^[\p{L}][\p{L} .'-]*$/u.test(n) ? n : '';
 }
 
+/**
+ * Antwortsprache: die erkannte Sprache der Kundenmail, wenn die Config dafür Übersetzungen hat; sonst die Hauptsprache.
+ * Liefert eine Config-Sicht, in der sprache, signatur, ki_hinweistext und textbausteine zur Antwortsprache passen.
+ */
+function sprachConfig(config, erkannteSprache) {
+	const c = config || {};
+	const s = String(erkannteSprache || '').trim().toLowerCase();
+	const u = c.uebersetzungen && s && s !== c.sprache ? c.uebersetzungen[s] : null;
+	if (!u) return { ...c, textbausteine: null };
+	return { ...c, sprache: s, signatur: u.signatur, ki_hinweistext: u.ki_hinweistext, textbausteine: u.textbausteine };
+}
+
+/**
+ * Name für die Anrede: der erkannte Ansprechpartner (Feld mit Regel person), sonst leer (neutrale Anrede).
+ * Bewusst nicht der Absendername: der gehört oft zu einem Sammelpostfach oder einem Weiterleitenden.
+ */
+function ansprechpartner(extrahierteDaten, felder) {
+	const d = extrahierteDaten && typeof extrahierteDaten === 'object' ? extrahierteDaten : {};
+	for (const f of felder || []) {
+		const r = f.validierungsregel || {};
+		if (f.typ !== 'text' || r.person !== true) continue;
+		const w = d[f.feldname] && d[f.feldname].wert;
+		const n = sichererName(w);
+		if (n) return n;
+	}
+	return '';
+}
+
 /** Feste Bausteine der fehlenden Felder in Config-Reihenfolge. Fehlender Baustein = Konfigurationsfehler. */
-function bausteine(fehlende, felder) {
+function bausteine(fehlende, felder, textbausteine) {
 	const nachName = new Map((felder || []).map((f) => [f.feldname, f]));
 	const fehlendeNamen = new Set((fehlende || []).map((f) => f.feldname));
 	const out = [];
 	for (const f of felder || []) {
 		if (!fehlendeNamen.has(f.feldname)) continue;
-		const b = normalisiereLeerraum(f.resolution_textbaustein);
+		const b = normalisiereLeerraum(textbausteine && textbausteine[f.feldname] ? textbausteine[f.feldname] : f.resolution_textbaustein);
 		if (!b) throw new Error(`Textbaustein für Feld "${f.feldname}" fehlt`);
 		out.push({ feldname: f.feldname, anzeigename: f.anzeigename, text: b });
 	}
@@ -127,6 +155,14 @@ function abschlussText(config) {
 	return [String(config.signatur || '').trim(), '', '--', String(config.ki_hinweistext || '').trim()].join('\n');
 }
 
+/** Gespeicherten Abschluss (abschlussText) wieder in Signatur und KI-Hinweis zerlegen, z. B. für bearbeitete Entwürfe. */
+function abschlussTeile(abschluss) {
+	const t = String(abschluss || '');
+	const i = t.lastIndexOf('\n\n--\n');
+	if (i < 0) return null;
+	return { signatur: t.slice(0, i).trim(), ki_hinweistext: t.slice(i + 5).trim() };
+}
+
 /** Text (bearbeitbarer Teil) -> HTML-Mail mit festem Abschluss. Text wird vollständig escaped. */
 function zuHtml(text, config) {
 	const absatz = (t) => esc(t).replace(/\r\n?/g, '\n').replace(/\n/g, '<br>');
@@ -139,7 +175,7 @@ function zuHtml(text, config) {
  * @returns {{ text, html, abschluss, bausteine, fallback, pruefung }}
  */
 function entwurfBauen(llmHuelle, { config, felder, fehlende, name }) {
-	const bs = bausteine(fehlende, felder);
+	const bs = bausteine(fehlende, felder, config.textbausteine);
 	if (!bs.length) throw new Error('Keine fehlenden Felder: keine Rückfrage nötig');
 	const pruefung = llmHuelle ? huellePruefen(llmHuelle, config) : ['LLM-Entwurf nicht verfügbar'];
 	const fallback = pruefung.length > 0;
@@ -150,7 +186,7 @@ function entwurfBauen(llmHuelle, { config, felder, fehlende, name }) {
 
 /** Erinnerungs-Entwurf: Template-Hülle, feste Bausteine der noch offenen Felder, fester Abschluss. */
 function erinnerungBauen({ config, felder, fehlende, name }) {
-	const bs = bausteine(fehlende, felder);
+	const bs = bausteine(fehlende, felder, config.textbausteine);
 	if (!bs.length) throw new Error('Keine fehlenden Felder: keine Erinnerung nötig');
 	const text = bearbeitbarerText(vorlageErinnerung(config, name), bs);
 	return { text, html: zuHtml(text, config), abschluss: abschlussText(config), bausteine: bs, fallback: false, pruefung: [] };
@@ -169,4 +205,4 @@ function bearbeitungPruefen(text, bs) {
 	return { ok: true, text: t, bausteine_entfernt: fehlend };
 }
 
-module.exports = { MAX, VERBOTEN, sichererName, bausteine, vorlage, vorlageErinnerung, erinnerungBauen, huellePruefen, bearbeitbarerText, abschlussText, zuHtml, entwurfBauen, bearbeitungPruefen, esc };
+module.exports = { MAX, VERBOTEN, sichererName, sprachConfig, ansprechpartner, abschlussTeile, bausteine, vorlage, vorlageErinnerung, erinnerungBauen, huellePruefen, bearbeitbarerText, abschlussText, zuHtml, entwurfBauen, bearbeitungPruefen, esc };

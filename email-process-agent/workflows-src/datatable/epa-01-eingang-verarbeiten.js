@@ -265,18 +265,18 @@ const felder = config.vorgangstypen[k.vorgangstyp];
 if (!llm.ok) {
 	return [{ json: {
 		weg: 'extraktion_fehlgeschlagen', status: 'Eskaliert / Manuell', fehlercode: llm.code,
-		speichern: { vorgangstyp: k.vorgangstyp },
+		speichern: { vorgangstyp: k.vorgangstyp, sprache: k.details.sprache || null },
 		details: { grund: 'Extraktion fehlgeschlagen', fehlercode: llm.code, fehler: llm.fehler },
 	} }];
 }
-const p = pflichtfelder.pruefen(llm.ergebnis.felder, felder, { heute: n.heute, quelltext: pflichtfelder.quelltextAus(n.mail) });
+const p = pflichtfelder.pruefen(llm.ergebnis.felder, felder, { heute: n.heute, quelltext: pflichtfelder.quelltextAus(n.mail), absenderName: n.mail.absender_name });
 const manipulation = llm.ergebnis.verdacht_manipulation === true || k.details.verdacht_manipulation === true;
 return [{ json: {
 	weg: p.vollstaendig ? 'bereit' : 'luecken',
 	status: p.vollstaendig ? 'Bereit zur Bearbeitung' : 'Lücken erkannt',
 	pruefung: p,
 	verdacht_manipulation: manipulation,
-	speichern: { vorgangstyp: k.vorgangstyp, extrahierte_daten: p.daten, fehlende_felder: p.fehlende },
+	speichern: { vorgangstyp: k.vorgangstyp, sprache: k.details.sprache || null, extrahierte_daten: p.daten, fehlende_felder: p.fehlende },
 	details: {
 		fehlende: p.fehlende.map((f) => f.feldname),
 		verworfen: p.hinweise.map((f) => f.feldname),

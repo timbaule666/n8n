@@ -30,6 +30,14 @@ function gleich(a, b) {
 	return String(a).replace(/\s+/g, ' ').trim().toLowerCase() === String(b).replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
+/** true, wenn der neue Name den bisherigen um Vor- oder Nachnamen ergänzt ("Max" -> "Max Müller"). */
+function nameErgaenzt(alt, neu) {
+	const t = (x) => String(x || '').toLowerCase().split(/\s+/).filter(Boolean);
+	const a = t(alt);
+	const n = t(neu);
+	return a.length > 0 && n.length > a.length && a.every((w) => n.includes(w));
+}
+
 /**
  * Führt bekannte Daten und die geprüften neuen Angaben zusammen.
  * @param {object} alt extrahierte_daten des Vorgangs { Feld: { wert, roh, quelle, konfidenz } }
@@ -63,6 +71,10 @@ function zusammenfuehren(alt, neu, felder, optionen = {}) {
 				if (angegeben) hinweise.push({ feldname: f.feldname, anzeigename: f.anzeigename, grund: `neue Angabe ungültig (${ungueltig.get(f.feldname) || 'ungültig'}), bisheriger Wert bleibt` });
 			} else if (gleich(vorher.wert, neuWert)) {
 				bestaetigt.push(f.feldname);
+			} else if (f.validierungsregel && f.validierungsregel.person === true && nameErgaenzt(vorher.wert, neuWert)) {
+				// "Max" -> "Max Müller": Ergänzung, kein Widerspruch
+				daten[f.feldname] = { wert: neuWert, roh, quelle: n.quelle || null, konfidenz: n.konfidenz ?? null };
+				uebernommen.push({ feldname: f.feldname, anzeigename: f.anzeigename, alt: vorher.wert, neu: neuWert, quelle: n.quelle || null });
 			} else {
 				konflikteNeu.push({ feldname: f.feldname, anzeigename: f.anzeigename, alt: vorher.wert, neu: neuWert, quelle: n.quelle || null, message_id: optionen.message_id || null, runde: optionen.runde ?? null });
 			}
@@ -171,4 +183,4 @@ function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrag
 	return z.join('<br>');
 }
 
-module.exports = { AUTOMATISCH, wegBestimmen, gleich, zusammenfuehren, entscheiden, fristVerlaengern, extraktionsHinweise, meldungAntwort, esc };
+module.exports = { nameErgaenzt, AUTOMATISCH, wegBestimmen, gleich, zusammenfuehren, entscheiden, fristVerlaengern, extraktionsHinweise, meldungAntwort, esc };

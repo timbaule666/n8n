@@ -175,6 +175,20 @@ function jahrNichtImText(isoDatum, quelltext) {
 	return ohneJahr.test(text) ? `${t}.${mo}.` : null;
 }
 
+/**
+ * Ansprechpartner nur mit Vor- oder Nachnamen ("Max"): steht im Absendernamen der vollständige Name
+ * ("Max Müller") und passt er dazu, wird der vollständige Name übernommen. Sonst bleibt der Wert, wie er ist.
+ * @returns {string|null} vollständiger Name oder null
+ */
+function nameVervollstaendigen(wert, absenderName) {
+	const w = String(wert || '').replace(ANREDE, '').replace(/\s+/g, ' ').trim();
+	const a = String(absenderName || '').replace(/["']/g, '').replace(/\s+/g, ' ').trim();
+	if (!w || w.includes(' ') || !a || a.includes('@') || KEIN_PERSONENNAME.test(a)) return null;
+	const teile = a.split(' ');
+	if (teile.length < 2 || teile.length > 4 || !teile.every((t) => /^\p{L}[\p{L}.'-]*$/u.test(t))) return null;
+	return teile.some((t) => t.toLowerCase() === w.toLowerCase()) ? a : null;
+}
+
 /** Betreff, Mailtext und Anhangtexte einer normalisierten Mail als ein Text (für jahrNichtImText). */
 function quelltextAus(mail) {
 	const m = mail || {};
@@ -185,7 +199,8 @@ function quelltextAus(mail) {
  * @param {object} extrakt { Feldname: { wert, quelle, konfidenz } } (validierte LLM-Ausgabe)
  * @param {object[]} felder Feldliste aus der Config (config.vorgangstypen[typ])
  * @param {{ heute?: string, quelltext?: string }} [optionen] heute als JJJJ-MM-TT in der Zeitzone des Kunden;
- *   quelltext = Betreff, Mailtext und Anhangtexte (für die Prüfung von Daten ohne Jahr)
+ *   quelltext = Betreff, Mailtext und Anhangtexte (für die Prüfung von Daten ohne Jahr);
+ *   absenderName = Anzeigename des Absenders (ergänzt einen Ansprechpartner, der nur mit Vornamen genannt ist)
  */
 function pruefen(extrakt, felder, optionen = {}) {
 	const daten = {};
@@ -204,6 +219,7 @@ function pruefen(extrakt, felder, optionen = {}) {
 		else {
 			let eingabe = roh;
 			if (f.typ === 'datum' && optionen.quelltext) eingabe = jahrNichtImText(datumLesen(roh), optionen.quelltext) || roh;
+			if (f.typ === 'text' && f.validierungsregel && f.validierungsregel.person === true && optionen.absenderName) eingabe = nameVervollstaendigen(roh, optionen.absenderName) || roh;
 			const r = feldPruefen(f, eingabe, optionen);
 			if (r.ok) wert = r.wert;
 			else grund = `ungültig: ${r.grund}`;
@@ -225,4 +241,4 @@ function werte(daten) {
 	return Object.fromEntries(Object.entries(daten || {}).filter(([, v]) => v && v.wert !== null && v.wert !== undefined).map(([k, v]) => [k, v.wert]));
 }
 
-module.exports = { GLOBALE_PLATZHALTER, UNSICHER_UNTER, istPlatzhalter, zahlLesen, datumLesen, jahrNichtImText, quelltextAus, feldPruefen, pruefen, werte };
+module.exports = { GLOBALE_PLATZHALTER, UNSICHER_UNTER, istPlatzhalter, zahlLesen, datumLesen, jahrNichtImText, quelltextAus, nameVervollstaendigen, feldPruefen, pruefen, werte };

@@ -80,3 +80,40 @@ test('Bearbeiteter Text: leer/zu lang abgelehnt, entfernte Bausteine gemeldet', 
 	assert.equal(r.ok, true);
 	assert.deepEqual(r.bausteine_entfernt, ['PLZ Abholort']);
 });
+
+test('Antwortsprache: Englisch nur mit Übersetzungen in der Config, sonst Hauptsprache', () => {
+	assert.ok(CONFIG.uebersetzungen.en, 'Beispiel-Config hat englische Übersetzungen');
+	const en = e.sprachConfig(CONFIG, 'en');
+	assert.equal(en.sprache, 'en');
+	assert.match(en.signatur, /^Kind regards/);
+	const bs = e.bausteine(FEHLENDE, FELDER, en.textbausteine);
+	assert.deepEqual(bs.map((b) => b.text), ['Please let us know the postcode of the pickup location.', 'Please provide a phone number for any questions.']);
+	const r = e.entwurfBauen(null, { config: en, felder: FELDER, fehlende: FEHLENDE, name: 'Emma Collins' });
+	assert.match(r.text, /^Dear Emma Collins,/);
+	assert.match(r.abschluss, /Kind regards[\s\S]*--\nThis message was prepared/);
+	assert.match(r.html, /Kind regards/);
+	// Unbekannte oder fehlende Sprache: Hauptsprache Deutsch, Bausteine aus der Config
+	for (const s of ['fr', '', null, 'de']) {
+		const c = e.sprachConfig(CONFIG, s);
+		assert.equal(c.sprache, 'de');
+		assert.equal(c.textbausteine, null);
+		assert.match(e.bausteine(FEHLENDE, FELDER, c.textbausteine)[0].text, /^Bitte nennen Sie uns die Postleitzahl/);
+	}
+	assert.equal(e.sprachConfig({ ...CONFIG, uebersetzungen: {} }, 'en').sprache, 'de');
+});
+
+test('Anrede: erkannter Ansprechpartner, sonst neutral (nicht der Absendername)', () => {
+	assert.equal(e.ansprechpartner({ Ansprechpartner: { wert: 'Jan Petersen' } }, FELDER), 'Jan Petersen');
+	assert.equal(e.ansprechpartner({ Ansprechpartner: { wert: null, roh: 'Dispo-Team' } }, FELDER), '');
+	assert.equal(e.ansprechpartner({}, FELDER), '');
+	assert.equal(e.ansprechpartner(null, FELDER), '');
+	assert.match(e.entwurfBauen(null, { config: CONFIG, felder: FELDER, fehlende: FEHLENDE, name: '' }).text, /^Guten Tag,/);
+});
+
+test('Abschluss eines gespeicherten Entwurfs wieder zerlegen (bearbeiteter Text behält die Sprache)', () => {
+	const en = e.sprachConfig(CONFIG, 'en');
+	const t = e.abschlussTeile(e.abschlussText(en));
+	assert.equal(t.signatur, en.signatur);
+	assert.equal(t.ki_hinweistext, en.ki_hinweistext);
+	assert.equal(e.abschlussTeile('ohne Trenner'), null);
+});

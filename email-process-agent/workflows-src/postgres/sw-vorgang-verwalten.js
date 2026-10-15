@@ -29,7 +29,7 @@ module.exports = function () {
 const AKTIONEN = ${JSON.stringify(AKTIONEN)};
 const AENDERBAR = ['vorgangstyp', 'conversation_id', 'letzte_message_id', 'neue_message_ids', 'absender_name', 'betreff',
 	'betreff_normalisiert', 'extrahierte_daten', 'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist',
-	'erinnerungen_gesendet', 'bearbeiter', 'freigabe_id_aktuell', 'spoofing_hinweis'];
+	'erinnerungen_gesendet', 'bearbeiter', 'freigabe_id_aktuell', 'spoofing_hinweis', 'sprache'];
 const ANLEGBAR = ['vorgangstyp', 'conversation_id', 'erste_message_id', 'absender_adresse', 'absender_name', 'betreff',
 	'betreff_normalisiert', 'spoofing_hinweis'];
 const e = $input.first().json;

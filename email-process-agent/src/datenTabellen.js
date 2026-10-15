@@ -10,7 +10,7 @@ const SPALTEN = {
 		'vorgangs_id', 'kunde_id', 'vorgangstyp', 'status', 'conversation_id', 'erste_message_id', 'letzte_message_id',
 		'bekannte_message_ids', 'absender_adresse', 'absender_name', 'betreff', 'betreff_normalisiert', 'extrahierte_daten',
 		'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist', 'erinnerungen_gesendet', 'bearbeiter',
-		'freigabe_id_aktuell', 'spoofing_hinweis', 'version', 'lock_bis', 'lock_durch', 'loeschen_ab',
+		'freigabe_id_aktuell', 'spoofing_hinweis', 'version', 'lock_bis', 'lock_durch', 'loeschen_ab', 'sprache',
 	],
 	epa_audit_log: ['kunde_id', 'vorgangs_id', 'typ', 'alt', 'neu', 'ausloeser', 'details', 'referenz'],
 };
@@ -91,7 +91,7 @@ function neuerVorgang(kundeId, daten, { aufbewahrungTage, jetzt, platzhalterId }
 
 const AENDERBAR = ['vorgangstyp', 'conversation_id', 'letzte_message_id', 'neue_message_ids', 'absender_name', 'betreff',
 	'betreff_normalisiert', 'extrahierte_daten', 'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist',
-	'erinnerungen_gesendet', 'bearbeiter', 'freigabe_id_aktuell', 'spoofing_hinweis'];
+	'erinnerungen_gesendet', 'bearbeiter', 'freigabe_id_aktuell', 'spoofing_hinweis', 'sprache'];
 
 /**
  * Teil-Update eines Vorgangs. Gibt nur geänderte Spalten + neue Version zurück.
