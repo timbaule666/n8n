@@ -608,3 +608,5 @@ Die KI hat keine Werkzeuge. Status, Versand und Löschen steuert nur der Code, d
 - **Absender:** Name, Adresse, Domain, abweichendes „Antwort an“, Spoofing-Hinweis
 - **Mail:** Betreff, Eingang, Vorgang und Outlook-Link
 - **Behandlung:** was mit der Mail passiert ist
+
+**Live-Test Systemwarnung:** P04, eine reine Injection auf Englisch (V-2026-0091), wurde als „ignoriert“ eingestuft. Die Systemwarnung ging per Telegram raus (Grund, auffällige Stelle, Absender, Eingang, Link, Behandlung).
