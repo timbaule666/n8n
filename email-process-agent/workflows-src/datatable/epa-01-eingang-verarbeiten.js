@@ -385,7 +385,7 @@ const config = $('Config laden').first().json.config;
 return [{ json: {
 	ergebnis: a.ergebnis,
 	vorgangs_id: a.vorgangs_id,
-	archivieren: eingang.archivieren(a.ergebnis),
+	archivieren: eingang.archivieren(a.ergebnis, config.archivordner),
 	archivordner: config.archivordner,
 } }];
 `);

@@ -81,8 +81,10 @@ test('Meldungen: HTML wird escaped, Inhalte vollständig', () => {
 });
 
 test('Archivieren nur bei aussortierten Mails, nie bei unklaren', () => {
-	for (const c of ['ignoriert', 'ignoriert_auto_antwort', 'ignoriert_gesperrt']) assert.equal(e.archivieren(c), true, c);
-	for (const c of ['klassifizierung_unklar', 'zuordnung_unklar', 'duplikat', 'ignoriert_eigene_mail', 'bereit', 'luecken', 'zugeordnet']) assert.equal(e.archivieren(c), false, c);
+	for (const c of ['ignoriert', 'ignoriert_auto_antwort', 'ignoriert_gesperrt']) assert.equal(e.archivieren(c, 'EPA-Archiv'), true, c);
+	for (const c of ['klassifizierung_unklar', 'zuordnung_unklar', 'duplikat', 'ignoriert_eigene_mail', 'bereit', 'luecken', 'zugeordnet']) assert.equal(e.archivieren(c, 'EPA-Archiv'), false, c);
+	// Ohne Archivordner bleibt jede Mail im Posteingang
+	for (const o of ['', '  ', null, undefined]) assert.equal(e.archivieren('ignoriert', o), false, String(o));
 });
 
 test('Eine Nachricht je Rückfrage: Eingangsmeldung entfällt nur, wenn die Freigabe angekommen ist', () => {

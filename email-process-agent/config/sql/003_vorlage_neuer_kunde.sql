@@ -41,7 +41,7 @@ INSERT INTO epa_config_allgemein (
       "extraktion":      {"modell": "<modell>", "temperatur": 0, "timeout_ms": 60000, "max_tokens": 2000},
       "entwurf":         {"modell": "<modell>", "temperatur": 0.2, "timeout_ms": 45000, "max_tokens": 800}}',
     '{"klassifizierung": "v2", "extraktion": "v1", "entwurf": "v1"}',
-    'EPA-Archiv',                        -- archivordner im Postfach
+    '',                                  -- archivordner: leer = Mails bleiben im Posteingang
     365,                                 -- aufbewahrung_tage
     '{"max_mb_je_anhang": 10, "max_mb_je_mail": 25, "typen": ["application/pdf", "image/jpeg", "image/png"]}',
     24,                                  -- leerantwort_fristverlaengerung_stunden (0 = aus)

@@ -40,7 +40,7 @@ const ALLGEMEIN = {
 	zuordnung_schwellen: '{"eindeutig": 80, "abstand": 50, "neu": 40}',
 	llm_profil: beispiel.epa_config_allgemein[0].llm_profil,
 	prompt_versionen: '{"klassifizierung": "v2", "extraktion": "v1", "entwurf": "v1"}',
-	archivordner: 'EPA-Archiv',
+	archivordner: '',
 	aufbewahrung_tage: 365,
 	anhang_limits: beispiel.epa_config_allgemein[0].anhang_limits,
 	leerantwort_fristverlaengerung_stunden: 24,

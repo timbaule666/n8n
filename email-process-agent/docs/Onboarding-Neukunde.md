@@ -27,7 +27,7 @@ Stand 2026-10-14 (M7). Ein Workflow-Satz bedient alle Kunden. Pro Kunde kommen d
 
 ## 2. Microsoft 365 vorbereiten (Admin des Kunden)
 1. Dienstkonto für das Postfach (Vollzugriff nur auf die Shared Mailbox) und für Teams (Mitglied im Meldekanal). Berechtigungen siehe Checkliste, Abschnitt 6.
-2. Im Postfach einen Ordner `EPA-Archiv` auf oberster Ebene anlegen (oder Name aus `archivordner`).
+2. Optional: `archivordner`. Standard ist leer: Jede Mail bleibt im Posteingang, auch aussortierte (Werbung, Abwesenheitsnotizen, keine Anfrage). Nur wenn der Kunde es ausdrücklich will, einen Ordner (z. B. `EPA-Archiv`) auf oberster Ebene anlegen und hier eintragen; aussortierte Mails werden dann dorthin verschoben, nie gelöscht.
 3. Teams-Kanal anlegen; Team-ID (GUID aus dem Link, `groupId=…`) und Kanal-ID (`19:…@thread.tacv2`) notieren.
 
 ## 3. In n8n einrichten

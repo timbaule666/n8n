@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS epa_config_allgemein (
     zuordnung_schwellen                     JSONB NOT NULL DEFAULT '{"eindeutig": 80, "abstand": 50, "neu": 40}',
     llm_profil                              JSONB NOT NULL,
     prompt_versionen                        JSONB NOT NULL DEFAULT '{}',
-    archivordner                            TEXT NOT NULL,
+    archivordner                            TEXT NOT NULL DEFAULT '', -- leer = nie verschieben
     aufbewahrung_tage                       INTEGER NOT NULL DEFAULT 365,
     anhang_limits                           JSONB NOT NULL DEFAULT '{}',
     leerantwort_fristverlaengerung_stunden  NUMERIC NOT NULL DEFAULT 0,

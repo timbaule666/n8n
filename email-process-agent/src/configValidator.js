@@ -272,7 +272,7 @@ function validiereConfig(allgemein, pflichtfelder, optionen = {}) {
 		zuordnung_schwellen: parseJson(a.zuordnung_schwellen, 'zuordnung_schwellen', fehler) || { eindeutig: 80, abstand: 50, neu: 40 },
 		llm_profil: pruefeLlmProfil(a.llm_profil, fehler),
 		prompt_versionen: parseJson(a.prompt_versionen, 'prompt_versionen', fehler) || {},
-		archivordner: text(a.archivordner, 'archivordner', fehler),
+		archivordner: typeof a.archivordner === 'string' ? a.archivordner.trim() : '', // leer = Mails nie verschieben
 		aufbewahrung_tage: zahl(a.aufbewahrung_tage, 'aufbewahrung_tage', fehler, { min: 1, max: 3650, ganz: true }),
 		anhang_limits: parseJson(a.anhang_limits, 'anhang_limits', fehler) || {},
 		leerantwort_fristverlaengerung_stunden: zahl(a.leerantwort_fristverlaengerung_stunden ?? 0, 'leerantwort_fristverlaengerung_stunden', fehler, { min: 0, max: 2000 }),

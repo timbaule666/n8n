@@ -3,11 +3,12 @@
 // Rein deterministisch und ohne n8n-Abhängigkeiten, damit alles per Unit-Test prüfbar ist.
 
 // Ergebnis-Codes von EPA-01, bei denen die Mail aus dem Posteingang in den Archivordner verschoben wird
-// (nie gelöscht). Unklare Mails bleiben im Posteingang.
+// (nie gelöscht). Nur wenn die Config einen Archivordner nennt; Standard ist leer: Jede Mail bleibt im Posteingang.
+// Unklare Mails bleiben immer im Posteingang.
 const ARCHIVIEREN_BEI = ['ignoriert', 'ignoriert_auto_antwort', 'ignoriert_gesperrt'];
 
-function archivieren(ergebnis) {
-	return ARCHIVIEREN_BEI.includes(ergebnis);
+function archivieren(ergebnis, archivordner) {
+	return typeof archivordner === 'string' && archivordner.trim() !== '' && ARCHIVIEREN_BEI.includes(ergebnis);
 }
 
 /**

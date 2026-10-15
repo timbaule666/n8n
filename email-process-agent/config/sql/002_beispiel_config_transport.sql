@@ -27,7 +27,7 @@ INSERT INTO epa_config_allgemein (
        "entwurf":         {"modell": "gpt-4o-mini", "temperatur": 0.2, "timeout_ms": 45000, "max_tokens": 800}
      }',
     '{"klassifizierung": "v2", "extraktion": "v1", "entwurf": "v1"}',
-    'EPA-Archiv', 365,
+    '', 365,                              -- archivordner leer: Mails bleiben im Posteingang
     '{"max_mb_je_anhang": 10, "max_mb_je_mail": 25, "typen": ["application/pdf", "image/jpeg", "image/png", "image/tiff", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]}',
     24, 4, 48
 )

@@ -86,7 +86,7 @@ stateDiagram-v2
 ## 3. Sicherheitsprinzipien
 - **Kein Versand ohne Freigabe:** Jede Mail an Kunden ist ein Entwurf im Postfach. Gesendet wird erst nach Klick eines berechtigten Freigebers, und zwar genau einmal (atomare Übernahme, Suche in „Gesendete Elemente“ bei Unsicherheit).
 - **KI ohne Werkzeuge:** Die KI liefert nur JSON nach Schema (Klassifizierung, Extraktion, Hülle der Rückfrage). Mail-Inhalte sind Daten in einem abgegrenzten Block, nie Anweisungen. Code prüft und entscheidet. Die festen Textbausteine, die Signatur und der KI-Hinweis werden deterministisch eingesetzt.
-- **Nichts löschen, was unklar ist:** Eingegangene Mails werden nie gelöscht, aussortierte nur archiviert. Der Löschjob entfernt nur abgeschlossene Daten nach Frist und nur nachweislich eigene, ersetzte Entwürfe.
+- **Nichts löschen, was unklar ist:** Eingegangene Mails werden nie gelöscht. Standardmäßig bleiben auch aussortierte Mails im Posteingang; nur mit gesetztem `archivordner` werden sie dorthin verschoben. Der Löschjob entfernt nur abgeschlossene Daten nach Frist und nur nachweislich eigene, ersetzte Entwürfe.
 - **Datenminimierung in Logs:** Fehlerlog und Statuszeilen enthalten nur IDs, Codes und technische Meldungen (E-Mail-Adressen und Nummern werden maskiert).
 - **Concurrency:** Versionsfeld mit bedingtem Update (Compare-and-Set) für Vorgänge, Freigaben und den Lauf-Lock.
 
