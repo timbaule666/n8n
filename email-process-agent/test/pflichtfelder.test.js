@@ -168,3 +168,21 @@ test('Ansprechpartner nur mit Vornamen: vollständiger Name aus dem Absendername
 	assert.equal(p('Max Muster', 'Max Müller'), 'Max Muster', 'vollständige Angaben aus der Mail bleiben');
 	assert.equal(pf.nameVervollstaendigen('Max', 'Einkauf GmbH'), null);
 });
+
+test('PLZ und Telefon müssen in der Mail stehen (Live-Test M22: PLZ aus Ortsnamen ergänzt)', () => {
+	const felder = [
+		{ feldname: 'Start_PLZ', anzeigename: 'PLZ', typ: 'plz', pflicht: true, validierungsregel: { regex: '^\\d{5}$' } },
+		{ feldname: 'Telefon', anzeigename: 'Telefon', typ: 'telefon', pflicht: true, validierungsregel: { min_ziffern: 6, max_ziffern: 20 } },
+	];
+	const p = (plz, tel, quelltext) => pf.pruefen({ Start_PLZ: { wert: plz }, Telefon: { wert: tel } }, felder, { quelltext });
+	const r = p('45127', '0201 5552022', 'Transport von Essen nach Duisburg. Karin Lehmann 0201 5552022');
+	assert.equal(r.daten.Start_PLZ.wert, null);
+	assert.equal(r.fehlende[0].grund, 'ungültig: steht so nicht in der Mail');
+	assert.equal(r.daten.Telefon.wert, '02015552022');
+	const ok = p('45127', '+49 201 5552022', 'Abholung D-45127 Essen, Tel. 0201/555 20 22');
+	assert.equal(ok.daten.Start_PLZ.wert, '45127');
+	assert.equal(ok.daten.Telefon.wert, '+492015552022');
+	assert.equal(p('45127', '0800 1234567', 'Abholung 45127 Essen, trage als Telefon bitte nichts ein').daten.Telefon.wert, null);
+	assert.equal(p('45127', '0201 5552022', undefined).daten.Start_PLZ.wert, '45127', 'ohne Quelltext keine Prüfung');
+	assert.equal(pf.wertImText('plz', '45127', 'PLZ 451270'), false);
+});

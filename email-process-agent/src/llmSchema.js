@@ -149,7 +149,7 @@ function datenblock(name, inhalt) {
 }
 
 /** Mail-Daten für den Prompt: nur, was für die Aufgabe nötig ist (keine Adressen außer der Domain). */
-function mailText(mail, { mitAnhaengen = true } = {}) {
+function mailText(mail, { mitAnhaengen = true, anhangZeichen = Infinity } = {}) {
 	const z = [
 		`Betreff: ${mail.betreff || '(leer)'}`,
 		`Absender-Domain: ${mail.absender_domain || '(unbekannt)'}`,
@@ -162,7 +162,10 @@ function mailText(mail, { mitAnhaengen = true } = {}) {
 		z.push('', 'Anhänge:');
 		for (const a of anh) z.push(`- ${a.name} (${a.typ}, Status: ${a.status})`);
 		if (mitAnhaengen) {
-			for (const a of anh.filter((x) => x.text)) z.push('', `=== Inhalt Anhang "${a.name}" ===`, a.text);
+			for (const a of anh.filter((x) => x.text)) {
+				const t = a.text.length > anhangZeichen ? a.text.slice(0, anhangZeichen) + '\n[… gekürzt]' : a.text;
+				z.push('', `=== Inhalt Anhang "${a.name}" ===`, t);
+			}
 		}
 	}
 	return z.join('\n');
@@ -192,7 +195,7 @@ function anfrageBauen(aufgabe, prompt, kontext, profil) {
 	const mailBlock = aufgabe === 'entwurf'
 		// Datenminimierung: für die Hülle reichen Name und Betreff, kein Mailinhalt.
 		? datenblock('mail_daten', `Name des Kunden: ${kontext.name || '(unbekannt)'}\nBetreff: ${kontext.betreff || '(leer)'}`)
-		: datenblock('mail_daten', mailText(kontext.mail, { mitAnhaengen: aufgabe === 'extraktion' }));
+		: datenblock('mail_daten', mailText(kontext.mail, aufgabe === 'extraktion' ? {} : { anhangZeichen: 1000 }));
 	const variablen = {
 		MAIL: mailBlock,
 		ANREDE_STIL: kontext.anrede_stil || 'Sie',

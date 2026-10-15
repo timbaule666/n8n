@@ -189,6 +189,25 @@ function nameVervollstaendigen(wert, absenderName) {
 	return teile.some((t) => t.toLowerCase() === w.toLowerCase()) ? a : null;
 }
 
+/**
+ * Postleitzahlen und Telefonnummern müssen wörtlich in der Mail stehen. Sonst hat die KI sie ergänzt
+ * (z. B. eine PLZ aus dem Ortsnamen abgeleitet) und der Wert gilt als ungültig.
+ */
+function wertImText(typ, wert, quelltext) {
+	const text = String(quelltext || '');
+	if (!text) return true;
+	if (typ === 'plz') return new RegExp(`(^|[^\\d])${String(wert).replace(/[^\dA-Za-z]/g, '')}([^\\d]|$)`).test(text.replace(/(\d)\s+(?=\d)/g, '$1'));
+	if (typ === 'telefon') {
+		const t = text.replace(/(\d)[\s/().\-–]+(?=\d)/g, '$1');
+		const w = String(wert).replace(/^\+/, '');
+		const varianten = [w];
+		if (w.startsWith('49')) varianten.push('0' + w.slice(2));
+		if (w.startsWith('0')) varianten.push('49' + w.slice(1));
+		return varianten.some((v) => t.includes(v));
+	}
+	return true;
+}
+
 /** Betreff, Mailtext und Anhangtexte einer normalisierten Mail als ein Text (für jahrNichtImText). */
 function quelltextAus(mail) {
 	const m = mail || {};
@@ -221,7 +240,8 @@ function pruefen(extrakt, felder, optionen = {}) {
 			if (f.typ === 'datum' && optionen.quelltext) eingabe = jahrNichtImText(datumLesen(roh), optionen.quelltext) || roh;
 			if (f.typ === 'text' && f.validierungsregel && f.validierungsregel.person === true && optionen.absenderName) eingabe = nameVervollstaendigen(roh, optionen.absenderName) || roh;
 			const r = feldPruefen(f, eingabe, optionen);
-			if (r.ok) wert = r.wert;
+			if (r.ok && optionen.quelltext && !wertImText(f.typ, r.wert, optionen.quelltext)) grund = 'ungültig: steht so nicht in der Mail';
+			else if (r.ok) wert = r.wert;
 			else grund = `ungültig: ${r.grund}`;
 		}
 		daten[f.feldname] = { wert, roh: roh === undefined ? null : roh, ...meta };
@@ -241,4 +261,4 @@ function werte(daten) {
 	return Object.fromEntries(Object.entries(daten || {}).filter(([, v]) => v && v.wert !== null && v.wert !== undefined).map(([k, v]) => [k, v.wert]));
 }
 
-module.exports = { GLOBALE_PLATZHALTER, UNSICHER_UNTER, istPlatzhalter, zahlLesen, datumLesen, jahrNichtImText, quelltextAus, nameVervollstaendigen, feldPruefen, pruefen, werte };
+module.exports = { GLOBALE_PLATZHALTER, UNSICHER_UNTER, istPlatzhalter, zahlLesen, datumLesen, jahrNichtImText, quelltextAus, nameVervollstaendigen, wertImText, feldPruefen, pruefen, werte };

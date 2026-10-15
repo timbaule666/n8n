@@ -118,7 +118,13 @@ function vorlageErinnerung({ anrede_stil: stil, sprache }, name) {
  * Prüft die vom LLM gelieferte Hülle. Gibt eine Liste von Verstößen zurück (leer = in Ordnung).
  * Name des Kunden darf in der Anrede stehen, sonst keine Ziffern, Beträge, URLs, Adressen, Zusagen.
  */
-function huellePruefen(huelle, { anrede_stil: stil } = {}) {
+// Grobe Sprachprüfung der KI-Hülle: typische Wörter der jeweils anderen Sprache (gpt-4o-mini schreibt sonst gern Deutsch).
+const FREMD = Object.freeze({
+	en: /[äöüß]|\b(und|ihre?|ihnen|vielen|dank|guten|tag|bitte|wir|sie|für|noch|anfrage|rückmeldung|damit|benötigen|folgende)\b/i,
+	de: /\b(the|thank|thanks|please|dear|regards|your|we|request|following|kind)\b/i,
+});
+
+function huellePruefen(huelle, { anrede_stil: stil, sprache } = {}) {
 	const fehler = [];
 	if (!huelle || typeof huelle !== 'object') return ['keine Hülle'];
 	let gesamt = 0;
@@ -138,6 +144,8 @@ function huellePruefen(huelle, { anrede_stil: stil } = {}) {
 		if (stil === 'Sie' && /(^|[.!?]\s+|\s)ihr\b/.test(t)) fehler.push(`${teil}: duzt statt siezt`);
 	}
 	if (gesamt > MAX.gesamt) fehler.push('Hülle insgesamt zu lang');
+	const fremd = FREMD[sprache];
+	if (fremd && ['anrede', 'einleitung', 'schluss'].some((t) => fremd.test(normalisiereLeerraum(huelle[t])))) fehler.push(`Hülle nicht in der Antwortsprache (${sprache})`);
 	return [...new Set(fehler)];
 }
 

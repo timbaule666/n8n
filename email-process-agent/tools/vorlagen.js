@@ -49,6 +49,7 @@ const ALLGEMEIN = {
 	postfach_workflow_id: '<ID der EPA-00-Kopie dieses Postfachs>',
 	freigabe_basis_url: '',
 	stille_alarm_stunden: 0,
+	uebersetzungen: '',
 };
 
 const PFLICHTFELD = {

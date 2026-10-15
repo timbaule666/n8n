@@ -69,6 +69,8 @@ function auswerten({ vorlagen, vorgaenge, mails, ab, nummern }) {
 		if (treffer.length > 1) r.hinweise.push(`${treffer.length} Vorgänge mit diesem Betreff`);
 		const vg = treffer[0];
 		r.ergebnis = ergebnisJeVorgang.get(vg.vorgangs_id) || null;
+		// Rückfrage schon freigegeben oder versendet: Ergebnis war "luecken"
+		if (['Warten auf Kunde', 'Freigabe ausstehend', 'Lücken erkannt'].includes(vg.status) && t.erwartet.includes('luecken')) r.ergebnis = 'luecken';
 		r.status = vg.status;
 		const daten = typeof vg.extrahierte_daten === 'string' ? JSON.parse(vg.extrahierte_daten || '{}') : vg.extrahierte_daten || {};
 		let felderOk = true;

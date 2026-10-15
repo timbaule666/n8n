@@ -117,3 +117,17 @@ test('Abschluss eines gespeicherten Entwurfs wieder zerlegen (bearbeiteter Text 
 	assert.equal(t.ki_hinweistext, en.ki_hinweistext);
 	assert.equal(e.abschlussTeile('ohne Trenner'), null);
 });
+
+test('KI-Hülle in der falschen Sprache fällt auf die Vorlage zurück (Live-Test M29/M30)', () => {
+	const en = e.sprachConfig(CONFIG, 'en');
+	const deutsch = { anrede: 'Guten Tag James Taylor,', einleitung: 'vielen Dank für Ihre Anfrage. Damit wir sie bearbeiten können, benötigen wir noch folgende Angaben:', schluss: 'Vielen Dank für Ihre Rückmeldung.' };
+	assert.ok(e.huellePruefen(deutsch, en).some((f) => /Antwortsprache/.test(f)));
+	const r = e.entwurfBauen(deutsch, { config: en, felder: FELDER, fehlende: FEHLENDE, name: 'James Taylor' });
+	assert.equal(r.fallback, true);
+	assert.match(r.text, /^Dear James Taylor,\n\nThank you for your request/);
+	assert.doesNotMatch(r.text, /[äöüß]|Vielen|Guten/);
+	const englisch = { anrede: 'Dear James Taylor,', einleitung: 'thank you for your request. To process it, we still need the following information:', schluss: 'Thank you in advance for your reply.' };
+	assert.deepEqual(e.huellePruefen(englisch, en), []);
+	assert.ok(e.huellePruefen(englisch, CONFIG).some((f) => /Antwortsprache \(de\)/.test(f)), 'englische Hülle in deutscher Rückfrage');
+	assert.deepEqual(e.huellePruefen({ anrede: 'Guten Tag Frau Muster,', einleitung: 'vielen Dank für Ihre Anfrage. Damit wir sie bearbeiten können, benötigen wir noch folgende Angaben:', schluss: 'Vielen Dank für Ihre Rückmeldung.' }, CONFIG), []);
+});

@@ -60,7 +60,7 @@ test('jsonLesen toleriert Code-Zäune, meldet Fehler', () => {
 	assert.equal(llm.jsonLesen(null).ok, false);
 });
 
-test('Prompt-Aufbau: Datenblock nicht verlassbar, Platzhalter, Anhänge nur bei Extraktion, Bilder als image_url', () => {
+test('Prompt-Aufbau: Datenblock nicht verlassbar, Platzhalter, Anhänge vollständig nur bei Extraktion, Bilder als image_url', () => {
 	const b = llm.anfrageBauen('extraktion', PROMPT, { mail: MAIL, felder: FELDER, heute: '2026-10-13', vorgangstypen: ['transport'] }, PROFIL);
 	assert.equal(b.model, 'gpt-4o-mini');
 	assert.equal(b.messages[0].content, 'Sys transport');
@@ -77,7 +77,12 @@ test('Prompt-Aufbau: Datenblock nicht verlassbar, Platzhalter, Anhänge nur bei 
 
 	const k = llm.anfrageBauen('klassifizierung', PROMPT, { mail: MAIL, vorgangstypen: ['transport'] }, PROFIL);
 	assert.equal(typeof k.messages[1].content, 'string');
-	assert.doesNotMatch(k.messages[1].content, /Inhalt Anhang/);
+	// Klassifizierung sieht einen Auszug der Anhänge (Live-Test M36: Anfrage nur im PDF wurde sonst "unklar")
+	assert.match(k.messages[1].content, /Inhalt Anhang "a\.pdf"/);
+	const lang = { ...MAIL, anhaenge: [{ ...MAIL.anhaenge[0], text: 'x'.repeat(5000) }] };
+	const kl = llm.anfrageBauen('klassifizierung', PROMPT, { mail: lang, vorgangstypen: ['transport'] }, PROFIL).messages[1].content;
+	assert.match(kl, /x{1000}\n\[… gekürzt\]/);
+	assert.doesNotMatch(kl, /x{1001}/);
 	assert.match(k.messages[1].content, /- a\.pdf \(application\/pdf, Status: ok\)/);
 	assert.throws(() => llm.anfrageBauen('zusammenfassung', PROMPT, { mail: MAIL }, PROFIL), /Unbekannte LLM-Aufgabe/);
 });

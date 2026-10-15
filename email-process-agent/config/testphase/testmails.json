@@ -909,7 +909,7 @@
    "Start_PLZ": "26122",
    "Start_Ort": "Oldenburg",
    "Ziel_PLZ": "49074",
-   "Ziel_Ort": "Osnabrück",
+   "Ziel_Ort": "Osnabrueck",
    "Abholdatum": "2026-12-04",
    "Gewicht_kg": "2800",
    "Packstuecke": "7",
@@ -917,7 +917,7 @@
    "Ansprechpartner": "Stefanie Busch",
    "Telefon": "04415552035"
   },
-  "notiz": "",
+  "notiz": "PDF ohne Umlaute (Testgenerator), daher Osnabrueck",
   "pdf": "Transportauftrag 2026-118\nAbholung: 26122 Oldenburg, am 04.12.2026\nLieferung: 49074 Osnabrueck\nWare: 7 Paletten, Gesamtgewicht 2.800 kg\nAnsprechpartner: Stefanie Busch, Telefon 0441 5552035"
  },
  "M36": {
