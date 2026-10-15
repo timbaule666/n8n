@@ -483,3 +483,49 @@ T01 in Gmail **noch einmal neu senden**, mit gleichem Betreff und Text. Nicht �
 5. T16–T19
 6. T20
 7. T03–T05, sobald die jeweiligen Rückfragen da sind
+
+---
+
+## Automatischer Versand: EPA-T3
+
+Workflow **„EPA-T3 Testmails senden (Test) *“** in der Cloud, Quelle in `tools/epa-t3-testmails.sdk.js`.
+
+- **Was er tut:** Er schickt die Vorlagen über die Gmail-Verbindung „Gmail account“ an das Testpostfach. Der Empfänger ist fest eingestellt, deshalb kann nichts an Kunden gehen.
+- **Absendername:** Jede Vorlage hat ihren eigenen Absendernamen, z. B. „Sabine Kröger“. Die Adresse bleibt die Gmail-Adresse.
+- **Starten:** Nur manuell (nicht veröffentlicht), über den Webhook-Trigger.
+  - Body für neue Mails: `{ "nr": ["T01", "T06"] }`
+  - Body für eine Antwort: `{ "nr": "T03", "vorgang": "V-2026-0003" }`. Die Antwort geht auf die neueste Rückfrage mit dieser Vorgangs-ID in Gmail, also im richtigen Mailverlauf. Die zweite Antwort zu T04 heißt `T04b`.
+- **T15:** Der Workflow erzeugt das PDF mit Textebene selbst.
+
+## Ergebnisse Lauf 15.10.2026
+
+| Nr. | Vorgang | Ergebnis | Bewertung |
+|---|---|---|---|
+| T01 | V-2026-0007 | Zuordnung unklar | ✅ erklärbar: gleicher Absender und gleicher Betreff wie V-2026-0001 (E1 vom Vortag). Ein Mitarbeiter entscheidet. |
+| T02 | V-2026-0003 | Rückfrage nach Abholdatum und Telefon | ✅ |
+| T03 | V-2026-0003 | Antwort eindeutig zugeordnet (145 Punkte), Bereit | ✅ |
+| T04 | V-2026-0018 | Rückfrage nach Start-PLZ/-Ort, Ziel-PLZ, Abholdatum, Telefon; „nächste Woche“ ist nicht als Datum übernommen | ✅ |
+| T06 | V-2026-0005 | Bereit; 1,5 t → 1500, Stückgut, „Herr“ entfernt | ✅ |
+| T07 | V-2026-0006 | KI lieferte 2023-11-03 → Rückfrage nach dem Datum | ❌ → **behoben** (Commit 28eb070): ein Jahr, das nicht in der Mail steht, wird verworfen; „3.11.“ wird zu 03.11.2026 |
+| T08 | V-2026-0014 | Erkannt; PLZ 1010 (Österreich) ungültig → Rückfrage | ✅ wie erwartet. Offen: Auslands-PLZ in der Config? Rückfrage ist auf Deutsch (Config-Sprache), siehe Befunde |
+| T09 | V-2026-0009 | Rückfrage nur nach Ansprechpartner („kein Personenname“) | ✅ (Ablehnen-Test steht aus) |
+| T10 | V-2026-0008 | „Max“ akzeptiert, Bereit | ✅ nach aktueller Regel (Entscheidung offen) |
+| T11 | V-2026-0010 | Datum in der Vergangenheit und 85.000 kg erkannt → Rückfrage | ✅ |
+| T12 | V-2026-0004 | Manipulationsversuch erkannt, ohne Wirkung, echte Telefonnummer | ✅ |
+| T13 | V-2026-0011 | Daten aus dem weitergeleiteten Teil, Ansprechpartner Andrea Huber | ✅ |
+| T14 | V-2026-0013 | Nur der neue Teil ausgewertet (Augsburg → Ulm), Durchwahl statt Zentrale | ✅ |
+| T15 | V-2026-0012 | Alle Felder aus dem PDF (Quelle „Auftrag.pdf“) | ✅ |
+| T16 | V-2026-0015 | Ignoriert, archiviert | ✅ |
+| T17 | – | Abwesenheitsnotiz ohne KI-Aufruf aussortiert | ✅ |
+| T18 | V-2026-0016 | Ignoriert, archiviert | ✅ |
+| T19 | V-2026-0019 | Klassifizierung unklar | ✅ |
+| T20 | V-2026-0017 | Zuordnung unklar, kein zweiter Vorgang mit Daten | ✅ |
+| T04b, T05 | – | warten auf die Freigabe der Rückfrage zu V-2026-0018 | offen |
+
+Fehler-Log: leer.
+
+**Befunde zur Entscheidung:**
+
+1. **Sprache der Rückfrage:** Sie folgt der Kunden-Config (`sprache`), nicht der Sprache der Mail. Eine englische Anfrage bekommt also eine deutsche Rückfrage.
+2. **Anrede:** Sie nutzt den Absendernamen, z. B. „Guten Tag Dispo-Team“. Besser wäre: der erkannte Ansprechpartner, sonst neutral.
+3. **Ansprechpartner nur mit Vornamen** („Max“): reicht das?
