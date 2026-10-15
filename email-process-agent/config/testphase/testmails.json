@@ -1320,5 +1320,17 @@
   ],
   "soll": {},
   "notiz": "Antwort auf K02: Markierung wird grün"
+ },
+ "K03": {
+  "nr": "K03",
+  "art": "neu",
+  "betreff": "Test eine Nachricht",
+  "absender_name": "Nina Becker",
+  "text": "Hallo,\n\nbitte 3 Paletten (900 kg) am 14.12.2026 von 30159 Hannover nach 38100 Braunschweig.\n\nGruß Nina Becker",
+  "erwartet": [
+   "luecken"
+  ],
+  "soll": {},
+  "notiz": "Nur eine Telegram-Nachricht (Freigabe mit Übersicht)"
  }
 }
