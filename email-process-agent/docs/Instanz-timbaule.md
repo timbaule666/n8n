@@ -133,3 +133,9 @@ Tims privates Microsoft-Konto hat keine Teams-Lizenz. Microsoft antwortet auf Gr
   | Antwortfrist 72 | übernommen, nur `frist_stunden` geändert, Audit-Eintrag |
   | Rückfrage-Text Telefon | übernommen, nur `resolution_textbaustein` geändert |
 - **Andere Workflows:** Die übrigen Workflows mit eingebettetem Config-Validator sind auf Commit 2678b5f aktualisiert (Spalte `config_sheet`).
+- **Gelbe Markierung (2026-10-15):** „AI Wartet“ (preset3) bei „Warten auf Kunde“. Rot „AI Rückfragen“ gilt nur noch bei „Freigabe ausstehend“.
+  - Im Test-Sheet steht dafür die neue Zeile 24; der Abgleich hat sie übernommen.
+  - Vorgänge, die schon auf den Kunden warten, behalten Rot bis zum nächsten Statuswechsel.
+- **Testmails K04/K05 (2026-10-15):**
+  - K04, vollständige Anfrage (V-2026-0084): „bereit“, Markierung „AI Geprüft“ gesetzt.
+  - K05, Einladung (V-2026-0085): still „ignoriert“, keine Meldung, Mail bleibt im Posteingang.
