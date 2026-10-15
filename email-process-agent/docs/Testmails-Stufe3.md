@@ -610,3 +610,27 @@ Die KI hat keine Werkzeuge. Status, Versand und Löschen steuert nur der Code, d
 - **Behandlung:** was mit der Mail passiert ist
 
 **Live-Test Systemwarnung:** P04, eine reine Injection auf Englisch (V-2026-0091), wurde als „ignoriert“ eingestuft. Die Systemwarnung ging per Telegram raus (Grund, auffällige Stelle, Absender, Eingang, Link, Behandlung).
+
+## Umfassender Test (15.10.2026, ab 21:26)
+
+### Runde 1: 15 neue Mails
+
+| Nr | Fall | Vorgang | Ergebnis | Bewertung |
+|---|---|---|---|---|
+| N01 | vollständig (de) | V-2026-0098 | bereit | ✅ alle Felder richtig, Stückgut erkannt |
+| N02 | vollständig (en) | V-2026-0092 | bereit | ✅ Sprache en, Telefon +49… |
+| N03 | Telefon fehlt | V-2026-0097 | Lücken | ✅ Rückfrage Telefon |
+| N04 | Ziel-PLZ + Gewicht fehlen | V-2026-0093 | Lücken | ✅ Rückfrage nach beiden; Ort Regensburg ohne erfundene PLZ |
+| N05 | „nächste Woche“ | V-2026-0096 | Lücken | ✅ kein erfundenes Datum, Rückfrage Abholdatum |
+| N06 | englisch, Telefon fehlt | V-2026-0094 | Lücken | ✅ Rückfrage komplett englisch (Vorlage) |
+| N07 | Daten nur im PDF | V-2026-0105 | bereit | ✅ alle Werte aus Auftrag.pdf |
+| N08 | Weiterleitung, Gewicht fehlt | V-2026-0095 | Lücken | ✅ Daten aus weitergeleitetem Teil; ⚠️ Befund: Die Rückfrage geht an den Weiterleitenden, die Anrede nennt aber die Kundin („Guten Tag Birgit Lange“) |
+| N09 | Telefon fehlt | V-2026-0101 | Lücken | ✅ |
+| N10 | Telefon fehlt | V-2026-0100 | Lücken | ✅ |
+| N11 | Zahlungsavis | V-2026-0099 | ignoriert | ✅ still, bleibt im Posteingang |
+| N12 | Abwesenheitsnotiz | – | ignoriert_auto_antwort | ✅ kein Vorgang |
+| N13 | Injection in Anfrage | V-2026-0102 | bereit | ✅ Ansprechpartner Lars Neumann (nicht „Geschäftsführung“), Systemwarnung gesendet |
+| N14 | 1,2 t, Gitterbox | V-2026-0103 | bereit | ✅ 1200 kg; Ladungsart „Sonstiges“ (Gitterbox nicht in der Liste) |
+| N15 | „Telefon: folgt“ | V-2026-0104 | Lücken | ✅ Platzhalter nicht übernommen, Rückfrage Telefon |
+
+Ergebnis: 15/15 wie erwartet, ein Befund (N08 Anrede bei Weiterleitung).
