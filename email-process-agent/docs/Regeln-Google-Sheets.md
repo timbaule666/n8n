@@ -13,7 +13,7 @@ Der **Reiter „Allgemein“** hat eine Zeile je Einstellung und die Spalten Ein
 | Zeiten | Arbeitstage (z. B. „Mo, Di, Mi, Do, Fr“ oder „Mo-Fr“), Geschäftszeit von und bis, Bundesland für Feiertage, zusätzliche freie Tage (TT.MM.JJJJ) |
 | Absender | „Absender immer prüfen“, „Absender ignorieren“ (Adressen oder @domain.de, durch Komma getrennt) |
 | Postfach | Ordner für aussortierte Mails. Leer heißt: Die Mails bleiben im Posteingang. Mails werden nie gelöscht. |
-| Outlook-Markierungen | Name der grünen Markierung „bereit“ und der roten Markierung „Rückfrage“. Leer heißt: keine Markierung. |
+| Outlook-Markierungen | Name der grünen Markierung „bereit“ (alle Angaben da), der roten „Rückfrage“ (Rückfrage wartet auf Freigabe) und der gelben „wartet“ (Rückfrage verschickt, Antwort des Kunden steht aus). Leer heißt: keine Markierung. |
 | Datenschutz | Aufbewahrung der Daten in Tagen |
 
 Im **Reiter „Pflichtfelder“** steht je Feld eine Zeile mit diesen Spalten:

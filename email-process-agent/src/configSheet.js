@@ -35,7 +35,8 @@ const EINSTELLUNGEN = Object.freeze([
 	['aufbewahrung_tage', 'Daten aufbewahren (Tage)', 'zahl', 'Danach werden abgeschlossene Vorgänge im System gelöscht (Mails im Postfach nie)'],
 	['archivordner', 'Ordner für aussortierte Mails', 'text', 'Leer = aussortierte Mails bleiben im Posteingang (empfohlen). Mails werden nie gelöscht.'],
 	['markierung_bereit', 'Outlook-Markierung "bereit"', 'sonder', 'Grüne Markierung, wenn eine Anfrage vollständig ist (leer = keine)'],
-	['markierung_rueckfrage', 'Outlook-Markierung "Rückfrage"', 'sonder', 'Rote Markierung, solange eine Rückfrage läuft (leer = keine)'],
+	['markierung_rueckfrage', 'Outlook-Markierung "Rückfrage"', 'sonder', 'Rote Markierung, solange eine Rückfrage auf die Freigabe wartet (leer = keine)'],
+	['markierung_wartet', 'Outlook-Markierung "wartet"', 'sonder', 'Gelbe Markierung, wenn die Rückfrage verschickt ist und auf die Antwort des Kunden gewartet wird (leer = keine eigene Markierung)'],
 ]);
 
 /** Spalten im Reiter "Pflichtfelder" (Kopfzeile). */
@@ -54,8 +55,12 @@ const PFLICHT_SPALTEN = Object.freeze([
 
 const FARBE_BEREIT = 'preset4';
 const FARBE_RUECKFRAGE = 'preset0';
+const FARBE_WARTET = 'preset3';
 const STATUS_BEREIT = ['Bereit zur Bearbeitung'];
-const STATUS_RUECKFRAGE = ['Freigabe ausstehend', 'Warten auf Kunde'];
+const STATUS_RUECKFRAGE = ['Freigabe ausstehend'];
+const STATUS_WARTET = ['Warten auf Kunde'];
+// Zeilen, die in älteren Sheets fehlen dürfen (ohne sie gilt das bisherige Verhalten).
+const OPTIONAL = ['markierung_wartet'];
 
 const zelle = (v) => (v === null || v === undefined ? '' : String(v)).trim();
 
@@ -96,6 +101,7 @@ function einstellungsWerte(a) {
 		geschaeftszeit_bis: gz.bis || '',
 		markierung_bereit: name(STATUS_BEREIT),
 		markierung_rueckfrage: name(STATUS_RUECKFRAGE),
+		markierung_wartet: name(STATUS_WARTET),
 	};
 	for (const [spalte, , art] of EINSTELLUNGEN) {
 		if (art === 'sonder') continue;
@@ -193,7 +199,7 @@ function allgemeinLesen(zeilen, fehler, hinweise) {
 		if (e[0] in werte) { fehler.push(`Allgemein: Einstellung "${e[1]}" steht doppelt im Sheet`); return; }
 		werte[e[0]] = z.length > 1 ? z[1] : '';
 	});
-	for (const [s, label] of EINSTELLUNGEN) if (!(s in werte)) fehler.push(`Allgemein: Zeile "${label}" fehlt`);
+	for (const [s, label] of EINSTELLUNGEN) if (!(s in werte) && !OPTIONAL.includes(s)) fehler.push(`Allgemein: Zeile "${label}" fehlt`);
 	return werte;
 }
 
@@ -224,12 +230,24 @@ function allgemeinUmsetzen(werte, alt, fehler) {
 		const gz = { ...gzAlt, tage: tageAus(werte.arbeitstage, fehler), von: zelle(werte.geschaeftszeit_von), bis: zelle(werte.geschaeftszeit_bis) };
 		neu.geschaeftszeiten = JSON.stringify(gz);
 	}
-	if ('markierung_bereit' in werte || 'markierung_rueckfrage' in werte) {
+	if ('markierung_bereit' in werte || 'markierung_rueckfrage' in werte || 'markierung_wartet' in werte) {
+		const altKat = jsonOder(alt.outlook_kategorien, {}) || {};
 		const kat = {};
+		// Die Farbe bleibt, solange der Name gleich bleibt (Outlook kennt je Name nur eine Farbe).
+		const setze = (liste, name, farbe) => {
+			for (const st of liste) kat[st] = { name, farbe: altKat[st] && altKat[st].name === name && altKat[st].farbe ? altKat[st].farbe : farbe };
+		};
 		const bereit = zelle(werte.markierung_bereit);
 		const rueck = zelle(werte.markierung_rueckfrage);
-		if (bereit) for (const s of STATUS_BEREIT) kat[s] = { name: bereit, farbe: FARBE_BEREIT };
-		if (rueck) for (const s of STATUS_RUECKFRAGE) kat[s] = { name: rueck, farbe: FARBE_RUECKFRAGE };
+		if (bereit) setze(STATUS_BEREIT, bereit, FARBE_BEREIT);
+		if (rueck) setze(STATUS_RUECKFRAGE, rueck, FARBE_RUECKFRAGE);
+		if ('markierung_wartet' in werte) {
+			const wartet = zelle(werte.markierung_wartet);
+			if (wartet) setze(STATUS_WARTET, wartet, FARBE_WARTET);
+		} else if (rueck) {
+			// Älteres Sheet ohne Zeile "wartet": wie bisher rot auch beim Warten auf den Kunden
+			setze(STATUS_WARTET, rueck, FARBE_RUECKFRAGE);
+		}
 		neu.outlook_kategorien = Object.keys(kat).length ? JSON.stringify(kat) : '';
 	}
 	return neu;

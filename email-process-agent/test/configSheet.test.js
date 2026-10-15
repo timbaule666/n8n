@@ -152,3 +152,17 @@ test('Anlegen: drei Reiter mit Kopfzeile, Status mit fester Länge', () => {
 	assert.equal(s.fingerabdruck('x'), s.fingerabdruck('x'));
 	assert.notEqual(s.fingerabdruck('x'), s.fingerabdruck('y'));
 });
+
+test('Markierungen: gelb für "wartet", älteres Sheet ohne Zeile bleibt wie bisher', () => {
+	let r = lauf((i) => setze(i, 'Outlook-Markierung "wartet"', 'AI Wartet'));
+	assert.deepEqual(r.fehler, []);
+	const k = JSON.parse(r.allgemein_update.outlook_kategorien);
+	assert.deepEqual(k['Warten auf Kunde'], { name: 'AI Wartet', farbe: 'preset3' });
+	assert.deepEqual(k['Freigabe ausstehend'], { name: 'AI Rückfragen', farbe: 'preset0' });
+	assert.deepEqual(k['Bereit zur Bearbeitung'], { name: 'AI Geprüft', farbe: 'preset4' });
+	r = lauf((i) => { i.Allgemein = i.Allgemein.filter((z) => z[0] !== 'Outlook-Markierung "wartet"'); });
+	assert.deepEqual(r.fehler, []);
+	assert.deepEqual(r.allgemein_update, {}, 'ohne Zeile: rot auch beim Warten, keine Änderung');
+	r = lauf((i) => setze(i, 'Outlook-Markierung "wartet"', ''));
+	assert.ok(!('Warten auf Kunde' in JSON.parse(r.allgemein_update.outlook_kategorien)), 'leer = keine eigene Markierung');
+});
