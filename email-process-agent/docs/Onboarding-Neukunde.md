@@ -38,7 +38,8 @@ Stand 2026-10-14 (M7). Ein Workflow-Satz bedient alle Kunden. Pro Kunde kommen d
 2. **Postfach-Workflow:** `EPA-00 Postfach (Vorlage)` duplizieren und z. B. „EPA-00 Postfach anfragen@kunde.de“ nennen. Im Node „Postfach festlegen“ die Adresse eintragen. Das Outlook-Credential des Dienstkontos im Trigger und in allen Graph-Nodes zuweisen. Die ID der Kopie (aus der URL) in `postfach_workflow_id` eintragen.
 3. **Config prüfen:** `EPA SW Config laden` manuell mit `{"kunde_id": "<kürzel>"}` ausführen. Erwartet: `config` ohne Fehler. Fehlermeldungen nennen das Feld.
 4. **Testphase:** Mit dem Testpostfach bzw. einem Testabsender 5–10 typische Mails schicken: vollständig, mit Lücken, Antwort, Newsletter, Abwesenheitsnotiz. Freigaben über die Links testen.
-5. **Scharf schalten:** `aktiv = true`, Postfach-Kopie veröffentlichen. EPA-04, EPA-06 und EPA-08 laufen für alle Kunden mit.
+5. **Optional: Regeln im Google Sheet:** „EPA-10 Regel-Sheet anlegen“ ausführen und das Sheet für den Kunden freigeben (siehe `Regeln-Google-Sheets.md`).
+6. **Scharf schalten:** `aktiv = true`, Postfach-Kopie veröffentlichen. EPA-04, EPA-06 und EPA-08 laufen für alle Kunden mit.
 
 ## 4. Datentrennung zwischen Kunden
 - Jede Zeile in allen Tabellen trägt `kunde_id`. Die Sub-Workflows lesen und schreiben immer mit `kunde_id` im Filter (auch bei Vorgängen, Freigaben, Audit).

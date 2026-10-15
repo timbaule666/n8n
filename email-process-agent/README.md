@@ -22,6 +22,7 @@ Danach Credentials zuweisen und in der richtigen Reihenfolge veröffentlichen: s
 | [Architektur](docs/Architektur.md) | Workflows, Statusmodell, Sicherheitsprinzipien, Code-Organisation |
 | [Inbetriebnahme](docs/Inbetriebnahme.md) | Setup Schritt für Schritt, Credentials, Reihenfolge, Abnahmetest |
 | [Onboarding-Neukunde](docs/Onboarding-Neukunde.md) | Workshop-Fragen, Einrichtung, Checkliste, Datentrennung |
+| [Regeln-Google-Sheets](docs/Regeln-Google-Sheets.md) | Kunden pflegen ihre Regeln selbst im Google Sheet (EPA-09, EPA-10) |
 | [Betriebshandbuch](docs/Betriebshandbuch.md) | Routine, alle Meldungen mit Maßnahme, Notfall, Datenschutzanfragen |
 | [Datenschutz-und-KI-Checkliste](docs/Datenschutz-und-KI-Checkliste.md) | DSGVO, EU AI Act, Microsoft-Rechte, offene Punkte |
 | [Grenzen-und-Risiken](docs/Grenzen-und-Risiken.md) | Was das System nicht kann, was noch zu prüfen ist |

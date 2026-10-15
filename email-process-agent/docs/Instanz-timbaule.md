@@ -115,3 +115,21 @@ Tims privates Microsoft-Konto hat keine Teams-Lizenz. Microsoft antwortet auf Gr
   - Die Kundenmails sind markiert: K01 grün, K02 rot.
 - **Ältere Vorgänge** bekommen eine Markierung erst beim nächsten Statuswechsel.
 - **Die Postfach-Kopie** wurde mit erhaltenem Node „Postfach festlegen“ und erhaltenen Credentials aktualisiert. Neue Graph-Nodes übernehmen die Outlook-Credential der bestehenden Nodes.
+
+## Regeln aus Google Sheets (Stand 2026-10-15)
+- **Workflows:**
+  - `EPA SW Regeln abgleichen` (ttMWwOEr1VeXA6y5)
+  - `EPA-09 Regeln aus Google Sheets` (UtUBJFBzhBtPEbnU), veröffentlicht, alle 15 Minuten
+  - `EPA-10 Regel-Sheet anlegen` (ZJDEyyCmzs2D9CCB)
+- **Credential:** „Google Sheets account“ (googleSheetsOAuth2Api).
+- **Spalte:** `config_sheet` in epa_config_allgemein angelegt.
+- **Test-Sheet für epa-test** (in Tims Google Drive): https://docs.google.com/spreadsheets/d/12qa5Ic_-LLxbxGiG0uGEHwbsM-NGNfLyXOnkUjlPfjo/edit
+- **Live-Test** (Werte danach zurückgesetzt):
+
+  | Test | Ergebnis |
+  |---|---|
+  | Unverändertes Sheet | „Keine Änderung“, keine Meldung |
+  | Antwortfrist „zwei Tage“ | Fehler, nichts übernommen, Status im Sheet, eine Telegram-Meldung |
+  | Antwortfrist 72 | übernommen, nur `frist_stunden` geändert, Audit-Eintrag |
+  | Rückfrage-Text Telefon | übernommen, nur `resolution_textbaustein` geändert |
+- **Andere Workflows:** Die übrigen Workflows mit eingebettetem Config-Validator sind auf Commit 2678b5f aktualisiert (Spalte `config_sheet`).
