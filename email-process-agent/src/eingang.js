@@ -156,7 +156,57 @@ function meldungInFreigabe(rueckfrage) {
 	return Boolean(rueckfrage && rueckfrage.ergebnis === 'freigabe_angefordert' && Number(rueckfrage.zugestellt) > 0);
 }
 
+// ---------------------------------------------------------------- Systemwarnung Prompt-Injection
+
+// Typische Formulierungen von Anweisungen an eine KI. Nur zur Anzeige der auffälligen Stellen in der Warnung;
+// ob ein Verdacht besteht, entscheidet die KI-Prüfung (verdacht_manipulation), nicht dieses Muster.
+const VERDAECHTIG = /(ignorier|vergiss|anweisung|instruction|ignore (all|previous)|system[- ]?(nachricht|hinweis|prompt|message|:)|admin[- ]?(modus|rechte|mode)|du bist (jetzt|ein)|you are now|\bki\b|\bai\b|ki[- ]?(assistent|agent)|prompt|klassifizier|ohne freigabe|leite .{0,40}weiter|lösche|setze .{0,40}(auf|als)|trage .{0,40}ein)/i;
+
+/** Bis zu max auffällige Stellen (Zeilen) aus Mailtext und Anhängen, gekürzt. */
+function verdaechtigeStellen(mail, max = 3) {
+	const quellen = [{ wo: 'Mailtext', text: (mail && mail.text) || '' }];
+	for (const a of (mail && mail.anhaenge) || []) if (a && a.text) quellen.push({ wo: `Anhang "${a.name}"`, text: a.text });
+	const out = [];
+	for (const q of quellen) {
+		for (const zeile of String(q.text).split(/\n+/)) {
+			const z = zeile.trim();
+			if (z && VERDAECHTIG.test(z)) out.push({ wo: q.wo, text: z.length > 200 ? z.slice(0, 200) + ' …' : z });
+			if (out.length >= max) return out;
+		}
+	}
+	return out;
+}
+
+/**
+ * Eigene Telegram/Teams-Meldung bei Verdacht auf Prompt-Injection (auch wenn die Mail keine Anfrage ist).
+ * @param {object} p { vorgangs_id, mail, erkannt_bei: string[], begruendung, behandlung, eingang_text }
+ */
+function meldungManipulation({ vorgangs_id: vid, mail, erkannt_bei, begruendung, behandlung, eingang_text }) {
+	const m = mail || {};
+	const z = ['<b>⚠️ Systemwarnung: möglicher Prompt-Injection-Versuch</b>'];
+	z.push(`Grund: Die Mail enthält Anweisungen an die KI (erkannt bei: ${esc((erkannt_bei || []).join(', ') || 'Prüfung')}).`);
+	if (begruendung) z.push(`Einschätzung der KI: ${esc(begruendung)}`);
+	const stellen = verdaechtigeStellen(m);
+	if (stellen.length) z.push('Auffällige Stellen:<ul>' + stellen.map((s) => `<li>${esc(s.wo)}: „${esc(s.text)}“</li>`).join('') + '</ul>');
+	z.push('');
+	z.push('<b>Absender</b>');
+	z.push(`Name: ${esc(m.absender_name || '–')}`);
+	z.push(`Adresse: ${esc(m.absender_adresse || '–')}${m.absender_domain ? ` (Domain ${esc(m.absender_domain)})` : ''}`);
+	if (m.antwort_an && String(m.antwort_an).toLowerCase() !== String(m.absender_adresse || '').toLowerCase()) z.push(`Antwort an: ${esc(m.antwort_an)} (abweichend vom Absender)`);
+	if (m.spoofing && m.spoofing.auffaellig) z.push(`⚠️ Absender auffällig: ${esc((m.spoofing.hinweise || []).join(', '))}`);
+	z.push(`Betreff: ${esc(m.betreff || '(leer)')}`);
+	if (eingang_text) z.push(`Eingang: ${esc(eingang_text)}`);
+	if (vid) z.push(`Vorgang: ${esc(vid)}`);
+	if (m.web_link) z.push(`<a href="${esc(m.web_link)}">Mail in Outlook öffnen</a>`);
+	z.push('');
+	if (behandlung) z.push(`Behandlung: ${esc(behandlung)}`);
+	z.push('Die KI hat keine Werkzeuge: Es wurde nichts ausgeführt, gesendet oder gelöscht. Kundenmails gehen nur nach Freigabe raus.');
+	return z.join('<br>').replace(/(<br>){2,}/g, '<br><br>');
+}
+
 module.exports = {
+	verdaechtigeStellen,
+	meldungManipulation,
 	meldungInFreigabe,
 	ARCHIVIEREN_BEI,
 	archivieren,

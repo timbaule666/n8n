@@ -390,6 +390,48 @@ return [{ json: {
 } }];
 `);
 
+	// ---------------------------------------------------------------- Systemwarnung Prompt-Injection
+	// Eigene Meldung, sobald Klassifizierung, Extraktion oder Antwort-Auswertung Anweisungen an die KI erkennt
+	// (auch bei Mails, die keine Anfrage sind). Ein Fehler beim Senden stoppt die Verarbeitung nicht.
+	const warnungPruefen = wf.code('Manipulation prüfen', [5940, 100], ['eingang'], `
+const erkannt = [];
+let begruendung = null;
+if ($('Klasse auswerten').isExecuted) {
+	const k = $('Klasse auswerten').first().json;
+	if (k.details && k.details.verdacht_manipulation === true) { erkannt.push('Klassifizierung'); begruendung = k.details.begruendung || null; }
+}
+if ($('Pflichtfelder prüfen').isExecuted && $('Pflichtfelder prüfen').first().json.verdacht_manipulation === true && !erkannt.length) erkannt.push('Datenauslesen');
+if ($('Antwort verarbeiten').isExecuted && $('Antwort verarbeiten').first().json.verdacht_manipulation === true) erkannt.push('Kundenantwort');
+if (!erkannt.length) return [];
+const a = $('Abschluss vorbereiten').first().json;
+const config = $('Config laden').first().json.config;
+const mail = $('Mail normalisieren').first().json.mail;
+const BEHANDLUNG = {
+	ignoriert: 'keine Anfrage – nicht bearbeitet, die Mail bleibt im Posteingang',
+	bereit: 'als Anfrage bearbeitet (vollständig) – bitte die Angaben vor der Bearbeitung prüfen',
+	luecken: 'als Anfrage bearbeitet – die Rückfrage geht nur nach Freigabe raus',
+	klassifizierung_unklar: 'nicht automatisch bearbeitet – bitte manuell prüfen',
+};
+const eingangText = mail.empfangen_am ? DateTime.fromISO(mail.empfangen_am).setZone(config.zeitzone).toFormat('dd.LL.yyyy, HH:mm') : null;
+return [{ json: {
+	vorgangs_id: a.vorgangs_id,
+	nachricht_html: eingang.meldungManipulation({ vorgangs_id: a.vorgangs_id, mail, erkannt_bei: erkannt, begruendung,
+		behandlung: BEHANDLUNG[a.ergebnis] || (String(a.ergebnis || '').startsWith('antwort_') ? 'Kundenantwort ausgewertet – übernommene Werte bitte prüfen' : String(a.ergebnis || '')),
+		eingang_text: eingangText }),
+} }];
+`);
+	const warnen = wf.aufruf('Systemwarnung senden', [6160, 100], 'EPA SW Benachrichtigen', [
+		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
+		['vorgangs_id', 'string', '={{ $json.vorgangs_id || "" }}'],
+		['team_id', 'string', `={{ ${C}.benachrichtigung.team_id }}`],
+		['channel_id', 'string', `={{ ${C}.benachrichtigung.channel_id }}`],
+		['kanal', 'string', `={{ ${C}.benachrichtigung.kanal }}`],
+		['chat_id', 'string', `={{ ${C}.benachrichtigung.chat_id || '' }}`],
+		['telegram_workflow_id', 'string', `={{ ${C}.benachrichtigung.telegram_workflow_id || '' }}`],
+		['nachricht_html', 'string', '={{ $json.nachricht_html }}'],
+		['anlass', 'string', 'systemwarnung_manipulation'],
+	], { onError: 'continueRegularOutput' });
+
 	wf.kette(trigger, config, normalisieren, vormerken, eintragen, lesen, weg, wegWeiche);
 	wf.verbinde(wegWeiche, dupAudit, 0);
 	wf.verbinde(wegWeiche, ignAudit, 1);
@@ -418,6 +460,8 @@ return [{ json: {
 	wf.verbinde(meldenFrage, nachMeldung, 0);
 	wf.verbinde(meldenFrage, informieren, 1);
 	wf.kette(informieren, nachMeldung, abschluss);
+	wf.verbinde(abschluss, warnungPruefen);
+	wf.kette(warnungPruefen, warnen);
 	wf.kette(abschluss, abschliessen, melden);
 	return wf;
 };

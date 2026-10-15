@@ -293,7 +293,8 @@ return [{ json: { anlass: 'antwort_' + z.ergebnis, nachricht_html: html, ergebni
 	const MELDUNGEN = ['Meldung: nur zugeordnet', 'Meldung: keine Angaben', 'Meldung: Extraktion fehlgeschlagen', 'Meldung: ausgewertet'];
 	const ergebnis = wf.code('Ergebnis melden', [4840, 100], [], `
 const quelle = ${JSON.stringify(MELDUNGEN)}.find((n) => $(n).isExecuted);
-return [{ json: { ergebnis: $(quelle).first().json.ergebnis, vorgangs_id: $('Vorgang lesen').first().json.vorgang.vorgangs_id, benachrichtigt: $input.first().json.gesendet === true || $input.first().json.stumm === true } }];
+const verdacht = $('Zusammenführen').isExecuted && $('Zusammenführen').first().json.verdacht_manipulation === true;
+return [{ json: { ergebnis: $(quelle).first().json.ergebnis, vorgangs_id: $('Vorgang lesen').first().json.vorgang.vorgangs_id, benachrichtigt: $input.first().json.gesendet === true || $input.first().json.stumm === true, verdacht_manipulation: verdacht } }];
 `);
 
 	wf.kette(trigger, config, vorgang, weg, anhaengen, verarbeiten);
