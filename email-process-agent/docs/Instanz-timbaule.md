@@ -103,3 +103,15 @@ Tims privates Microsoft-Konto hat keine Teams-Lizenz. Microsoft antwortet auf Gr
 - Postfach-Kopie „EPA-00 Postfach timbaule666@outlook.com (Test)“, ID `RXWxIBLIIOdXtBcO`, Outlook-Credential übernommen, in `epa-test.postfach_workflow_id` eingetragen.
 - Error Workflow EPA-05 in allen EPA-Workflows gesetzt.
 - Veröffentlicht: alle SW-Workflows, EPA-01, EPA-02, EPA-03, EPA-04, EPA-05, EPA-06, EPA-07, EPA-T1, EPA-T2 und die Postfach-Kopie. Nicht veröffentlicht: EPA-00-Vorlage, EPA-08 Löschjob (für E12 manuell).
+
+## Outlook-Markierungen (Stand 2026-10-15)
+
+- **Neuer Workflow:** `EPA SW Outlook-Kategorie` (QEbQG7EDkytoxYPJ). SW Status setzen startet ihn nach jedem Statuswechsel, ohne auf ihn zu warten.
+- **Config epa-test, Spalte `outlook_kategorien`:**
+  - „Bereit zur Bearbeitung“ → grün „AI Geprüft“ (`preset4`)
+  - „Freigabe ausstehend“ und „Warten auf Kunde“ → rot „AI Rückfragen“ (`preset0`)
+- **Live-Test K01/K02 bestanden:**
+  - Beide Kategorien wurden mit Farbe im Postfach angelegt. Die Outlook-Verbindung reicht dafür, ein Anlegen von Hand ist nicht nötig.
+  - Die Kundenmails sind markiert: K01 grün, K02 rot.
+- **Ältere Vorgänge** bekommen eine Markierung erst beim nächsten Statuswechsel.
+- **Die Postfach-Kopie** wurde mit erhaltenem Node „Postfach festlegen“ und erhaltenen Credentials aktualisiert. Neue Graph-Nodes übernehmen die Outlook-Credential der bestehenden Nodes.
