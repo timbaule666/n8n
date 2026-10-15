@@ -5,12 +5,12 @@ neu AS (
     INSERT INTO epa_vorgaenge (
         vorgangs_id, kunde_id, vorgangstyp, status, conversation_id, erste_message_id, letzte_message_id,
         bekannte_message_ids, absender_adresse, absender_name, betreff, betreff_normalisiert,
-        spoofing_hinweis, loeschen_ab)
+        spoofing_hinweis, erste_mail_am, erste_mail_link, loeschen_ab)
     SELECT epa_naechste_vorgangs_id(), c.kunde_id, d.d->>'vorgangstyp', 'Neu', d.d->>'conversation_id',
            d.d->>'erste_message_id', d.d->>'erste_message_id',
            CASE WHEN d.d->>'erste_message_id' IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(d.d->>'erste_message_id') END,
            lower(d.d->>'absender_adresse'), d.d->>'absender_name', d.d->>'betreff', d.d->>'betreff_normalisiert',
-           d.d->>'spoofing_hinweis', now() + make_interval(days => c.aufbewahrung_tage)
+           d.d->>'spoofing_hinweis', (d.d->>'erste_mail_am')::timestamptz, d.d->>'erste_mail_link', now() + make_interval(days => c.aufbewahrung_tage)
     FROM d JOIN epa_config_allgemein c ON c.kunde_id = $1
     RETURNING *
 ), aud AS (

@@ -171,7 +171,7 @@ return [{ json: { ergebnis: 'antwort_' + r.ergebnis, vorgangs_id: r.vorgangs_id 
 		['aktion', 'string', 'anlegen'],
 		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
 		['vorgangs_id', 'string', ''],
-		['daten', 'object', `={{ { conversation_id: ${M}.conversation_id, erste_message_id: ${MID}, absender_adresse: ${M}.absender_adresse, absender_name: ${M}.absender_name, betreff: ${M}.betreff, betreff_normalisiert: ${M}.betreff_normalisiert, spoofing_hinweis: ${M}.spoofing.auffaellig ? ${M}.spoofing.hinweise.join('; ') : null } }}`],
+		['daten', 'object', `={{ { conversation_id: ${M}.conversation_id, erste_message_id: ${MID}, absender_adresse: ${M}.absender_adresse, absender_name: ${M}.absender_name, betreff: ${M}.betreff, betreff_normalisiert: ${M}.betreff_normalisiert, spoofing_hinweis: ${M}.spoofing.auffaellig ? ${M}.spoofing.hinweise.join('; ') : null, erste_mail_am: ${M}.empfangen_am || null, erste_mail_link: ${M}.web_link || null } }}`],
 		['erwartete_version', 'number', '={{ null }}'],
 		['referenz', 'string', `={{ ${MID} }}`],
 		['lock_sekunden', 'number', '={{ null }}'],

@@ -31,7 +31,7 @@ const AENDERBAR = ['vorgangstyp', 'conversation_id', 'letzte_message_id', 'neue_
 	'betreff_normalisiert', 'extrahierte_daten', 'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist',
 	'erinnerungen_gesendet', 'bearbeiter', 'freigabe_id_aktuell', 'spoofing_hinweis', 'sprache'];
 const ANLEGBAR = ['vorgangstyp', 'conversation_id', 'erste_message_id', 'absender_adresse', 'absender_name', 'betreff',
-	'betreff_normalisiert', 'spoofing_hinweis'];
+	'betreff_normalisiert', 'spoofing_hinweis', 'erste_mail_am', 'erste_mail_link'];
 const e = $input.first().json;
 const vid = typeof e.vorgangs_id === 'string' ? e.vorgangs_id.trim() : '';
 const fehler = (code, text) => fehlerklassen.epaFehler(code, vid || null, text);

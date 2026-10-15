@@ -28,7 +28,7 @@ module.exports = function () {
 	const eingabe = wf.code('Eingabe prüfen', [220, 0], ['fehlerklassen', 'datenTabellen'], `
 const AKTIONEN = ${JSON.stringify(AKTIONEN)};
 const ANLEGBAR = ['vorgangstyp', 'conversation_id', 'erste_message_id', 'absender_adresse', 'absender_name', 'betreff',
-	'betreff_normalisiert', 'spoofing_hinweis'];
+	'betreff_normalisiert', 'spoofing_hinweis', 'erste_mail_am', 'erste_mail_link'];
 const e = $input.first().json;
 const vid = typeof e.vorgangs_id === 'string' ? e.vorgangs_id.trim() : '';
 const fehler = (code, text) => fehlerklassen.epaFehler(code, vid || null, text);

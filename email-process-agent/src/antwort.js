@@ -73,7 +73,7 @@ function zusammenfuehren(alt, neu, felder, optionen = {}) {
 				bestaetigt.push(f.feldname);
 			} else if (f.validierungsregel && f.validierungsregel.person === true && nameErgaenzt(vorher.wert, neuWert)) {
 				// "Max" -> "Max Müller": Ergänzung, kein Widerspruch
-				daten[f.feldname] = { wert: neuWert, roh, quelle: n.quelle || null, konfidenz: n.konfidenz ?? null };
+				daten[f.feldname] = { wert: neuWert, roh, quelle: n.quelle || null, konfidenz: n.konfidenz ?? null, nachgefordert: true, runde: optionen.runde ?? null };
 				uebernommen.push({ feldname: f.feldname, anzeigename: f.anzeigename, alt: vorher.wert, neu: neuWert, quelle: n.quelle || null });
 			} else {
 				konflikteNeu.push({ feldname: f.feldname, anzeigename: f.anzeigename, alt: vorher.wert, neu: neuWert, quelle: n.quelle || null, message_id: optionen.message_id || null, runde: optionen.runde ?? null });
@@ -81,7 +81,8 @@ function zusammenfuehren(alt, neu, felder, optionen = {}) {
 			continue;
 		}
 		if (!leer(neuWert)) {
-			daten[f.feldname] = { wert: neuWert, roh, quelle: n.quelle || null, konfidenz: n.konfidenz ?? null };
+			// nachgefordert: kam per Antwort auf eine Rückfrage (für die Abschluss-Meldung "bisher" vs. "nachgefordert")
+			daten[f.feldname] = { wert: neuWert, roh, quelle: n.quelle || null, konfidenz: n.konfidenz ?? null, nachgefordert: true, runde: optionen.runde ?? null };
 			uebernommen.push({ feldname: f.feldname, anzeigename: f.anzeigename, alt: null, neu: neuWert, quelle: n.quelle || null });
 			if (typeof n.konfidenz === 'number' && n.konfidenz < 0.5) unsicher.push({ feldname: f.feldname, anzeigename: f.anzeigename, konfidenz: n.konfidenz });
 		} else {
@@ -152,7 +153,63 @@ function esc(s) {
 	return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
-function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrage, alterStatus, fristNeu, ohneRueckfrageText }) {
+/** Datum/Uhrzeit für Meldungen ("15.10.2026, 20:48"); leer, wenn unbekannt. */
+function zeitText(iso, zeitzone) {
+	if (!iso) return '';
+	const d = new Date(iso);
+	if (Number.isNaN(d.getTime())) return '';
+	return d.toLocaleString('de-DE', { timeZone: zeitzone || 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+/**
+ * Abschluss-Meldung, wenn eine Antwort die Anfrage vollständig macht: kompletter Verlauf zum Nachvollziehen.
+ * Erste Anfrage (Datum + Link), diese Antwort (Datum + Link), bisherige Informationen und nachgeforderte Informationen.
+ * @param {object} p.vorgang  Vorgang vor der Antwort (erste_mail_am, erste_mail_link, createdAt, rundenzaehler, absender_*)
+ * @param {object[]} p.felder Felder des Vorgangstyps (Reihenfolge und Anzeigenamen)
+ * @param {object} p.merge    Ergebnis von zusammenfuehren (daten mit Markierung nachgefordert)
+ */
+function meldungVollstaendig({ vorgangs_id: vid, mail, merge, vorgang, felder, zeitzone }) {
+	const v = vorgang || {};
+	const daten = (merge && merge.daten) || {};
+	const jetzt = new Set((merge.uebernommen || []).map((u) => u.feldname));
+	const wert = (f) => { const d = daten[f.feldname]; return d && d.wert !== null && d.wert !== undefined && d.wert !== '' ? d.wert : null; };
+	const link = (url, text) => (url ? ` · <a href="${esc(url)}">${esc(text)}</a>` : '');
+	const kunde = v.absender_name ? `${v.absender_name} (${v.absender_adresse || mail.absender_adresse})` : (v.absender_adresse || mail.absender_adresse);
+	const z = [
+		'<b>✅ Anfrage vollständig – bereit zur Bearbeitung</b>',
+		`Vorgang: <b>${esc(vid)}</b>`,
+		`Kunde: ${esc(kunde)}`,
+		`Betreff: ${esc(v.betreff || mail.betreff)}`,
+		'',
+		`Erste Anfrage: ${esc(zeitText(v.erste_mail_am || v.createdAt, zeitzone) || 'unbekannt')}${link(v.erste_mail_link, 'Erste Mail öffnen')}`,
+		`Antwort mit den fehlenden Angaben: ${esc(zeitText(mail.empfangen_am, zeitzone) || 'gerade eben')}${link(mail.web_link, 'Antwort öffnen')}`,
+		`Rückfrage-Runden: ${esc(Number(v.rundenzaehler) || 1)}`,
+	];
+	const bisher = []; const nach = []; const offen = [];
+	for (const f of felder || []) {
+		const w = wert(f);
+		if (w === null) { offen.push(f); continue; }
+		const d = daten[f.feldname] || {};
+		if (d.nachgefordert || jetzt.has(f.feldname)) nach.push(`<li>${esc(f.anzeigename)}: <b>${esc(w)}</b>${jetzt.has(f.feldname) ? ' (aus dieser Antwort)' : d.runde ? ` (Rückfrage-Runde ${esc(d.runde)})` : ''}</li>`);
+		else bisher.push(`<li>${esc(f.anzeigename)}: ${esc(w)}</li>`);
+	}
+	z.push('', '<b>Bisherige Informationen</b> (aus der ersten Anfrage):' + (bisher.length ? `<ul>${bisher.join('')}</ul>` : ' keine'));
+	z.push('<b>Nachgeforderte Informationen</b>:' + (nach.length ? `<ul>${nach.join('')}</ul>` : ' keine'));
+	if (offen.length) z.push('Nicht angegeben (optional): ' + offen.map((f) => esc(f.anzeigename)).join(', '));
+	if (merge.konflikte_neu && merge.konflikte_neu.length) {
+		z.push('⚠️ <b>Widersprüche (nicht übernommen, bitte klären):</b><ul>' + merge.konflikte_neu.map((k) => `<li>${esc(k.anzeigename)}: bisher "${esc(k.alt)}", jetzt "${esc(k.neu)}"</li>`).join('') + '</ul>');
+	}
+	for (const h of merge.hinweise || []) z.push(`Hinweis ${esc(h.anzeigename)}: ${esc(h.grund)}`);
+	for (const u of merge.unsicher || []) z.push(`⚠️ ${esc(u.anzeigename)}: KI unsicher (Konfidenz ${esc(u.konfidenz)}), bitte prüfen`);
+	return z.join('<br>').replace(/(<br>){2,}/g, '<br><br>');
+}
+
+function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrage, alterStatus, fristNeu, ohneRueckfrageText, uebersicht }) {
+	if (entscheidung.weg === 'bereit' && uebersicht) {
+		let html = meldungVollstaendig({ vorgangs_id: vid, mail, merge, ...uebersicht });
+		if (entscheidung.freigabe_ersetzen) html += '<br>Die noch offene Freigabe der vorherigen Rückfrage ist damit überholt und wurde deaktiviert.';
+		return html;
+	}
 	const titel = {
 		bereit: 'Antwort eingegangen – Anfrage jetzt vollständig',
 		luecken: 'Antwort eingegangen – es fehlen noch Angaben',
@@ -184,4 +241,4 @@ function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrag
 	return z.join('<br>');
 }
 
-module.exports = { nameErgaenzt, AUTOMATISCH, wegBestimmen, gleich, zusammenfuehren, entscheiden, fristVerlaengern, extraktionsHinweise, meldungAntwort, esc };
+module.exports = { nameErgaenzt, AUTOMATISCH, wegBestimmen, gleich, zusammenfuehren, entscheiden, fristVerlaengern, extraktionsHinweise, meldungAntwort, meldungVollstaendig, zeitText, esc };

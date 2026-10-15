@@ -266,7 +266,9 @@ const z = $('Zusammenführen').first().json;
 const v = $('Vorgang lesen').first().json.vorgang;
 const mail = $('Bei Aufruf').first().json.mail;
 const r = $('Rückfrage anfordern').isExecuted ? $('Rückfrage anfordern').first().json : null;
-let html = antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, mail, merge: z.merge, entscheidung: { weg: z.ergebnis, freigabe_ersetzen: z.freigabe_ersetzen }, rueckfrage: r });
+const config = $('Config laden').first().json.config;
+let html = antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, mail, merge: z.merge, entscheidung: { weg: z.ergebnis, freigabe_ersetzen: z.freigabe_ersetzen }, rueckfrage: r,
+	uebersicht: { vorgang: v, felder: config.vorgangstypen[v.vorgangstyp] || [], zeitzone: config.zeitzone } });
 if (z.verdacht_manipulation) html += '<br>⚠️ Die Mail enthält möglicherweise Anweisungen an die KI (Manipulationsversuch).';
 // Neue Rückfrage samt Übersicht ist beim Freigeber angekommen: keine zweite Nachricht.
 return [{ json: { anlass: 'antwort_' + z.ergebnis, nachricht_html: html, ergebnis: z.ergebnis, stumm: z.ergebnis === 'luecken' && eingang.meldungInFreigabe(r) } }];

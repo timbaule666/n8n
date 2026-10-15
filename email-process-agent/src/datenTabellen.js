@@ -11,6 +11,7 @@ const SPALTEN = {
 		'bekannte_message_ids', 'absender_adresse', 'absender_name', 'betreff', 'betreff_normalisiert', 'extrahierte_daten',
 		'fehlende_felder', 'konflikte', 'rundenzaehler', 'antwort_frist', 'erinnerungen_gesendet', 'bearbeiter',
 		'freigabe_id_aktuell', 'spoofing_hinweis', 'version', 'lock_bis', 'lock_durch', 'loeschen_ab', 'sprache',
+		'erste_mail_am', 'erste_mail_link',
 	],
 	epa_audit_log: ['kunde_id', 'vorgangs_id', 'typ', 'alt', 'neu', 'ausloeser', 'details', 'referenz'],
 };
@@ -84,6 +85,9 @@ function neuerVorgang(kundeId, daten, { aufbewahrungTage, jetzt, platzhalterId }
 		rundenzaehler: 0,
 		erinnerungen_gesendet: 0,
 		spoofing_hinweis: d.spoofing_hinweis ?? null,
+		// Eingang und Outlook-Link der ersten Mail, damit die Abschluss-Meldung darauf verweisen kann
+		erste_mail_am: d.erste_mail_am ?? null,
+		erste_mail_link: d.erste_mail_link ?? null,
 		version: 1,
 		loeschen_ab: loeschen,
 	}, 'epa_vorgaenge');

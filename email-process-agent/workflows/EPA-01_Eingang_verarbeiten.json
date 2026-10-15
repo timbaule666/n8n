@@ -1016,7 +1016,7 @@
             "aktion": "anlegen",
             "kunde_id": "={{ $('Config laden').first().json.config.kunde_id }}",
             "vorgangs_id": "",
-            "daten": "={{ { conversation_id: $('Mail normalisieren').first().json.mail.conversation_id, erste_message_id: $('Mail normalisieren').first().json.mail.message_id, absender_adresse: $('Mail normalisieren').first().json.mail.absender_adresse, absender_name: $('Mail normalisieren').first().json.mail.absender_name, betreff: $('Mail normalisieren').first().json.mail.betreff, betreff_normalisiert: $('Mail normalisieren').first().json.mail.betreff_normalisiert, spoofing_hinweis: $('Mail normalisieren').first().json.mail.spoofing.auffaellig ? $('Mail normalisieren').first().json.mail.spoofing.hinweise.join('; ') : null } }}",
+            "daten": "={{ { conversation_id: $('Mail normalisieren').first().json.mail.conversation_id, erste_message_id: $('Mail normalisieren').first().json.mail.message_id, absender_adresse: $('Mail normalisieren').first().json.mail.absender_adresse, absender_name: $('Mail normalisieren').first().json.mail.absender_name, betreff: $('Mail normalisieren').first().json.mail.betreff, betreff_normalisiert: $('Mail normalisieren').first().json.mail.betreff_normalisiert, spoofing_hinweis: $('Mail normalisieren').first().json.mail.spoofing.auffaellig ? $('Mail normalisieren').first().json.mail.spoofing.hinweise.join('; ') : null, erste_mail_am: $('Mail normalisieren').first().json.mail.empfangen_am || null, erste_mail_link: $('Mail normalisieren').first().json.mail.web_link || null } }}",
             "erwartete_version": "={{ null }}",
             "referenz": "={{ $('Mail normalisieren').first().json.mail.message_id }}",
             "lock_sekunden": "={{ null }}"

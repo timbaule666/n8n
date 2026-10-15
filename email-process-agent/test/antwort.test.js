@@ -124,3 +124,26 @@ test('Antwort ergänzt den Ansprechpartner um den Nachnamen: Übernahme statt Wi
 	assert.equal(a.zusammenfuehren(alt, neu('Tim Baule'), felder, {}).konflikte_neu.length, 1, 'anderer Name bleibt Widerspruch');
 	assert.equal(a.nameErgaenzt('Max Müller', 'Max'), false);
 });
+
+test('Abschluss-Meldung: Verlauf mit erster Mail, bisherigen und nachgeforderten Informationen', () => {
+	const m = merge({ Telefon: '0221 987654' });
+	assert.equal(m.daten.Telefon.nachgefordert, true, 'aus der Antwort markiert');
+	assert.ok(!m.daten.Start_PLZ.nachgefordert, 'aus der ersten Mail nicht markiert');
+	const vorgang = { vorgangs_id: 'V-2026-0001', absender_name: 'Max Muster', absender_adresse: 'max@kunde.example', betreff: 'Transport Köln', rundenzaehler: 1,
+		erste_mail_am: '2026-10-15T07:30:00Z', erste_mail_link: 'https://outlook.example/erste' };
+	const mail = { absender_adresse: 'max@kunde.example', betreff: 'AW: Transport Köln', empfangen_am: '2026-10-15T10:05:00Z', web_link: 'https://outlook.example/antwort' };
+	const html = a.meldungAntwort({ vorgangs_id: 'V-2026-0001', mail, merge: m, entscheidung: { weg: 'bereit' }, uebersicht: { vorgang, felder: FELDER, zeitzone: 'Europe/Berlin' } });
+	assert.match(html, /Anfrage vollständig/);
+	assert.match(html, /Erste Anfrage: 15\.10\.2026, 09:30 · <a href="https:\/\/outlook\.example\/erste">Erste Mail öffnen<\/a>/);
+	assert.match(html, /Antwort mit den fehlenden Angaben: 15\.10\.2026, 12:05 · <a href="https:\/\/outlook\.example\/antwort">/);
+	const [bisher, nach] = html.split('<b>Nachgeforderte Informationen</b>');
+	assert.match(bisher, /<b>Bisherige Informationen<\/b>.*PLZ Abholort.*50667/s);
+	assert.ok(!/Telefon/.test(bisher), 'Telefon nicht unter bisher');
+	assert.match(nach, /Telefonnummer.*<b>0221987654<\/b> \(aus dieser Antwort\)/);
+	assert.match(html, /Kunde: Max Muster \(max@kunde\.example\)/);
+	// Ältere Vorgänge ohne gespeicherten Link: Datum aus createdAt, kein Link
+	const alt = a.meldungAntwort({ vorgangs_id: 'V-1', mail, merge: m, entscheidung: { weg: 'bereit' }, uebersicht: { vorgang: { createdAt: '2026-10-15T07:30:00Z' }, felder: FELDER } });
+	assert.match(alt, /Erste Anfrage: 15\.10\.2026, 09:30<br>/);
+	// Ohne Übersicht bleibt die kurze Meldung
+	assert.match(a.meldungAntwort({ vorgangs_id: 'V-1', mail, merge: m, entscheidung: { weg: 'bereit' } }), /Antwort eingegangen – Anfrage jetzt vollständig/);
+});

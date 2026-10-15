@@ -62,6 +62,8 @@
       "status": "string",
       "conversation_id": "string",
       "erste_message_id": "string",
+      "erste_mail_am": "string",
+      "erste_mail_link": "string",
       "letzte_message_id": "string",
       "bekannte_message_ids": "string",
       "absender_adresse": "string",

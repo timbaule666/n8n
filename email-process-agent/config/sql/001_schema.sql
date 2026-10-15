@@ -108,6 +108,8 @@ CREATE TABLE IF NOT EXISTS epa_vorgaenge (
                                'Warten auf Kunde', 'Eskaliert / Manuell', 'Abgeschlossen')),
     conversation_id        TEXT,
     erste_message_id       TEXT,
+    erste_mail_am          TIMESTAMPTZ,
+    erste_mail_link        TEXT,
     letzte_message_id      TEXT,
     bekannte_message_ids   JSONB NOT NULL DEFAULT '[]',
     absender_adresse       TEXT,
