@@ -582,3 +582,13 @@ Eine Rückfrage zu M30 (V-2026-0047) wurde vor der Korrektur freigegeben und in 
 - Unverändert: Liegt die Konfidenz unter der Schwelle (0,75), kommt weiterhin eine Meldung, weil die Einstufung dann nicht sicher ist.
 
 Testerwartungen angepasst: M46, M47 → `ignoriert`; KI-Testfall S11 → `keine_anfrage`.
+
+**Nachtest (15.10.2026, Prompt v2):**
+
+| Mail | Vorgang | Ergebnis |
+|---|---|---|
+| T19 Rückrufbitte | V-2026-0078 | ✅ Ignoriert, keine Meldung |
+| M46 Rückruf erbeten | V-2026-0080 | ✅ Ignoriert, keine Meldung |
+| T16 Werbung | V-2026-0081 | ✅ Ignoriert, keine Meldung |
+| M47 Beschwerde | V-2026-0082 | ✅ Ignoriert, keine Meldung |
+| M48 Kurze Preisfrage (Gegenprobe) | V-2026-0079 | Zuordnung unklar: Der gleiche Betreff vom gleichen Absender existiert schon aus Lauf 2 (V-2026-0066). Das ist ein Effekt des erneuten Sendens, kein Klassifizierungsfehler. |
