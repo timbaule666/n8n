@@ -305,7 +305,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH k AS (SELECT $2::jsonb AS k)\nSELECT COALESCE(jsonb_agg(to_jsonb(t)), '[]'::jsonb) AS kandidaten\nFROM (\n    SELECT v.vorgangs_id, v.status, v.conversation_id, v.bekannte_message_ids, v.absender_adresse,\n           v.betreff_normalisiert, v.version, v.geaendert_am\n    FROM epa_vorgaenge v, k\n    WHERE v.kunde_id = $1\n      AND v.status NOT IN ('Abgeschlossen', 'Ignoriert')\n      AND (\n            v.bekannte_message_ids ?| ARRAY(SELECT jsonb_array_elements_text(COALESCE(k.k->'message_ids', '[]'::jsonb)))\n         OR (k.k->>'conversation_id' IS NOT NULL AND v.conversation_id = k.k->>'conversation_id')\n         OR (k.k->>'absender_adresse' IS NOT NULL AND lower(v.absender_adresse) = lower(k.k->>'absender_adresse'))\n         OR (k.k->>'betreff_normalisiert' IS NOT NULL AND v.betreff_normalisiert = k.k->>'betreff_normalisiert')\n         OR v.vorgangs_id IN (SELECT jsonb_array_elements_text(COALESCE(k.k->'vorgangs_ids', '[]'::jsonb)))\n      )\n    ORDER BY v.geaendert_am DESC\n    LIMIT 20\n) t;",
+        "query": "WITH k AS (SELECT $2::jsonb AS k)\nSELECT COALESCE(jsonb_agg(to_jsonb(t)), '[]'::jsonb) AS kandidaten\nFROM (\n    SELECT v.vorgangs_id, v.status, v.conversation_id, v.bekannte_message_ids, v.absender_adresse,\n           v.betreff_normalisiert, v.version, v.geaendert_am\n    FROM epa_vorgaenge v, k\n    WHERE v.kunde_id = $1\n      AND v.status NOT IN ('Abgeschlossen', 'Ignoriert')\n      AND (\n            v.bekannte_message_ids ?| ARRAY(SELECT jsonb_array_elements_text(COALESCE(k.k->'message_ids', '[]'::jsonb)))\n         OR (k.k->>'conversation_id' IS NOT NULL AND v.conversation_id = k.k->>'conversation_id')\n         OR (k.k->>'absender_adresse' IS NOT NULL AND lower(v.absender_adresse) = lower(k.k->>'absender_adresse'))\n         OR (k.k->>'betreff_normalisiert' IS NOT NULL AND v.betreff_normalisiert = k.k->>'betreff_normalisiert')\n         OR v.vorgangs_id IN (SELECT jsonb_array_elements_text(COALESCE(k.k->'vorgangs_ids', '[]'::jsonb)))\n      )\n    ORDER BY COALESCE((\n            v.bekannte_message_ids ?| ARRAY(SELECT jsonb_array_elements_text(COALESCE(k.k->'message_ids', '[]'::jsonb)))\n         OR v.vorgangs_id IN (SELECT jsonb_array_elements_text(COALESCE(k.k->'vorgangs_ids', '[]'::jsonb)))\n         OR (k.k->>'conversation_id' IS NOT NULL AND v.conversation_id = k.k->>'conversation_id')\n         ), false) DESC, v.geaendert_am DESC\n    LIMIT 20\n) t;",
         "options": {
           "queryReplacement": "={{ [ $json.kunde_id, $json.daten ] }}"
         }
@@ -321,7 +321,7 @@
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 3000,
-      "notes": "$1 kunde_id, $2 kriterien (JSON: message_ids[], conversation_id, absender_adresse, betreff_normalisiert, vorgangs_ids[])\nNur offene Vorgänge. Bewertung der Kandidaten erfolgt deterministisch im Code (Bauplan 5.2)."
+      "notes": "$1 kunde_id, $2 kriterien (JSON: message_ids[], conversation_id, absender_adresse, betreff_normalisiert, vorgangs_ids[])\nNur offene Vorgänge. Bewertung der Kandidaten erfolgt deterministisch im Code (Bauplan 5.2).\nStarke Hinweise (Message-ID, genannte Vorgangs-ID, Konversation) zuerst, damit sie nie wegfallen."
     },
     {
       "parameters": {

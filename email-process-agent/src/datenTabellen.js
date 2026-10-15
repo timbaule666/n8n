@@ -118,17 +118,21 @@ function kandidatenFiltern(zeilen, kriterien) {
 	const ids = new Set(k.message_ids || []);
 	const vids = new Set(k.vorgangs_ids || []);
 	const absender = k.absender_adresse ? String(k.absender_adresse).toLowerCase() : null;
-	return (zeilen || [])
+	// Starke Hinweise (Bezug auf Message-ID, genannte Vorgangs-ID, gleiche Konversation) sind immer Kandidaten.
+	// Schwache (nur Absender oder Betreff) werden nach Aktualität auf insgesamt 20 aufgefüllt. Sonst fällt bei
+	// Absendern mit vielen offenen Vorgängen ausgerechnet der genannte Vorgang heraus (Live-Test T04b).
+	const stark = (v) => (v.bekannte_message_ids || []).some((m) => ids.has(m)) || vids.has(v.vorgangs_id) ||
+		Boolean(k.conversation_id && v.conversation_id === k.conversation_id);
+	const passend = (zeilen || [])
 		.map((z) => zeileLesen(z, 'epa_vorgaenge'))
 		.filter((v) => v && !OFFEN_AUSGESCHLOSSEN.includes(v.status))
-		.filter((v) =>
-			(v.bekannte_message_ids || []).some((m) => ids.has(m)) ||
-			(k.conversation_id && v.conversation_id === k.conversation_id) ||
+		.filter((v) => stark(v) ||
 			(absender && String(v.absender_adresse || '').toLowerCase() === absender) ||
-			(k.betreff_normalisiert && v.betreff_normalisiert === k.betreff_normalisiert) ||
-			vids.has(v.vorgangs_id))
-		.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
-		.slice(0, 20)
+			(k.betreff_normalisiert && v.betreff_normalisiert === k.betreff_normalisiert))
+		.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+	const starke = passend.filter(stark);
+	const schwache = passend.filter((v) => !stark(v)).slice(0, Math.max(0, 20 - starke.length));
+	return [...starke, ...schwache]
 		.map((v) => ({
 			vorgangs_id: v.vorgangs_id, status: v.status, conversation_id: v.conversation_id,
 			bekannte_message_ids: v.bekannte_message_ids, absender_adresse: v.absender_adresse,

@@ -58,7 +58,7 @@ test('aktualisierungBerechnen: nur übergebene Felder, Message-IDs ohne Duplikat
 	assert.throws(() => dt.aktualisierungBerechnen(v, { status: 'Abgeschlossen' }), /nicht änderbar/);
 });
 
-test('kandidatenFiltern: Kriterien, nur offene Vorgänge, neueste zuerst', () => {
+test('kandidatenFiltern: Kriterien, nur offene Vorgänge, starke Hinweise und neueste zuerst', () => {
 	const z = (id, extra) => ({ id, vorgangs_id: `V-2026-000${id}`, status: 'In Prüfung', bekannte_message_ids: '[]', updatedAt: `2026-10-1${id}T00:00:00Z`, ...extra });
 	const zeilen = [
 		z(1, { bekannte_message_ids: '["<m1>"]' }),
@@ -74,7 +74,7 @@ test('kandidatenFiltern: Kriterien, nur offene Vorgänge, neueste zuerst', () =>
 	assert.deepEqual(ids({ absender_adresse: 'MAX@kunde.de' }), ['V-2026-0003']);
 	assert.deepEqual(ids({ betreff_normalisiert: 'anfrage' }), ['V-2026-0004']);
 	assert.deepEqual(ids({ vorgangs_ids: ['V-2026-0001', 'V-2026-0005'] }), ['V-2026-0001']);
-	assert.deepEqual(ids({ conversation_id: 'c2', absender_adresse: 'max@kunde.de' }), ['V-2026-0003', 'V-2026-0002']);
+	assert.deepEqual(ids({ conversation_id: 'c2', absender_adresse: 'max@kunde.de' }), ['V-2026-0002', 'V-2026-0003'], 'starke Hinweise (Konversation) vor Absender');
 	assert.deepEqual(ids({}), []);
 });
 
@@ -99,4 +99,18 @@ test('Beispiel-Config für Data Tables: Schema-Spalten, Platzhalter abgelehnt, e
 	const ok = validiereConfig({ ...allg, postfach: 'anfragen@beispiel.de', freigeber: '["dispo@beispiel.de"]' }, beispiel.epa_config_pflichtfelder);
 	assert.equal(ok.gueltig, true, ok.fehler.join('\n'));
 	assert.equal(ok.config.vorgangstypen.transport.length, 10);
+});
+
+test('kandidatenFiltern: genannter Vorgang bleibt Kandidat, auch bei mehr als 20 offenen Vorgängen des Absenders (Live-Test T04b)', () => {
+	const zeilen = Array.from({ length: 30 }, (_, i) => ({
+		id: i + 1, vorgangs_id: `V-2026-${String(i + 1).padStart(4, '0')}`, status: 'Bereit zur Bearbeitung', absender_adresse: 'kunde@x.example',
+		bekannte_message_ids: '[]', updatedAt: `2026-10-15T09:${String(i).padStart(2, '0')}:00Z`,
+	}));
+	const k = dt.kandidatenFiltern(zeilen, { absender_adresse: 'kunde@x.example', vorgangs_ids: ['V-2026-0001'] });
+	assert.equal(k.length, 20);
+	assert.equal(k[0].vorgangs_id, 'V-2026-0001', 'starker Hinweis zuerst');
+	assert.equal(k[1].vorgangs_id, 'V-2026-0030', 'danach die neuesten');
+	const ohne = dt.kandidatenFiltern(zeilen, { absender_adresse: 'kunde@x.example' });
+	assert.equal(ohne.length, 20);
+	assert.ok(!ohne.some((x) => x.vorgangs_id === 'V-2026-0001'));
 });

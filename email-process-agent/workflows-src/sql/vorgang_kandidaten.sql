@@ -15,6 +15,11 @@ FROM (
          OR (k.k->>'betreff_normalisiert' IS NOT NULL AND v.betreff_normalisiert = k.k->>'betreff_normalisiert')
          OR v.vorgangs_id IN (SELECT jsonb_array_elements_text(COALESCE(k.k->'vorgangs_ids', '[]'::jsonb)))
       )
-    ORDER BY v.geaendert_am DESC
+    -- Starke Hinweise (Message-ID, genannte Vorgangs-ID, Konversation) zuerst, damit sie nie wegfallen.
+    ORDER BY COALESCE((
+            v.bekannte_message_ids ?| ARRAY(SELECT jsonb_array_elements_text(COALESCE(k.k->'message_ids', '[]'::jsonb)))
+         OR v.vorgangs_id IN (SELECT jsonb_array_elements_text(COALESCE(k.k->'vorgangs_ids', '[]'::jsonb)))
+         OR (k.k->>'conversation_id' IS NOT NULL AND v.conversation_id = k.k->>'conversation_id')
+         ), false) DESC, v.geaendert_am DESC
     LIMIT 20
 ) t;
