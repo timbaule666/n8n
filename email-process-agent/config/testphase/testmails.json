@@ -1382,5 +1382,27 @@
   ],
   "soll": {},
   "notiz": "Antwort auf K06: Markierung wird grün"
+ },
+ "K07": {
+  "nr": "K07",
+  "art": "neu",
+  "betreff": "Transport Münster – Osnabrück",
+  "absender_name": "Jonas Weber",
+  "text": "Guten Tag,\n\nbitte um ein Angebot: Abholung am 24.11.2026 in 48143 Münster, Lieferung nach 49074 Osnabrück. 5 Paletten, insgesamt 1.800 kg.\n\nMit freundlichen Grüßen\nJonas Weber",
+  "erwartet": [
+   "luecken"
+  ],
+  "soll": {},
+  "notiz": "Telefon fehlt: Freigabe -> Antwort K07b -> Abschluss-Meldung mit Verlauf (bisherige + nachgeforderte Informationen)"
+ },
+ "K07b": {
+  "nr": "K07b",
+  "art": "antwort",
+  "text": "Guten Tag,\n\nSie erreichen mich unter 0251 5550707.\n\nMit freundlichen Grüßen\nJonas Weber",
+  "erwartet": [
+   "antwort_bereit"
+  ],
+  "soll": {},
+  "notiz": "Antwort auf K07: Abschluss-Meldung"
  }
 }
