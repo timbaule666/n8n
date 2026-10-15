@@ -1286,5 +1286,39 @@
    "Ansprechpartner": "Emily Clark"
   },
   "notiz": "Antwort auf R30 nur mit Vornamen: Ansprechpartner bleibt Emily Clark"
+ },
+ "K01": {
+  "nr": "K01",
+  "art": "neu",
+  "betreff": "Markierungstest vollständig",
+  "absender_name": "Paula Graf",
+  "text": "Guten Tag,\n\nbitte holen Sie am 10.12.2026 in 50667 Köln 2 Paletten (600 kg) ab, Lieferung nach 40210 Düsseldorf.\n\nPaula Graf, 0221 5553001",
+  "erwartet": [
+   "bereit"
+  ],
+  "soll": {},
+  "notiz": "Outlook-Kategorie AI Geprüft (grün)"
+ },
+ "K02": {
+  "nr": "K02",
+  "art": "neu",
+  "betreff": "Markierungstest mit Lücke",
+  "absender_name": "Ole Brandt",
+  "text": "Hallo,\n\nbitte 1 Palette (300 kg) am 11.12.2026 von 20095 Hamburg nach 24103 Kiel.\n\nOle Brandt",
+  "erwartet": [
+   "luecken"
+  ],
+  "soll": {},
+  "notiz": "Outlook-Kategorie AI Rückfragen (rot) nach Rückfrage-Entwurf"
+ },
+ "K02b": {
+  "nr": "K02b",
+  "art": "antwort",
+  "text": "Hallo,\n\nTelefon: 040 5553002\n\nOle Brandt",
+  "erwartet": [
+   "antwort_bereit"
+  ],
+  "soll": {},
+  "notiz": "Antwort auf K02: Markierung wird grün"
  }
 }
