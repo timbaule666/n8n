@@ -43,7 +43,9 @@ CREATE TABLE IF NOT EXISTS epa_config_allgemein (
     erstellt_am                             TIMESTAMPTZ NOT NULL DEFAULT now(),
     geaendert_am                            TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- optionale Übersetzungen für Rückfragen in der Sprache der Kundenmail (siehe configValidator)
-    uebersetzungen                          JSONB NOT NULL DEFAULT '{}'
+    uebersetzungen                          JSONB NOT NULL DEFAULT '{}',
+    -- optionale Outlook-Kategorien je Status (siehe src/kategorien.js)
+    outlook_kategorien                      JSONB NOT NULL DEFAULT '{}'
 );
 CREATE UNIQUE INDEX IF NOT EXISTS epa_config_allgemein_postfach_uq ON epa_config_allgemein (lower(postfach));
 

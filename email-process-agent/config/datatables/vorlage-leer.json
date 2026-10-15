@@ -37,7 +37,8 @@
    "postfach_workflow_id": "<ID der EPA-00-Kopie dieses Postfachs>",
    "freigabe_basis_url": "",
    "stille_alarm_stunden": 0,
-   "uebersetzungen": ""
+   "uebersetzungen": "",
+   "outlook_kategorien": ""
   }
  ],
  "epa_config_pflichtfelder": [

@@ -24,6 +24,7 @@ const M2 = [
 	['epa-07-freigabe', 'EPA-07_Freigabe-Endpunkt.json'],
 	['epa-03-antwort', 'EPA-03_Antwort_verarbeiten.json'],
 	['sw-nachfassen', 'EPA_SW_Nachfassen.json'],
+	['sw-kategorie', 'EPA_SW_Outlook-Kategorie.json'],
 	['epa-04-nachfassen', 'EPA-04_Nachfassen_und_Eskalation.json'],
 	['epa-06-watchdog', 'EPA-06_Watchdog.json'],
 	['epa-08-loeschjob', 'EPA-08_Loeschjob.json'],

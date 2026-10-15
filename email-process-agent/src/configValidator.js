@@ -283,6 +283,7 @@ function validiereConfig(allgemein, pflichtfelder, optionen = {}) {
 		vorgangstypen: pruefePflichtfelder(pflichtfelder, fehler),
 	};
 	config.uebersetzungen = pruefeUebersetzungen(a.uebersetzungen, config, fehler);
+	config.outlook_kategorien = pruefeKategorien(a.outlook_kategorien, fehler);
 	for (const liste of ['absender_allowlist', 'absender_blocklist']) {
 		if (!Array.isArray(config[liste])) fehler.push(`${liste}: muss eine Liste sein`);
 	}
@@ -290,6 +291,28 @@ function validiereConfig(allgemein, pflichtfelder, optionen = {}) {
 		fehler.push('freigabe_erinnerung_stunden: muss kleiner als freigabe_ablauf_stunden sein');
 	}
 	return fehler.length ? { gueltig: false, fehler, config: null } : { gueltig: true, fehler: [], config };
+}
+
+/**
+ * Optionale Outlook-Kategorien je Status: { "<Status>": { "name": "AI Geprüft", "farbe": "preset4" } }.
+ * Fachliche Regeln (welcher Status setzt bzw. entfernt) stehen in src/kategorien.js.
+ */
+function pruefeKategorien(roh, fehler) {
+	if (roh === undefined || roh === null || roh === '') return {};
+	const k = parseJson(roh, 'outlook_kategorien', fehler);
+	if (!k || typeof k !== 'object' || Array.isArray(k)) {
+		if (k !== null) fehler.push('outlook_kategorien: muss ein Objekt { "<Status>": { name, farbe } } sein');
+		return {};
+	}
+	const out = {};
+	for (const [status, e] of Object.entries(k)) {
+		const p = `outlook_kategorien.${status}`;
+		const name = e && typeof e.name === 'string' ? e.name.trim() : '';
+		if (!name || name.length > 60 || /[,;]/.test(name)) { fehler.push(`${p}.name: 1–60 Zeichen, ohne Komma/Semikolon`); continue; }
+		if (e.farbe !== undefined && e.farbe !== null && !/^preset([0-9]|1[0-9]|2[0-4])$/.test(String(e.farbe))) { fehler.push(`${p}.farbe: preset0 bis preset24`); continue; }
+		out[status] = { name, farbe: e.farbe ? String(e.farbe) : null };
+	}
+	return out;
 }
 
 /**

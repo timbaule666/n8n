@@ -11,6 +11,7 @@ module.exports = function () {
 		'**Trigger:** Aufruf durch andere Workflows.',
 		'**Eingaben:** kunde_id, vorgangs_id, neuer_status, ausloeser (KI | System | Cronjob | Mitarbeiter:<Name>), details (Objekt), referenz, erwartete_version (optional), nur_wenn_erlaubt.',
 		'**Ausgabe:** { ok, uebersprungen, vorgangs_id, alter_status, neuer_status, version, audit_id }',
+		'**Outlook-Markierung:** Nach jedem Statuswechsel startet "EPA SW Outlook-Kategorie" ohne zu warten; ein Fehler dort ändert nichts am Ergebnis.',
 		'**Fehler:** 400 Eingabe, 404 Vorgang fehlt, 409 unzulässiger Übergang oder Versionskonflikt.',
 	].join('\n'), { breite: 660, hoehe: 300 });
 
@@ -137,6 +138,17 @@ return [{ json: {
 	wf.kette(trigger, eingabe, laden, pruefen, weiche);
 	wf.verbinde(weiche, vorbereiten, 0);
 	wf.verbinde(weiche, ueberspringen, 1);
-	wf.kette(vorbereiten, schreiben, ergebnis, audit, melden);
+	const markieren = wf.aufruf('Outlook markieren', [2200, -100], 'EPA SW Outlook-Kategorie', [
+		['kunde_id', 'string', "={{ $('Übergang prüfen').first().json.kunde_id }}"],
+		['vorgangs_id', 'string', "={{ $('Übergang prüfen').first().json.vorgangs_id }}"],
+		['neuer_status', 'string', "={{ $('Übergang prüfen').first().json.neuer_status }}"],
+	], { onError: 'continueRegularOutput', alwaysOutputData: true });
+	// Nicht warten: die Markierung darf den Statuswechsel weder verzögern noch scheitern lassen.
+	wf.nodes.find((n) => n.name === markieren).parameters.options.waitForSubWorkflow = false;
+	const zurueck = wf.code('Ergebnis zurückgeben', [2420, -100], [], `
+return [{ json: $('Ergebnis melden').first().json }];
+`);
+
+	wf.kette(vorbereiten, schreiben, ergebnis, audit, melden, markieren, zurueck);
 	return wf;
 };

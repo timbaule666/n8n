@@ -11,6 +11,7 @@ const IDS = {
 	'EPA SW Config laden': 'cfg1',
 	'EPA SW Audit schreiben': 'aud1',
 	'EPA SW Vorgang verwalten': 'vg1',
+	'EPA SW Outlook-Kategorie': 'kat1',
 };
 
 test('Strukturprüfung aller gebauten Workflows ist fehlerfrei', () => {

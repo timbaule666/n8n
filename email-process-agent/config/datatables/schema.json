@@ -37,7 +37,8 @@
       "postfach_workflow_id": "string",
       "freigabe_basis_url": "string",
       "stille_alarm_stunden": "number",
-      "uebersetzungen": "string"
+      "uebersetzungen": "string",
+      "outlook_kategorien": "string"
     },
     "epa_config_pflichtfelder": {
       "kunde_id": "string",

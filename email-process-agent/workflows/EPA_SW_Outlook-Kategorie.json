@@ -1,0 +1,494 @@
+{
+  "name": "EPA SW Outlook-Kategorie",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## EPA SW Outlook-Kategorie\n**Zweck:** Markiert die Kundenmails eines Vorgangs in Outlook passend zum Status, z. B. grün \"AI Geprüft\" bei \"Bereit zur Bearbeitung\" und rot \"AI Rückfragen\", solange eine Rückfrage läuft (Config: outlook_kategorien, Regeln: src/kategorien.js).\n**Trigger:** Aufruf durch \"EPA SW Status setzen\" nach jedem Statuswechsel, ohne Warten (die Verarbeitung läuft unabhängig davon weiter).\n**Eingaben:** kunde_id, vorgangs_id, neuer_status.\n**Fehler:** Markierungen sind Komfort. Jeder Schritt läuft mit \"weiter bei Fehler\"; ein Fehler hier ändert nie den Vorgang.",
+        "width": 700,
+        "height": 260,
+        "color": 7
+      },
+      "id": "5e7a2acb-fc0d-45eb-af03-50d07abb27b6",
+      "name": "Notiz Zweck",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -420
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "kunde_id",
+              "type": "string"
+            },
+            {
+              "name": "vorgangs_id",
+              "type": "string"
+            },
+            {
+              "name": "neuer_status",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "1a343d3e-50d6-46a3-a980-9c54f612f482",
+      "name": "Bei Aufruf",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Config laden",
+          "cachedResultName": "EPA SW Config laden"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $json.kunde_id }}",
+            "postfach": ""
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "postfach",
+              "displayName": "postfach",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "7b1f80b0-347f-406f-a6f6-9774f76a42a0",
+      "name": "Config laden",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        220,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/kategorien.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst kategorien = (() => {\nconst module = { exports: {} };\n// Outlook-Kategorien (farbige Markierungen) an den Kundenmails eines Vorgangs, passend zum Status.\n// Config (epa_config_allgemein.outlook_kategorien), optional: { \"<Status>\": { \"name\": \"AI Geprüft\", \"farbe\": \"preset4\" } }\n// Farben sind die Outlook-Voreinstellungen preset0 … preset24 (preset0 = Rot, preset4 = Grün).\n// Status ohne Eintrag ändern nichts (z. B. Zwischenstände wie \"In Prüfung\"); in ENTFERNEN_BEI werden die\n// Markierungen des Systems entfernt. Fremde Kategorien des Postfachs bleiben immer unangetastet.\n\nconst ENTFERNEN_BEI = Object.freeze(['Abgeschlossen', 'Ignoriert', 'Eskaliert / Manuell']);\nconst FARBE = /^preset([0-9]|1[0-9]|2[0-4])$/;\n\n/** Prüft die Config. Liefert die bereinigte Zuordnung Status -> { name, farbe }. */\nfunction configPruefen(roh, fehler, bekannteStatus) {\n\tif (roh === undefined || roh === null || roh === '') return {};\n\tlet k = roh;\n\tif (typeof k === 'string') {\n\t\ttry { k = JSON.parse(k); } catch { fehler.push('outlook_kategorien: kein gültiges JSON'); return {}; }\n\t}\n\tif (!k || typeof k !== 'object' || Array.isArray(k)) { fehler.push('outlook_kategorien: muss ein Objekt { \"<Status>\": { name, farbe } } sein'); return {}; }\n\tconst out = {};\n\tfor (const [status, e] of Object.entries(k)) {\n\t\tconst p = `outlook_kategorien.${status}`;\n\t\tif (bekannteStatus && !bekannteStatus.includes(status)) { fehler.push(`${p}: Status ist unbekannt`); continue; }\n\t\tif (!e || typeof e !== 'object') { fehler.push(`${p}: muss { name, farbe } sein`); continue; }\n\t\tconst name = typeof e.name === 'string' ? e.name.trim() : '';\n\t\tif (!name || name.length > 60 || /[,;]/.test(name)) { fehler.push(`${p}.name: 1–60 Zeichen, ohne Komma/Semikolon`); continue; }\n\t\tif (e.farbe !== undefined && !FARBE.test(String(e.farbe))) { fehler.push(`${p}.farbe: preset0 bis preset24`); continue; }\n\t\tout[status] = { name, farbe: e.farbe ? String(e.farbe) : null };\n\t}\n\treturn out;\n}\n\n/** Alle Kategorienamen, die das System verwaltet. */\nfunction systemNamen(kategorien) {\n\treturn [...new Set(Object.values(kategorien || {}).map((k) => k.name))];\n}\n\n/**\n * Was beim Statuswechsel zu tun ist.\n * @returns {{ aktion: 'setzen'|'entfernen'|null, name: string|null, farbe: string|null, system_namen: string[] }}\n */\nfunction plan(kategorien, neuerStatus) {\n\tconst namen = systemNamen(kategorien);\n\tif (!namen.length) return { aktion: null, name: null, farbe: null, system_namen: [] };\n\tconst k = kategorien[neuerStatus];\n\tif (k) return { aktion: 'setzen', name: k.name, farbe: k.farbe, system_namen: namen };\n\tif (ENTFERNEN_BEI.includes(neuerStatus)) return { aktion: 'entfernen', name: null, farbe: null, system_namen: namen };\n\treturn { aktion: null, name: null, farbe: null, system_namen: namen };\n}\n\n/** Neue Kategorienliste einer Mail: fremde bleiben, eigene werden ersetzt bzw. entfernt. null = keine Änderung nötig. */\nfunction neueKategorien(vorhanden, p) {\n\tconst alt = Array.isArray(vorhanden) ? vorhanden : [];\n\tconst fremde = alt.filter((c) => !p.system_namen.includes(c));\n\tconst neu = p.aktion === 'setzen' ? [...fremde, p.name] : fremde;\n\tconst gleich = neu.length === alt.length && neu.every((c) => alt.includes(c));\n\treturn gleich ? null : neu;\n}\n\n/** Internet-Message-IDs der Mails eines Vorgangs (erste Mail und alle bekannten), ohne Duplikate. */\nfunction messageIds(vorgang) {\n\tconst v = vorgang || {};\n\tlet bekannt = v.bekannte_message_ids;\n\tif (typeof bekannt === 'string') { try { bekannt = JSON.parse(bekannt); } catch { bekannt = []; } }\n\treturn [...new Set([v.erste_message_id, ...(Array.isArray(bekannt) ? bekannt : [])].filter((x) => typeof x === 'string' && x))].slice(0, 50);\n}\n\nmodule.exports = { ENTFERNEN_BEI, configPruefen, systemNamen, plan, neueKategorien, messageIds };\nreturn module.exports;\n})();\n// ===== Ende src/kategorien.js =====\n\n// ----- Node-Logik -----\nconst e = $('Bei Aufruf').first().json;\nconst c = ($input.first().json || {}).config;\nif (!c || !c.postfach_workflow_id) return [{ json: { aktion: null } }];\nconst plan = kategorien.plan(c.outlook_kategorien || {}, e.neuer_status);\nreturn [{ json: { ...plan, postfach: c.postfach, postfach_workflow_id: c.postfach_workflow_id } }];\n"
+      },
+      "id": "7389faeb-fc8c-4b07-aa17-081fbd6a020e",
+      "name": "Markierung planen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ef654aaf-6ca3-42f3-a785-8928b0109166",
+              "leftValue": "={{ Boolean($json.aktion) }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c8645933-4ff6-48e5-a975-a1e78a29ae26",
+      "name": "Markierung nötig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Vorgang verwalten",
+          "cachedResultName": "EPA SW Vorgang verwalten"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "aktion": "lesen",
+            "kunde_id": "={{ $('Bei Aufruf').first().json.kunde_id }}",
+            "vorgangs_id": "={{ $('Bei Aufruf').first().json.vorgangs_id }}",
+            "daten": "={{ {} }}",
+            "erwartete_version": "={{ null }}",
+            "referenz": "",
+            "lock_sekunden": "={{ null }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "aktion",
+              "displayName": "aktion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "daten",
+              "displayName": "daten",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object",
+              "removed": false
+            },
+            {
+              "id": "erwartete_version",
+              "displayName": "erwartete_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "referenz",
+              "displayName": "referenz",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "lock_sekunden",
+              "displayName": "lock_sekunden",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "2de14c95-68ed-4973-a89a-cea247443d8c",
+      "name": "Vorgang lesen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        880,
+        -100
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/kategorien.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst kategorien = (() => {\nconst module = { exports: {} };\n// Outlook-Kategorien (farbige Markierungen) an den Kundenmails eines Vorgangs, passend zum Status.\n// Config (epa_config_allgemein.outlook_kategorien), optional: { \"<Status>\": { \"name\": \"AI Geprüft\", \"farbe\": \"preset4\" } }\n// Farben sind die Outlook-Voreinstellungen preset0 … preset24 (preset0 = Rot, preset4 = Grün).\n// Status ohne Eintrag ändern nichts (z. B. Zwischenstände wie \"In Prüfung\"); in ENTFERNEN_BEI werden die\n// Markierungen des Systems entfernt. Fremde Kategorien des Postfachs bleiben immer unangetastet.\n\nconst ENTFERNEN_BEI = Object.freeze(['Abgeschlossen', 'Ignoriert', 'Eskaliert / Manuell']);\nconst FARBE = /^preset([0-9]|1[0-9]|2[0-4])$/;\n\n/** Prüft die Config. Liefert die bereinigte Zuordnung Status -> { name, farbe }. */\nfunction configPruefen(roh, fehler, bekannteStatus) {\n\tif (roh === undefined || roh === null || roh === '') return {};\n\tlet k = roh;\n\tif (typeof k === 'string') {\n\t\ttry { k = JSON.parse(k); } catch { fehler.push('outlook_kategorien: kein gültiges JSON'); return {}; }\n\t}\n\tif (!k || typeof k !== 'object' || Array.isArray(k)) { fehler.push('outlook_kategorien: muss ein Objekt { \"<Status>\": { name, farbe } } sein'); return {}; }\n\tconst out = {};\n\tfor (const [status, e] of Object.entries(k)) {\n\t\tconst p = `outlook_kategorien.${status}`;\n\t\tif (bekannteStatus && !bekannteStatus.includes(status)) { fehler.push(`${p}: Status ist unbekannt`); continue; }\n\t\tif (!e || typeof e !== 'object') { fehler.push(`${p}: muss { name, farbe } sein`); continue; }\n\t\tconst name = typeof e.name === 'string' ? e.name.trim() : '';\n\t\tif (!name || name.length > 60 || /[,;]/.test(name)) { fehler.push(`${p}.name: 1–60 Zeichen, ohne Komma/Semikolon`); continue; }\n\t\tif (e.farbe !== undefined && !FARBE.test(String(e.farbe))) { fehler.push(`${p}.farbe: preset0 bis preset24`); continue; }\n\t\tout[status] = { name, farbe: e.farbe ? String(e.farbe) : null };\n\t}\n\treturn out;\n}\n\n/** Alle Kategorienamen, die das System verwaltet. */\nfunction systemNamen(kategorien) {\n\treturn [...new Set(Object.values(kategorien || {}).map((k) => k.name))];\n}\n\n/**\n * Was beim Statuswechsel zu tun ist.\n * @returns {{ aktion: 'setzen'|'entfernen'|null, name: string|null, farbe: string|null, system_namen: string[] }}\n */\nfunction plan(kategorien, neuerStatus) {\n\tconst namen = systemNamen(kategorien);\n\tif (!namen.length) return { aktion: null, name: null, farbe: null, system_namen: [] };\n\tconst k = kategorien[neuerStatus];\n\tif (k) return { aktion: 'setzen', name: k.name, farbe: k.farbe, system_namen: namen };\n\tif (ENTFERNEN_BEI.includes(neuerStatus)) return { aktion: 'entfernen', name: null, farbe: null, system_namen: namen };\n\treturn { aktion: null, name: null, farbe: null, system_namen: namen };\n}\n\n/** Neue Kategorienliste einer Mail: fremde bleiben, eigene werden ersetzt bzw. entfernt. null = keine Änderung nötig. */\nfunction neueKategorien(vorhanden, p) {\n\tconst alt = Array.isArray(vorhanden) ? vorhanden : [];\n\tconst fremde = alt.filter((c) => !p.system_namen.includes(c));\n\tconst neu = p.aktion === 'setzen' ? [...fremde, p.name] : fremde;\n\tconst gleich = neu.length === alt.length && neu.every((c) => alt.includes(c));\n\treturn gleich ? null : neu;\n}\n\n/** Internet-Message-IDs der Mails eines Vorgangs (erste Mail und alle bekannten), ohne Duplikate. */\nfunction messageIds(vorgang) {\n\tconst v = vorgang || {};\n\tlet bekannt = v.bekannte_message_ids;\n\tif (typeof bekannt === 'string') { try { bekannt = JSON.parse(bekannt); } catch { bekannt = []; } }\n\treturn [...new Set([v.erste_message_id, ...(Array.isArray(bekannt) ? bekannt : [])].filter((x) => typeof x === 'string' && x))].slice(0, 50);\n}\n\nmodule.exports = { ENTFERNEN_BEI, configPruefen, systemNamen, plan, neueKategorien, messageIds };\nreturn module.exports;\n})();\n// ===== Ende src/kategorien.js =====\n\n// ----- Node-Logik -----\nconst p = $('Markierung planen').first().json;\nconst v = ($input.first().json || {}).vorgang;\nconst ids = kategorien.messageIds(v);\nif (!ids.length) return [];\nreturn [{ json: { postfach: p.postfach, postfach_workflow_id: p.postfach_workflow_id, kategorien: JSON.stringify({ plan: { aktion: p.aktion, name: p.name, farbe: p.farbe, system_namen: p.system_namen }, ids }) } }];\n"
+      },
+      "id": "b776cbbe-2659-402d-a8d2-5ce644bfc39f",
+      "name": "Auftrag bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -100
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.postfach_workflow_id }}"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "aktion": "kategorien_setzen",
+            "postfach": "={{ $json.postfach }}",
+            "graph_id": "",
+            "internet_message_id": "",
+            "entwurf_id": "",
+            "freigabe_id": "",
+            "vorgangs_id": "={{ $('Bei Aufruf').first().json.vorgangs_id }}",
+            "html": "",
+            "kategorien": "={{ $json.kategorien }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "aktion",
+              "displayName": "aktion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "postfach",
+              "displayName": "postfach",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "graph_id",
+              "displayName": "graph_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "internet_message_id",
+              "displayName": "internet_message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "entwurf_id",
+              "displayName": "entwurf_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "freigabe_id",
+              "displayName": "freigabe_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "html",
+              "displayName": "html",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "kategorien",
+              "displayName": "kategorien",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "0c4ee24e-b3be-4f35-a01a-62195ea674b3",
+      "name": "Im Postfach markieren",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1320,
+        -100
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    }
+  ],
+  "connections": {
+    "Bei Aufruf": {
+      "main": [
+        [
+          {
+            "node": "Config laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config laden": {
+      "main": [
+        [
+          {
+            "node": "Markierung planen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Markierung planen": {
+      "main": [
+        [
+          {
+            "node": "Markierung nötig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Markierung nötig?": {
+      "main": [
+        [
+          {
+            "node": "Vorgang lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorgang lesen": {
+      "main": [
+        [
+          {
+            "node": "Auftrag bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auftrag bauen": {
+      "main": [
+        [
+          {
+            "node": "Im Postfach markieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

@@ -50,6 +50,7 @@ const ALLGEMEIN = {
 	freigabe_basis_url: '',
 	stille_alarm_stunden: 0,
 	uebersetzungen: '',
+	outlook_kategorien: '',
 };
 
 const PFLICHTFELD = {

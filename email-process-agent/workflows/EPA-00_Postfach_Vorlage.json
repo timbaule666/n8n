@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## EPA-00 Postfach (Vorlage, je Postfach eine Kopie)\n**Zweck:** Holt neue Mails aus dem Posteingang (Polling, Bauplan 5.1), lädt Header und Anhänge über Microsoft Graph, liest PDF-Text und bereitet Bilder für die KI auf und übergibt alles an \"EPA-01 Eingang verarbeiten\". Aussortierte Mails (Newsletter, Auto-Replies, Blockliste) werden danach in den Archivordner verschoben, nie gelöscht.\n**Trigger:** Microsoft Outlook Trigger (jede Minute, nur Posteingang). Jede Mail wird als eigene Ausführung dieses Workflows verarbeitet (Aufruf von sich selbst), damit ein Fehler nur diese eine Mail betrifft.\n**Einrichten:** 1) Workflow duplizieren und umbenennen (z. B. \"EPA-00 Postfach anfragen@kunde.de\"). 2) Im Node \"Postfach festlegen\" die Adresse eintragen (muss in epa_config_allgemein.postfach stehen). 3) Outlook-Credential (Microsoft Outlook OAuth2, bei Shared Mailbox mit \"Use Shared Mailbox\") im Trigger und in allen Graph-Nodes zuweisen. 4) Archivordner (Config: archivordner) als Ordner auf oberster Ebene im Postfach anlegen. 5) Veröffentlichen.\n**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread, Betreff mit Vorgangs-ID, Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.\n**Hinweis:** Der Trigger liefert nur die Message-ID; Header (In-Reply-To, References, Auto-Submitted, Authentication-Results) holt \"Mail laden\", weil der Trigger sie nicht ausgibt.",
+        "content": "## EPA-00 Postfach (Vorlage, je Postfach eine Kopie)\n**Zweck:** Holt neue Mails aus dem Posteingang (Polling, Bauplan 5.1), lädt Header und Anhänge über Microsoft Graph, liest PDF-Text und bereitet Bilder für die KI auf und übergibt alles an \"EPA-01 Eingang verarbeiten\". Aussortierte Mails (Newsletter, Auto-Replies, Blockliste) werden danach in den Archivordner verschoben, nie gelöscht.\n**Trigger:** Microsoft Outlook Trigger (jede Minute, nur Posteingang). Jede Mail wird als eigene Ausführung dieses Workflows verarbeitet (Aufruf von sich selbst), damit ein Fehler nur diese eine Mail betrifft.\n**Einrichten:** 1) Workflow duplizieren und umbenennen (z. B. \"EPA-00 Postfach anfragen@kunde.de\"). 2) Im Node \"Postfach festlegen\" die Adresse eintragen (muss in epa_config_allgemein.postfach stehen). 3) Outlook-Credential (Microsoft Outlook OAuth2, bei Shared Mailbox mit \"Use Shared Mailbox\") im Trigger und in allen Graph-Nodes zuweisen. 4) Archivordner (Config: archivordner) als Ordner auf oberster Ebene im Postfach anlegen. 5) Veröffentlichen.\n**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread, Betreff mit Vorgangs-ID, Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). kategorien_setzen: Outlook-Kategorie (z. B. \"AI Geprüft\") an den Kundenmails eines Vorgangs setzen oder entfernen; legt die Kategorie mit Farbe an, wenn die Berechtigung reicht. Fehler hier stören die Verarbeitung nie. Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.\n**Hinweis:** Der Trigger liefert nur die Message-ID; Header (In-Reply-To, References, Auto-Submitted, Authentication-Results) holt \"Mail laden\", weil der Trigger sie nicht ausgibt.",
         "width": 900,
         "height": 380,
         "color": 7
@@ -164,6 +164,10 @@
             },
             {
               "name": "html",
+              "type": "string"
+            },
+            {
+              "name": "kategorien",
               "type": "string"
             }
           ]
@@ -326,6 +330,30 @@
               },
               "renameOutput": true,
               "outputKey": "entwurf_loeschen"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "3ad50c17-aa42-41c1-a4f0-c42985f9bdcb",
+                    "leftValue": "={{ $json.aktion || 'eingang' }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "kategorien_setzen"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "kategorien_setzen"
             }
           ]
         },
@@ -1283,6 +1311,250 @@
         1320,
         1600
       ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Bei Einzelaufruf').first().json;\nlet a = {};\ntry { a = JSON.parse(e.kategorien || '{}'); } catch (err) { a = {}; }\nconst plan = a.plan || {};\nconst ids = Array.isArray(a.ids) ? a.ids.filter((x) => typeof x === 'string' && x).slice(0, 50) : [];\nreturn [{ json: { plan, ids, anlegen: plan.aktion === 'setzen' && Boolean(plan.farbe) } }];\n"
+      },
+      "id": "0dad3216-62be-48b1-abe9-921a8006d151",
+      "name": "Kategorie-Auftrag lesen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        1800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/outlook/masterCategories",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "9f34dc79-924a-4f2a-ab31-357f4bac61e0",
+      "name": "Kategorien des Postfachs lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        1800
+      ],
+      "retryOnFail": false,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst a = $('Kategorie-Auftrag lesen').first().json;\nconst r = $input.first().json || {};\nconst vorhanden = Number(r.statusCode) === 200 && r.body && Array.isArray(r.body.value) ? r.body.value.map((c) => c.displayName) : null;\n// Nur anlegen, wenn die Liste lesbar war und die Kategorie fehlt (sonst bleibt die vorhandene Farbe des Kunden).\nconst anlegen = a.anlegen && vorhanden !== null && !vorhanden.includes(a.plan.name);\nreturn [{ json: { anlegen, lesbar: vorhanden !== null } }];\n"
+      },
+      "id": "76bf98df-1bd9-4a2d-add8-eb0dd1a0018c",
+      "name": "Kategorie anlegen?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        1800
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "16235b08-2f35-4694-ac9f-aed5de91ab83",
+              "leftValue": "={{ $json.anlegen }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a79b9c5e-00d3-472f-aa7c-26e89dc9260c",
+      "name": "Kategorie fehlt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1100,
+        1800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/outlook/masterCategories",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ displayName: $('Kategorie-Auftrag lesen').first().json.plan.name, color: $('Kategorie-Auftrag lesen').first().json.plan.farbe }) }}"
+      },
+      "id": "da3ca93d-c04c-49bc-a611-fb8493dcf22f",
+      "name": "Kategorie anlegen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        1740
+      ],
+      "retryOnFail": false,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst a = $('Kategorie-Auftrag lesen').first().json;\nreturn a.ids.map((id) => ({ json: { internet_message_id: id } }));\n"
+      },
+      "id": "fe9ea948-0b4c-4cdc-ab36-19450f47b929",
+      "name": "Mails des Vorgangs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        1800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendQuery": true,
+        "specifyQuery": "keypair",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$filter",
+              "value": "=internetMessageId eq '{{ String($json.internet_message_id).replace(/'/g, \"''\") }}'"
+            },
+            {
+              "name": "$select",
+              "value": "id,categories,from"
+            },
+            {
+              "name": "$top",
+              "value": "5"
+            }
+          ]
+        }
+      },
+      "id": "cb9dd797-accf-4c0a-a352-a770f854e67e",
+      "name": "Mail für Kategorie suchen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        1800
+      ],
+      "retryOnFail": false,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/kategorien.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst kategorien = (() => {\nconst module = { exports: {} };\n// Outlook-Kategorien (farbige Markierungen) an den Kundenmails eines Vorgangs, passend zum Status.\n// Config (epa_config_allgemein.outlook_kategorien), optional: { \"<Status>\": { \"name\": \"AI Geprüft\", \"farbe\": \"preset4\" } }\n// Farben sind die Outlook-Voreinstellungen preset0 … preset24 (preset0 = Rot, preset4 = Grün).\n// Status ohne Eintrag ändern nichts (z. B. Zwischenstände wie \"In Prüfung\"); in ENTFERNEN_BEI werden die\n// Markierungen des Systems entfernt. Fremde Kategorien des Postfachs bleiben immer unangetastet.\n\nconst ENTFERNEN_BEI = Object.freeze(['Abgeschlossen', 'Ignoriert', 'Eskaliert / Manuell']);\nconst FARBE = /^preset([0-9]|1[0-9]|2[0-4])$/;\n\n/** Prüft die Config. Liefert die bereinigte Zuordnung Status -> { name, farbe }. */\nfunction configPruefen(roh, fehler, bekannteStatus) {\n\tif (roh === undefined || roh === null || roh === '') return {};\n\tlet k = roh;\n\tif (typeof k === 'string') {\n\t\ttry { k = JSON.parse(k); } catch { fehler.push('outlook_kategorien: kein gültiges JSON'); return {}; }\n\t}\n\tif (!k || typeof k !== 'object' || Array.isArray(k)) { fehler.push('outlook_kategorien: muss ein Objekt { \"<Status>\": { name, farbe } } sein'); return {}; }\n\tconst out = {};\n\tfor (const [status, e] of Object.entries(k)) {\n\t\tconst p = `outlook_kategorien.${status}`;\n\t\tif (bekannteStatus && !bekannteStatus.includes(status)) { fehler.push(`${p}: Status ist unbekannt`); continue; }\n\t\tif (!e || typeof e !== 'object') { fehler.push(`${p}: muss { name, farbe } sein`); continue; }\n\t\tconst name = typeof e.name === 'string' ? e.name.trim() : '';\n\t\tif (!name || name.length > 60 || /[,;]/.test(name)) { fehler.push(`${p}.name: 1–60 Zeichen, ohne Komma/Semikolon`); continue; }\n\t\tif (e.farbe !== undefined && !FARBE.test(String(e.farbe))) { fehler.push(`${p}.farbe: preset0 bis preset24`); continue; }\n\t\tout[status] = { name, farbe: e.farbe ? String(e.farbe) : null };\n\t}\n\treturn out;\n}\n\n/** Alle Kategorienamen, die das System verwaltet. */\nfunction systemNamen(kategorien) {\n\treturn [...new Set(Object.values(kategorien || {}).map((k) => k.name))];\n}\n\n/**\n * Was beim Statuswechsel zu tun ist.\n * @returns {{ aktion: 'setzen'|'entfernen'|null, name: string|null, farbe: string|null, system_namen: string[] }}\n */\nfunction plan(kategorien, neuerStatus) {\n\tconst namen = systemNamen(kategorien);\n\tif (!namen.length) return { aktion: null, name: null, farbe: null, system_namen: [] };\n\tconst k = kategorien[neuerStatus];\n\tif (k) return { aktion: 'setzen', name: k.name, farbe: k.farbe, system_namen: namen };\n\tif (ENTFERNEN_BEI.includes(neuerStatus)) return { aktion: 'entfernen', name: null, farbe: null, system_namen: namen };\n\treturn { aktion: null, name: null, farbe: null, system_namen: namen };\n}\n\n/** Neue Kategorienliste einer Mail: fremde bleiben, eigene werden ersetzt bzw. entfernt. null = keine Änderung nötig. */\nfunction neueKategorien(vorhanden, p) {\n\tconst alt = Array.isArray(vorhanden) ? vorhanden : [];\n\tconst fremde = alt.filter((c) => !p.system_namen.includes(c));\n\tconst neu = p.aktion === 'setzen' ? [...fremde, p.name] : fremde;\n\tconst gleich = neu.length === alt.length && neu.every((c) => alt.includes(c));\n\treturn gleich ? null : neu;\n}\n\n/** Internet-Message-IDs der Mails eines Vorgangs (erste Mail und alle bekannten), ohne Duplikate. */\nfunction messageIds(vorgang) {\n\tconst v = vorgang || {};\n\tlet bekannt = v.bekannte_message_ids;\n\tif (typeof bekannt === 'string') { try { bekannt = JSON.parse(bekannt); } catch { bekannt = []; } }\n\treturn [...new Set([v.erste_message_id, ...(Array.isArray(bekannt) ? bekannt : [])].filter((x) => typeof x === 'string' && x))].slice(0, 50);\n}\n\nmodule.exports = { ENTFERNEN_BEI, configPruefen, systemNamen, plan, neueKategorien, messageIds };\nreturn module.exports;\n})();\n// ===== Ende src/kategorien.js =====\n\n// ----- Node-Logik -----\nconst a = $('Kategorie-Auftrag lesen').first().json;\nconst postfach = String($('Bei Einzelaufruf').first().json.postfach || '').toLowerCase();\nconst out = [];\nfor (const it of $input.all()) {\n\tconst r = it.json || {};\n\tif (Number(r.statusCode) !== 200 || !r.body) continue;\n\tfor (const m of r.body.value || []) {\n\t\tconst von = String((m.from && m.from.emailAddress && m.from.emailAddress.address) || '').toLowerCase();\n\t\tif (von === postfach) continue; // eigene Rückfragen nicht markieren\n\t\tconst neu = kategorien.neueKategorien(m.categories, a.plan);\n\t\tif (neu) out.push({ json: { graph_id: m.id, categories: neu } });\n\t}\n}\nreturn out;\n"
+      },
+      "id": "44189533-44dd-4a64-a05d-1594cb5468b9",
+      "name": "Kategorien berechnen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        1800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($json.graph_id) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ categories: $json.categories }) }}"
+      },
+      "id": "3b2c0352-e59c-4659-a62e-3093720c103d",
+      "name": "Kategorien schreiben",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        1800
+      ],
+      "retryOnFail": false,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst r = $input.all().map((i) => Number(i.json.statusCode));\nreturn [{ json: { geaendert: r.filter((s) => s === 200).length, fehler: r.filter((s) => s !== 200).length, kategorie_lesbar: $('Kategorie anlegen?').first().json.lesbar } }];\n"
+      },
+      "id": "b014b5c8-2676-4988-a749-640e13f1b75b",
+      "name": "Kategorien melden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        1800
+      ]
     }
   ],
   "connections": {
@@ -1302,17 +1574,6 @@
         [
           {
             "node": "Jede Mail einzeln verarbeiten",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Bei Einzelaufruf": {
-      "main": [
-        [
-          {
-            "node": "Aktion",
             "type": "main",
             "index": 0
           }
@@ -1359,6 +1620,130 @@
         [
           {
             "node": "Entwurf zum Löschen abrufen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Kategorie-Auftrag lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kategorie-Auftrag lesen": {
+      "main": [
+        [
+          {
+            "node": "Kategorien des Postfachs lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kategorien des Postfachs lesen": {
+      "main": [
+        [
+          {
+            "node": "Kategorie anlegen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kategorie anlegen?": {
+      "main": [
+        [
+          {
+            "node": "Kategorie fehlt?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kategorie fehlt?": {
+      "main": [
+        [
+          {
+            "node": "Kategorie anlegen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mails des Vorgangs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kategorie anlegen": {
+      "main": [
+        [
+          {
+            "node": "Mails des Vorgangs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mails des Vorgangs": {
+      "main": [
+        [
+          {
+            "node": "Mail für Kategorie suchen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mail für Kategorie suchen": {
+      "main": [
+        [
+          {
+            "node": "Kategorien berechnen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kategorien berechnen": {
+      "main": [
+        [
+          {
+            "node": "Kategorien schreiben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kategorien schreiben": {
+      "main": [
+        [
+          {
+            "node": "Kategorien melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bei Einzelaufruf": {
+      "main": [
+        [
+          {
+            "node": "Aktion",
             "type": "main",
             "index": 0
           }

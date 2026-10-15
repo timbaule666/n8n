@@ -18,6 +18,7 @@ Stand 2026-10-14 (M7). Ein Workflow-Satz bedient alle Kunden. Pro Kunde kommen d
 | Anrede (Sie/Du), Sprache, Signatur | Texte | `anrede_stil`, `sprache`, `signatur` |
 | KI-Hinweis in ausgehenden Mails (juristisch prüfen lassen) | Text | `ki_hinweistext` |
 | Rückfragen auch in anderen Sprachen (z. B. Englisch)? Antwort folgt dann der Sprache der Kundenmail. Je Sprache: Signatur, KI-Hinweis und ein Textbaustein für jedes Feld. Ohne Eintrag wird immer in `sprache` geantwortet | Texte je Sprache | `uebersetzungen` (JSON, z. B. `{"en": {"signatur": …, "ki_hinweistext": …, "textbausteine": {"<Feldname>": …}}}`) |
+| Farbige Outlook-Markierung je Status, z. B. grün „AI Geprüft“ (bereit) und rot „AI Rückfragen“ (Rückfrage läuft). Farben: Outlook-Voreinstellung `preset0` (Rot) … `preset24`, `preset4` = Grün. Leer = aus | Status → Name/Farbe | `outlook_kategorien` (JSON, z. B. `{"Bereit zur Bearbeitung": {"name": "AI Geprüft", "farbe": "preset4"}, "Warten auf Kunde": {"name": "AI Rückfragen", "farbe": "preset0"}}`) |
 | Antwortfrist, Anzahl/Abstand der Erinnerungen, max. Rückfragerunden | Zahlen | `frist_stunden`, `anzahl_erinnerungen`, `erinnerung_intervall_stunden`, `max_runden` |
 | Geschäftszeiten, Bundesland für Feiertage | Zeiten | `geschaeftszeiten`, `feiertage_region` |
 | Aufbewahrung der Vorgangsdaten | Tage | `aufbewahrung_tage` |

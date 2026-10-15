@@ -10,7 +10,7 @@ const MAIL_FELDER = [
 const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
 // Eigene Mail-Eigenschaft (Extended Property, PS_PUBLIC_STRINGS) zur Wiedererkennung gesendeter Rückfragen.
 const PROP_FREIGABE = 'String {00020329-0000-0000-C000-000000000046} Name EPA-Freigabe-ID';
-const AKTIONEN = ['eingang', 'entwurf_anlegen', 'entwurf_aktualisieren', 'entwurf_senden', 'verbindung_pruefen', 'entwurf_loeschen'];
+const AKTIONEN = ['eingang', 'entwurf_anlegen', 'entwurf_aktualisieren', 'entwurf_senden', 'verbindung_pruefen', 'entwurf_loeschen', 'kategorien_setzen'];
 const E = "$('Bei Einzelaufruf').first().json";
 const P = `{{ encodeURIComponent(${E}.postfach) }}`;
 
@@ -44,7 +44,7 @@ module.exports = function () {
 		'**Zweck:** Holt neue Mails aus dem Posteingang (Polling, Bauplan 5.1), lädt Header und Anhänge über Microsoft Graph, liest PDF-Text und bereitet Bilder für die KI auf und übergibt alles an "EPA-01 Eingang verarbeiten". Aussortierte Mails (Newsletter, Auto-Replies, Blockliste) werden danach in den Archivordner verschoben, nie gelöscht.',
 		'**Trigger:** Microsoft Outlook Trigger (jede Minute, nur Posteingang). Jede Mail wird als eigene Ausführung dieses Workflows verarbeitet (Aufruf von sich selbst), damit ein Fehler nur diese eine Mail betrifft.',
 		'**Einrichten:** 1) Workflow duplizieren und umbenennen (z. B. "EPA-00 Postfach anfragen@kunde.de"). 2) Im Node "Postfach festlegen" die Adresse eintragen (muss in epa_config_allgemein.postfach stehen). 3) Outlook-Credential (Microsoft Outlook OAuth2, bei Shared Mailbox mit "Use Shared Mailbox") im Trigger und in allen Graph-Nodes zuweisen. 4) Archivordner (Config: archivordner) als Ordner auf oberster Ebene im Postfach anlegen. 5) Veröffentlichen.',
-		'**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread, Betreff mit Vorgangs-ID, Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.',
+		'**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread, Betreff mit Vorgangs-ID, Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). kategorien_setzen: Outlook-Kategorie (z. B. "AI Geprüft") an den Kundenmails eines Vorgangs setzen oder entfernen; legt die Kategorie mit Farbe an, wenn die Berechtigung reicht. Fehler hier stören die Verarbeitung nie. Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.',
 		'**Hinweis:** Der Trigger liefert nur die Message-ID; Header (In-Reply-To, References, Auto-Submitted, Authentication-Results) holt "Mail laden", weil der Trigger sie nicht ausgibt.',
 	].join('\n'), { breite: 900, hoehe: 380 });
 
@@ -88,6 +88,7 @@ return $input.all().filter((i) => i.json.id).map((i) => ({ json: { postfach: POS
 		['freigabe_id', 'string'],
 		['vorgangs_id', 'string'],
 		['html', 'string'],
+		['kategorien', 'string'],
 	]);
 	const aktion = wf.node('Aktion', 'n8n-nodes-base.switch', [220, 300], {
 		mode: 'rules',
@@ -297,7 +298,72 @@ const p = $('Löschen prüfen').first().json;
 return [{ json: { geloescht: p.loeschen, erledigt: p.erledigt, grund: p.grund } }];
 `);
 
+	// ---------------------------------------------------------------- Aktion: Outlook-Kategorien setzen (Status-Markierung)
+	// Fehler (z. B. fehlende Berechtigung für masterCategories) führen nie zum Abbruch: Markierungen sind Komfort.
+	const katAuftrag = wf.code('Kategorie-Auftrag lesen', [440, 1800], [], `
+const e = $('Bei Einzelaufruf').first().json;
+let a = {};
+try { a = JSON.parse(e.kategorien || '{}'); } catch (err) { a = {}; }
+const plan = a.plan || {};
+const ids = Array.isArray(a.ids) ? a.ids.filter((x) => typeof x === 'string' && x).slice(0, 50) : [];
+return [{ json: { plan, ids, anlegen: plan.aktion === 'setzen' && Boolean(plan.farbe) } }];
+`);
+	const masterLesen = graph(wf, 'Kategorien des Postfachs lesen', [660, 1800], 'GET', `=${GRAPH}/users/${P}/outlook/masterCategories`,
+		{ node: { retryOnFail: false } }, { response: { response: { fullResponse: true, neverError: true, responseFormat: 'json' } } });
+	const masterPlan = wf.code('Kategorie anlegen?', [880, 1800], [], `
+const a = $('Kategorie-Auftrag lesen').first().json;
+const r = $input.first().json || {};
+const vorhanden = Number(r.statusCode) === 200 && r.body && Array.isArray(r.body.value) ? r.body.value.map((c) => c.displayName) : null;
+// Nur anlegen, wenn die Liste lesbar war und die Kategorie fehlt (sonst bleibt die vorhandene Farbe des Kunden).
+const anlegen = a.anlegen && vorhanden !== null && !vorhanden.includes(a.plan.name);
+return [{ json: { anlegen, lesbar: vorhanden !== null } }];
+`);
+	const masterFrage = wf.node('Kategorie fehlt?', 'n8n-nodes-base.if', [1100, 1800], {
+		conditions: bedingungen([bedingung('={{ $json.anlegen }}', { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: {},
+	});
+	const masterAnlegen = graph(wf, 'Kategorie anlegen', [1320, 1740], 'POST', `=${GRAPH}/users/${P}/outlook/masterCategories`,
+		{ body: "={{ JSON.stringify({ displayName: $('Kategorie-Auftrag lesen').first().json.plan.name, color: $('Kategorie-Auftrag lesen').first().json.plan.farbe }) }}", node: { retryOnFail: false } },
+		{ response: { response: { fullResponse: true, neverError: true, responseFormat: 'json' } } });
+	const katMails = wf.code('Mails des Vorgangs', [1540, 1800], [], `
+const a = $('Kategorie-Auftrag lesen').first().json;
+return a.ids.map((id) => ({ json: { internet_message_id: id } }));
+`);
+	const katSuchen = graph(wf, 'Mail für Kategorie suchen', [1760, 1800], 'GET', `=${GRAPH}/users/${P}/messages`, {
+		query: { $filter: "=internetMessageId eq '{{ String($json.internet_message_id).replace(/'/g, \"''\") }}'", $select: 'id,categories,from', $top: '5' },
+		node: { retryOnFail: false },
+	}, { response: { response: { fullResponse: true, neverError: true, responseFormat: 'json' } } });
+	const katBerechnen = wf.code('Kategorien berechnen', [1980, 1800], ['kategorien'], `
+const a = $('Kategorie-Auftrag lesen').first().json;
+const postfach = String($('Bei Einzelaufruf').first().json.postfach || '').toLowerCase();
+const out = [];
+for (const it of $input.all()) {
+	const r = it.json || {};
+	if (Number(r.statusCode) !== 200 || !r.body) continue;
+	for (const m of r.body.value || []) {
+		const von = String((m.from && m.from.emailAddress && m.from.emailAddress.address) || '').toLowerCase();
+		if (von === postfach) continue; // eigene Rückfragen nicht markieren
+		const neu = kategorien.neueKategorien(m.categories, a.plan);
+		if (neu) out.push({ json: { graph_id: m.id, categories: neu } });
+	}
+}
+return out;
+`);
+	const katSetzen = graph(wf, 'Kategorien schreiben', [2200, 1800], 'PATCH', `=${GRAPH}/users/${P}/messages/{{ encodeURIComponent($json.graph_id) }}`,
+		{ body: '={{ JSON.stringify({ categories: $json.categories }) }}', node: { retryOnFail: false } },
+		{ response: { response: { fullResponse: true, neverError: true, responseFormat: 'json' } } });
+	const katMelden = wf.code('Kategorien melden', [2420, 1800], [], `
+const r = $input.all().map((i) => Number(i.json.statusCode));
+return [{ json: { geaendert: r.filter((s) => s === 200).length, fehler: r.filter((s) => s !== 200).length, kategorie_lesbar: $('Kategorie anlegen?').first().json.lesbar } }];
+`);
+
 	wf.kette(trigger, festlegen, einzeln);
+	wf.verbinde(aktion, katAuftrag, 6);
+	wf.kette(katAuftrag, masterLesen, masterPlan, masterFrage);
+	wf.verbinde(masterFrage, masterAnlegen, 0);
+	wf.verbinde(masterFrage, katMails, 1);
+	wf.kette(masterAnlegen, katMails);
+	wf.kette(katMails, katSuchen, katBerechnen, katSetzen, katMelden);
 	wf.kette(start, aktion);
 	wf.verbinde(aktion, laden, 0);
 	wf.verbinde(aktion, suchen, 1);

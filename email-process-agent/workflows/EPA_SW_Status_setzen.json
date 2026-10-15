@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## EPA SW Status setzen\n**Zweck:** Einziger Weg, den Status eines Vorgangs zu ändern. Prüft die Übergangsmatrix (src/statusMatrix.js), schreibt den Status per bedingtem Update (Compare-and-Set auf Status + Version) und danach den Audit-Eintrag.\n**Speicher:** n8n Data Tables epa_vorgaenge, epa_audit_log.\n**Trigger:** Aufruf durch andere Workflows.\n**Eingaben:** kunde_id, vorgangs_id, neuer_status, ausloeser (KI | System | Cronjob | Mitarbeiter:<Name>), details (Objekt), referenz, erwartete_version (optional), nur_wenn_erlaubt.\n**Ausgabe:** { ok, uebersprungen, vorgangs_id, alter_status, neuer_status, version, audit_id }\n**Fehler:** 400 Eingabe, 404 Vorgang fehlt, 409 unzulässiger Übergang oder Versionskonflikt.",
+        "content": "## EPA SW Status setzen\n**Zweck:** Einziger Weg, den Status eines Vorgangs zu ändern. Prüft die Übergangsmatrix (src/statusMatrix.js), schreibt den Status per bedingtem Update (Compare-and-Set auf Status + Version) und danach den Audit-Eintrag.\n**Speicher:** n8n Data Tables epa_vorgaenge, epa_audit_log.\n**Trigger:** Aufruf durch andere Workflows.\n**Eingaben:** kunde_id, vorgangs_id, neuer_status, ausloeser (KI | System | Cronjob | Mitarbeiter:<Name>), details (Objekt), referenz, erwartete_version (optional), nur_wenn_erlaubt.\n**Ausgabe:** { ok, uebersprungen, vorgangs_id, alter_status, neuer_status, version, audit_id }\n**Outlook-Markierung:** Nach jedem Statuswechsel startet \"EPA SW Outlook-Kategorie\" ohne zu warten; ein Fehler dort ändert nichts am Ergebnis.\n**Fehler:** 400 Eingabe, 404 Vorgang fehlt, 409 unzulässiger Übergang oder Versionskonflikt.",
         "width": 660,
         "height": 300,
         "color": 7
@@ -300,6 +300,88 @@
         1100,
         140
       ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Outlook-Kategorie",
+          "cachedResultName": "EPA SW Outlook-Kategorie"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $('Übergang prüfen').first().json.kunde_id }}",
+            "vorgangs_id": "={{ $('Übergang prüfen').first().json.vorgangs_id }}",
+            "neuer_status": "={{ $('Übergang prüfen').first().json.neuer_status }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "neuer_status",
+              "displayName": "neuer_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "a1039a4e-1946-4197-a523-c47a591fcc36",
+      "name": "Outlook markieren",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        2200,
+        -100
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: $('Ergebnis melden').first().json }];\n"
+      },
+      "id": "878a9cd5-dc7b-4bca-ae92-c3503ce22ddb",
+      "name": "Ergebnis zurückgeben",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        -100
+      ]
     }
   ],
   "connections": {
@@ -403,6 +485,28 @@
         [
           {
             "node": "Ergebnis melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ergebnis melden": {
+      "main": [
+        [
+          {
+            "node": "Outlook markieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Outlook markieren": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis zurückgeben",
             "type": "main",
             "index": 0
           }
