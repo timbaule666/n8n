@@ -49,7 +49,7 @@ Stand 2026-10-14 (M7). Ein Workflow-Satz bedient alle Kunden. Pro Kunde kommen d
 ## 5. Checkliste zum Abhaken
 - [ ] Workshop durchgeführt, Felder und Textbausteine abgestimmt
 - [ ] AVV und Datenschutzhinweise geklärt
-- [ ] Dienstkonten und Rechte eingerichtet, Archivordner angelegt
+- [ ] Dienstkonten und Rechte eingerichtet (Archivordner nur, wenn der Kunde Verschieben ausdrücklich will)
 - [ ] Config ohne Platzhalter, `EPA SW Config laden` ohne Fehler
 - [ ] EPA-00-Kopie mit Credential, ID in `postfach_workflow_id`
 - [ ] Freigeber haben einen Test-Link erhalten und geöffnet
