@@ -559,3 +559,13 @@ node tools/testmails-auswerten.js --vorgaenge=<Export epa_vorgaenge>.json --mail
 | PDF-Ort „Osnabrueck“ | M35 | Kein Fehler: Der Testgenerator schreibt PDFs ohne Umlaute, der Sollwert ist korrigiert. | – |
 
 Eine Rückfrage zu M30 (V-2026-0047) wurde vor der Korrektur freigegeben und in Mischsprache versendet. Das betrifft nur das Testpostfach.
+
+### Kundenantworten (Lauf 2)
+
+| Antwort | Vorgang | Ergebnis |
+|---|---|---|
+| A19 (nur Telefon) | V-2026-0038 | ✅ eindeutig zugeordnet, Telefon übernommen, Bereit |
+| A23 („Frau Sabine Ott“) | V-2026-0042 | ✅ eindeutig zugeordnet, Bereit |
+| T04b (Teilantwort, 1. Versuch) | – | ❌ als neue Mail eingestuft (V-2026-0071). Ursache: Die Kandidatensuche lieferte nur die 20 zuletzt geänderten Vorgänge des Absenders. Der Test-Absender hatte über 60 offene Vorgänge, so fiel der genannte Vorgang V-2026-0018 heraus. **Behoben** (Commit f8b57d4): Starke Hinweise (Message-ID, genannte Vorgangs-ID, Konversation) sind immer Kandidaten, Data Table und Postgres. |
+| T04b (2. Versuch) | V-2026-0072 | Zuordnung unklar: V-2026-0018 hat 145 Punkte, der fälschlich angelegte V-2026-0071 aus derselben Konversation 80. Das ist vorsichtig und richtig; eine Folge des ersten Fehlers. |
+| A22, A29, A30 | – | nicht versendet, weil die Rückfragen zu V-2026-0067/68/69 noch nicht freigegeben waren (der Workflow antwortet nur auf eine vorhandene Rückfrage) |
