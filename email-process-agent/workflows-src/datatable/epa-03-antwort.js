@@ -122,7 +122,7 @@ const llm = $input.first().json;
 const felder = config.vorgangstypen[v.vorgangstyp];
 if (!llm.ok) return [{ json: { weg: 'extraktion_fehlgeschlagen', fehlercode: llm.code, fehler: llm.fehler } }];
 const heute = DateTime.now().setZone(config.zeitzone).toISODate();
-const neu = pflichtfelder.pruefen(llm.ergebnis.felder, felder, { heute });
+const neu = pflichtfelder.pruefen(llm.ergebnis.felder, felder, { heute, quelltext: pflichtfelder.quelltextAus(mail) });
 const m = antwort.zusammenfuehren(v.extrahierte_daten, neu, felder, {
 	istPlatzhalter: pflichtfelder.istPlatzhalter, konflikteBisher: v.konflikte, message_id: mail.message_id, runde: Number(v.rundenzaehler || 0),
 });

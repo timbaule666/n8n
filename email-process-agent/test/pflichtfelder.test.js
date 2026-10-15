@@ -137,3 +137,20 @@ test('Text mit Regel person: Anrede weg, Team-, Abteilungs- und Firmennamen gelt
 	// Ohne Regel bleibt Text unverändert.
 	assert.deepEqual(pf.feldPruefen({ typ: 'text', validierungsregel: {} }, 'Team Nord'), { ok: true, wert: 'Team Nord' });
 });
+
+test('Datum ohne Jahr: von der KI ergänztes Jahr wird verworfen, wenn es nicht in der Mail steht', () => {
+	const felder = [{ feldname: 'Abholdatum', anzeigename: 'Abholdatum', typ: 'datum', pflicht: true, validierungsregel: { min_tage_ab_heute: 0, max_tage_ab_heute: 365 } }];
+	const opt = (quelltext) => ({ heute: '2026-10-15', quelltext });
+	const p = (wert, text) => pf.pruefen({ Abholdatum: { wert, quelle: 'Mailtext', konfidenz: 0.9 } }, felder, opt(text)).daten.Abholdatum.wert;
+	assert.equal(p('2023-11-03', 'könnt ihr am 3.11. in 04109 Leipzig 12 Pakete abholen?'), '2026-11-03');
+	assert.equal(p('2023-11-03', 'Abholung am 03.11. bitte'), '2026-11-03');
+	assert.equal(p('2026-03-02', 'Abholung am 2.3., danke'), '2027-03-02', 'nächstes Vorkommen ab heute');
+	// Jahr steht in der Mail: Wert bleibt, wie er ist (und wird ggf. als Vergangenheit abgelehnt)
+	assert.equal(p('2026-03-02', 'Abholung am 02.03.2026'), null);
+	assert.equal(p('2026-11-03', 'am 3.11.26 bitte'), '2026-11-03');
+	assert.equal(p('2023-11-03', 'am 3.11.23 bitte'), null, 'zweistelliges Jahr in der Mail');
+	// Ohne Quelltext unverändert wie bisher
+	assert.equal(pf.pruefen({ Abholdatum: { wert: '2023-11-03' } }, felder, { heute: '2026-10-15' }).daten.Abholdatum.wert, null);
+	assert.equal(pf.jahrNichtImText('2023-11-03', 'Lieferung 13.11. und 3.11.'), '3.11.');
+	assert.equal(pf.jahrNichtImText('2023-11-03', 'Lieferung 13.11.'), null, 'Tag 13 ist nicht Tag 3');
+});

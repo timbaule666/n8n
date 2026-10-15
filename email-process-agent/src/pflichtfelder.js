@@ -161,9 +161,31 @@ function feldPruefen(feld, roh, { heute } = {}) {
 }
 
 /**
+ * Die KI ergänzt bei Daten ohne Jahr ("am 3.11.") manchmal ein falsches Jahr. Steht das Jahr nicht in der Mail,
+ * der Tag und Monat aber ohne Jahr, gilt das Datum als "TT.MM." (nächstes Vorkommen ab heute).
+ * @returns {string|null} "T.M." oder null, wenn nichts zu korrigieren ist
+ */
+function jahrNichtImText(isoDatum, quelltext) {
+	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDatum || ''));
+	if (!m || !quelltext) return null;
+	const text = String(quelltext);
+	const [j, mo, t] = [m[1], Number(m[2]), Number(m[3])];
+	if (new RegExp(`(^|\\D)${j}(\\D|$)`).test(text)) return null;
+	const ohneJahr = new RegExp(`(^|[^\\d.])0?${t}\\.0?${mo}\\.(?!\\d)`);
+	return ohneJahr.test(text) ? `${t}.${mo}.` : null;
+}
+
+/** Betreff, Mailtext und Anhangtexte einer normalisierten Mail als ein Text (für jahrNichtImText). */
+function quelltextAus(mail) {
+	const m = mail || {};
+	return [m.betreff, m.text, ...(Array.isArray(m.anhaenge) ? m.anhaenge.map((a) => a && a.text) : [])].filter((x) => typeof x === 'string' && x).join('\n');
+}
+
+/**
  * @param {object} extrakt { Feldname: { wert, quelle, konfidenz } } (validierte LLM-Ausgabe)
  * @param {object[]} felder Feldliste aus der Config (config.vorgangstypen[typ])
- * @param {{ heute?: string }} [optionen] heute als JJJJ-MM-TT in der Zeitzone des Kunden
+ * @param {{ heute?: string, quelltext?: string }} [optionen] heute als JJJJ-MM-TT in der Zeitzone des Kunden;
+ *   quelltext = Betreff, Mailtext und Anhangtexte (für die Prüfung von Daten ohne Jahr)
  */
 function pruefen(extrakt, felder, optionen = {}) {
 	const daten = {};
@@ -180,7 +202,9 @@ function pruefen(extrakt, felder, optionen = {}) {
 		else if (typeof roh === 'object') grund = 'ungültig: unerwartetes Format';
 		else if (istPlatzhalter(roh, f.platzhalter_muster)) grund = 'Platzhalter statt Angabe';
 		else {
-			const r = feldPruefen(f, roh, optionen);
+			let eingabe = roh;
+			if (f.typ === 'datum' && optionen.quelltext) eingabe = jahrNichtImText(datumLesen(roh), optionen.quelltext) || roh;
+			const r = feldPruefen(f, eingabe, optionen);
 			if (r.ok) wert = r.wert;
 			else grund = `ungültig: ${r.grund}`;
 		}
@@ -201,4 +225,4 @@ function werte(daten) {
 	return Object.fromEntries(Object.entries(daten || {}).filter(([, v]) => v && v.wert !== null && v.wert !== undefined).map(([k, v]) => [k, v.wert]));
 }
 
-module.exports = { GLOBALE_PLATZHALTER, UNSICHER_UNTER, istPlatzhalter, zahlLesen, datumLesen, feldPruefen, pruefen, werte };
+module.exports = { GLOBALE_PLATZHALTER, UNSICHER_UNTER, istPlatzhalter, zahlLesen, datumLesen, jahrNichtImText, quelltextAus, feldPruefen, pruefen, werte };

@@ -269,7 +269,7 @@ if (!llm.ok) {
 		details: { grund: 'Extraktion fehlgeschlagen', fehlercode: llm.code, fehler: llm.fehler },
 	} }];
 }
-const p = pflichtfelder.pruefen(llm.ergebnis.felder, felder, { heute: n.heute });
+const p = pflichtfelder.pruefen(llm.ergebnis.felder, felder, { heute: n.heute, quelltext: pflichtfelder.quelltextAus(n.mail) });
 const manipulation = llm.ergebnis.verdacht_manipulation === true || k.details.verdacht_manipulation === true;
 return [{ json: {
 	weg: p.vollstaendig ? 'bereit' : 'luecken',

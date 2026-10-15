@@ -97,7 +97,7 @@ return r.auftraege.map((a) => {
 	const typ = a.klasse && a.klasse.vorgangstyp;
 	const felder = (typ && config.vorgangstypen[typ]) || Object.values(config.vorgangstypen)[0] || [];
 	const e = ext[a.fall.fall_id];
-	const pruefung = e && e.ok === true ? pflichtfelder.pruefen(e.ergebnis.felder, felder, { heute: a.heute }) : null;
+	const pruefung = e && e.ok === true ? pflichtfelder.pruefen(e.ergebnis.felder, felder, { heute: a.heute, quelltext: pflichtfelder.quelltextAus({ betreff: a.fall.betreff, text: a.fall.text }) }) : null;
 	const v = kiQualitaet.vergleichen({ fall: a.fall, klasse: a.klasse, pruefung, felder, feldPruefen: pflichtfelder.feldPruefen, heute: a.heute });
 	const fehler = a.llm_k.fehler || (e && e.ok !== true ? (e.code || 'Extraktion fehlgeschlagen') : null);
 	return { json: {
