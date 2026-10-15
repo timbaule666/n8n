@@ -1135,5 +1135,98 @@
    "Telefon": "07215552050"
   },
   "notiz": "altes Zitat darf nicht gelten"
+ },
+ "R22": {
+  "nr": "R22",
+  "art": "neu",
+  "betreff": "Transport Essen Duisburg (erneut)",
+  "absender_name": "Karin Lehmann",
+  "text": "Guten Tag,\n\nwir brauchen am 18.11.2026 einen Transport von Essen nach Duisburg.\n1 Palette, 300 kg.\n\nKarin Lehmann\n0201 5552022",
+  "erwartet": [
+   "luecken"
+  ],
+  "soll": {
+   "Start_PLZ": "-",
+   "Start_Ort": "Essen",
+   "Ziel_PLZ": "-",
+   "Ziel_Ort": "Duisburg",
+   "Abholdatum": "2026-11-18",
+   "Gewicht_kg": "300",
+   "Packstuecke": "1",
+   "Ladungsart": "Palette",
+   "Ansprechpartner": "Karin Lehmann",
+   "Telefon": "02015552022"
+  },
+  "notiz": "Wiederholung von M22 nach Korrektur. keine PLZ, nicht ableiten"
+ },
+ "R29": {
+  "nr": "R29",
+  "art": "neu",
+  "betreff": "Quote request Munich (erneut)",
+  "absender_name": "James Taylor",
+  "text": "Hello,\n\nwe need to move 3 pallets (1,100 kg) from 80331 Munich to 86150 Augsburg.\n\nThanks,\nJames Taylor",
+  "erwartet": [
+   "luecken"
+  ],
+  "soll": {
+   "Start_PLZ": "80331",
+   "Start_Ort": "Munich",
+   "Ziel_PLZ": "86150",
+   "Ziel_Ort": "Augsburg",
+   "Abholdatum": "-",
+   "Gewicht_kg": "1100",
+   "Packstuecke": "3",
+   "Ladungsart": "Palette",
+   "Ansprechpartner": "James Taylor",
+   "Telefon": "-"
+  },
+  "notiz": "Wiederholung von M29 nach Korrektur. Englisch: Rückfrage auf Englisch erwartet"
+ },
+ "R30": {
+  "nr": "R30",
+  "art": "neu",
+  "betreff": "Delivery to Frankfurt (erneut)",
+  "absender_name": "Emily Clark",
+  "text": "Hi,\n\ncould you pick up 5 parcels in 55116 Mainz on 2026-11-30 and deliver them to 60311 Frankfurt?\n\nEmily Clark\nPhone: +49 6131 5552030",
+  "erwartet": [
+   "luecken"
+  ],
+  "soll": {
+   "Start_PLZ": "55116",
+   "Start_Ort": "Mainz",
+   "Ziel_PLZ": "60311",
+   "Ziel_Ort": "Frankfurt",
+   "Abholdatum": "2026-11-30",
+   "Gewicht_kg": "-",
+   "Packstuecke": "5",
+   "Ladungsart": "Paket",
+   "Ansprechpartner": "Emily Clark",
+   "Telefon": "+4961315552030"
+  },
+  "notiz": "Wiederholung von M30 nach Korrektur. Englisch, Gewicht fehlt"
+ },
+ "R36": {
+  "nr": "R36",
+  "art": "neu",
+  "betreff": "Lieferschein zur Abholung (erneut)",
+  "absender_name": "Ralf Engel",
+  "text": "Hallo,\n\ndie Details stehen im Anhang.\n\nRalf Engel",
+  "erwartet": [
+   "luecken"
+  ],
+  "soll": {
+   "Start_PLZ": "33098",
+   "Start_Ort": "Paderborn",
+   "Ziel_PLZ": "59555",
+   "Ziel_Ort": "Lippstadt",
+   "Abholdatum": "2026-12-07",
+   "Gewicht_kg": "450",
+   "Packstuecke": "3",
+   "Ladungsart": "Paket",
+   "Ansprechpartner": "Ralf Engel",
+   "Telefon": "-"
+  },
+  "notiz": "Wiederholung von M36 nach Korrektur. PDF ohne Telefon",
+  "pdf": "Abholauftrag\nAbholung: 33098 Paderborn\nZiel: 59555 Lippstadt\nTermin: 07.12.2026\n3 Pakete, 450 kg\nKontakt: Ralf Engel"
  }
 }
