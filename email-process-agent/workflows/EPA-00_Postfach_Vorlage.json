@@ -1123,7 +1123,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Bei Einzelaufruf').first().json;\nconst treffer = $input.first().json.value || [];\nif (!treffer.length) throw new Error(`[EPA:502:UPSTREAM_FEHLER:${e.vorgangs_id || '-'}] Rückfrage nicht gesendet: Entwurf fehlt bzw. Versand fehlgeschlagen und nicht in Gesendete Elemente`);\nreturn [{ json: { gesendet: true, bereits: true, internet_message_id: treffer[0].internetMessageId || null } }];\n"
+        "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Bei Einzelaufruf').first().json;\nconst treffer = $input.first().json.value || [];\n// Grund von Microsoft mitgeben (z. B. Konto gesperrt), damit die Alarmmeldung verständlich ist\nconst s = $('Entwurf senden').isExecuted ? ($('Entwurf senden').first().json || {}) : {};\nconst grund = s.error ? String(s.error.description || s.error.message || '').replace(/\\s+/g, ' ').slice(0, 200) : '';\nif (!treffer.length) throw new Error(`[EPA:502:UPSTREAM_FEHLER:${e.vorgangs_id || '-'}] Rückfrage nicht gesendet: ${grund ? 'Microsoft meldet: ' + grund : 'Entwurf fehlt bzw. Versand fehlgeschlagen'} (nicht in Gesendete Elemente)`);\nreturn [{ json: { gesendet: true, bereits: true, internet_message_id: treffer[0].internetMessageId || null } }];\n"
       },
       "id": "53915c5f-6b02-41ab-ae70-52a6c3fbdd11",
       "name": "Gesendet prüfen",

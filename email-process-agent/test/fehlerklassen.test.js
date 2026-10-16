@@ -129,3 +129,15 @@ test('ausErrorTrigger: Fehler aus "Status setzen" werden nicht erneut gesichert 
 	assert.equal(fehler('EPA-01 Eingang verarbeiten').eskalieren, true);
 	assert.deepEqual(f.OHNE_SICHERUNG_AUS, ['EPA SW Status setzen']);
 });
+
+test('Alarm verständlich: Titel, Klartext, Grund und Handlungsempfehlung (gesperrtes Postfach)', () => {
+	const h = f.alarmHtml({ statuscode: 502, fehlercode: 'UPSTREAM_FEHLER', klasse: 'Upstream', workflow_name: 'EPA-00 Postfach', node: 'Gesendet prüfen', vorgangs_id: 'V-2026-0100',
+		meldung: 'Rückfrage nicht gesendet: Microsoft meldet: Account suspended. Follow the instructions in your Inbox to verify your account.', retrybar: true, execution_url: 'https://n8n.example/e/5', execution_id: '5' });
+	assert.match(h, /^🚨 <b>Systemfehler: Rückfrage nicht gesendet<\/b>/);
+	assert.match(h, /Vorgang: <b>V-2026-0100<\/b>/);
+	assert.match(h, /Grund: Rückfrage nicht gesendet: Microsoft meldet: Account suspended/);
+	assert.match(h, /Was tun: Das Postfach-Konto wurde vom Anbieter gesperrt/);
+	assert.match(h, /Technik: EPA-00 Postfach · Gesendet prüfen · EPA-Fehler 502 UPSTREAM_FEHLER/);
+	assert.match(f.alarmEmpfehlung({ klasse: 'Konfiguration', meldung: 'x' }), /Regel-Sheet/);
+	assert.match(f.alarmEmpfehlung({ klasse: 'Upstream', retrybar: true, meldung: 'timeout' }), /vorübergehend/);
+});

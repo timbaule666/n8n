@@ -23,8 +23,9 @@ test('Unsichere oder unbekannte Inhalte werden entschärft', () => {
 test('Echte Meldung aus dem Fehler-Handler bleibt lesbar', () => {
 	const html = fk.alarmHtml({ statuscode: 502, fehlercode: 'UPSTREAM_FEHLER', klasse: 'Upstream', workflow_name: 'EPA-01 <x>', node: 'n', vorgangs_id: 'EPA-1', meldung: 'a & b', retrybar: true, execution_url: 'https://n8n.example/e/1', execution_id: '1' });
 	const t = tg.htmlZuTelegram(html);
-	assert.match(t, /^<b>EPA-Fehler 502 UPSTREAM_FEHLER<\/b> \(Upstream\)\nWorkflow: EPA-01 &lt;x&gt;\n/);
-	assert.match(t, /Meldung: a &amp; b/);
+	assert.match(t, /^🚨 <b>Systemfehler: a &amp; b<\/b>\n/);
+	assert.match(t, /Grund: a &amp; b/);
+	assert.match(t, /Technik: EPA-01 &lt;x&gt; · n · EPA-Fehler 502 UPSTREAM_FEHLER \(Upstream\)/);
 	assert.match(t, /<a href="https:\/\/n8n.example\/e\/1">Ausführung 1 öffnen<\/a>$/);
 	assert.doesNotMatch(t, /<br>/);
 });

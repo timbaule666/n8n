@@ -264,7 +264,10 @@ return [{ json: { gesendet: true, bereits: false, internet_message_id: $input.fi
 	const gesendetPruefen = wf.code('Gesendet prüfen', [1980, 1180], [], `
 const e = $('Bei Einzelaufruf').first().json;
 const treffer = $input.first().json.value || [];
-if (!treffer.length) throw new Error(\`[EPA:502:UPSTREAM_FEHLER:\${e.vorgangs_id || '-'}] Rückfrage nicht gesendet: Entwurf fehlt bzw. Versand fehlgeschlagen und nicht in Gesendete Elemente\`);
+// Grund von Microsoft mitgeben (z. B. Konto gesperrt), damit die Alarmmeldung verständlich ist
+const s = $('Entwurf senden').isExecuted ? ($('Entwurf senden').first().json || {}) : {};
+const grund = s.error ? String(s.error.description || s.error.message || '').replace(/\\s+/g, ' ').slice(0, 200) : '';
+if (!treffer.length) throw new Error(\`[EPA:502:UPSTREAM_FEHLER:\${e.vorgangs_id || '-'}] Rückfrage nicht gesendet: \${grund ? 'Microsoft meldet: ' + grund : 'Entwurf fehlt bzw. Versand fehlgeschlagen'} (nicht in Gesendete Elemente)\`);
 return [{ json: { gesendet: true, bereits: true, internet_message_id: treffer[0].internetMessageId || null } }];
 `);
 

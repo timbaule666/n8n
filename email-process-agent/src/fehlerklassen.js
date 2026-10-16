@@ -172,16 +172,44 @@ function escapeHtml(s) {
 	return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
+// Klartext je Fehlerklasse für die Alarmmeldung (Mitarbeiter sollen verstehen, was passiert ist).
+const KLASSE_TEXT = Object.freeze({
+	Upstream: 'Ein externer Dienst (Outlook, KI oder Telegram) hat nicht wie erwartet geantwortet.',
+	Konfiguration: 'Die Konfiguration ist unvollständig oder fehlerhaft.',
+	Authentifizierung: 'Zugangsdaten sind ungültig oder abgelaufen.',
+	Konflikt: 'Zwei Abläufe haben sich überschnitten.',
+	Eingabe: 'Ein Ablauf hat ungültige Daten erhalten.',
+	LLM: 'Die KI hat keine verwertbare Antwort geliefert.',
+	Freigabe: 'Eine Freigabe ist abgelaufen.',
+	'Nicht gefunden': 'Ein Datensatz wurde nicht gefunden.',
+	Unbekannt: 'Ein unerwarteter Fehler ist aufgetreten.',
+});
+
+/** Konkrete Handlungsempfehlung aus Fehlercode und Meldung. */
+function alarmEmpfehlung(e) {
+	const m = String(e.meldung || '').toLowerCase();
+	if (/suspend|gesperrt|blocked/.test(m)) return 'Das Postfach-Konto wurde vom Anbieter gesperrt. Im Postfach anmelden und die Bestätigung durchführen, danach die betroffenen Vorgänge neu anstoßen.';
+	if (/401|unauthori|token|anmeld/.test(m) || e.klasse === 'Authentifizierung') return 'Zugang (Credential) in n8n prüfen und neu verbinden.';
+	if (e.klasse === 'Konfiguration') return 'Konfiguration bzw. Regel-Sheet des Kunden prüfen.';
+	if (e.retrybar) return 'Meist vorübergehend. Tritt der Fehler wiederholt auf, die Ausführung öffnen und prüfen.';
+	return 'Bitte die Ausführung öffnen und prüfen.';
+}
+
 function alarmHtml(eintrag) {
 	const e = eintrag;
+	const meldung = String(e.meldung || '');
+	// Titel: erster Satzteil der Meldung ("Rückfrage nicht gesendet: …"), sonst die Fehlerklasse
+	const kopf = meldung.split(/[:.]/)[0].trim();
+	const titel = kopf && kopf.length <= 70 ? kopf : (KLASSE_TEXT[e.klasse] || 'Systemfehler');
 	const zeilen = [
-		`<b>EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)}</b> (${escapeHtml(e.klasse)})`,
-		`Workflow: ${escapeHtml(e.workflow_name || e.workflow_id || '?')}`,
-		`Node: ${escapeHtml(e.node || '?')}`,
-		`Vorgang: ${escapeHtml(e.vorgangs_id || '–')}`,
-		`Meldung: ${escapeHtml(e.meldung || '–')}`,
-		e.retrybar ? 'Hinweis: vorübergehender Fehler, erneuter Versuch kann helfen.' : 'Hinweis: dauerhafter Fehler, bitte prüfen.',
+		`🚨 <b>Systemfehler: ${escapeHtml(titel)}</b>`,
+		escapeHtml(KLASSE_TEXT[e.klasse] || KLASSE_TEXT.Unbekannt),
 	];
+	if (e.vorgangs_id) zeilen.push(`Vorgang: <b>${escapeHtml(e.vorgangs_id)}</b>`);
+	zeilen.push(`Grund: ${escapeHtml(meldung || '–')}`);
+	zeilen.push(`Was tun: ${escapeHtml(alarmEmpfehlung(e))}`);
+	zeilen.push('');
+	zeilen.push(`Technik: ${escapeHtml(e.workflow_name || e.workflow_id || '?')} · ${escapeHtml(e.node || '?')} · EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)} (${escapeHtml(e.klasse)})`);
 	if (e.execution_url) zeilen.push(`<a href="${escapeHtml(e.execution_url)}">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);
 	return zeilen.join('<br>');
 }
@@ -197,5 +225,6 @@ module.exports = {
 	klassifiziereFehler,
 	ausErrorTrigger,
 	alarmHtml,
+	alarmEmpfehlung,
 	escapeHtml,
 };
