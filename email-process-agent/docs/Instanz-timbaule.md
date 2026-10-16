@@ -121,6 +121,7 @@ Tims privates Microsoft-Konto hat keine Teams-Lizenz. Microsoft antwortet auf Gr
   - `EPA SW Regeln abgleichen` (ttMWwOEr1VeXA6y5)
   - `EPA-09 Regeln aus Google Sheets` (UtUBJFBzhBtPEbnU), veröffentlicht, alle 15 Minuten
   - `EPA-10 Regel-Sheet anlegen` (ZJDEyyCmzs2D9CCB)
+  - `EPA-11 Zustelltest` (kiyktrf6wjHK7EXw): täglich 07:40, Prüfadresse timbaule666@gmail.com (Gmail-Credential „Gmail account“). Erster Lauf 16.10.2026 11:33: Testmail nicht angekommen, Warnung an Telegram zugestellt.
 - **Credential:** „Google Sheets account“ (googleSheetsOAuth2Api).
 - **Spalte:** `config_sheet` in epa_config_allgemein angelegt.
 - **Test-Sheet für epa-test** (in Tims Google Drive): https://docs.google.com/spreadsheets/d/12qa5Ic_-LLxbxGiG0uGEHwbsM-NGNfLyXOnkUjlPfjo/edit
