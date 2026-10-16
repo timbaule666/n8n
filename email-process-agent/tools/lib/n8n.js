@@ -27,6 +27,7 @@ const VERSIONEN = Object.freeze({
 	'n8n-nodes-base.scheduleTrigger': 1.2,
 	'n8n-nodes-base.manualTrigger': 1,
 	'n8n-nodes-base.telegram': 1.2, // nur EPA-T2 (interne Tests)
+	'n8n-nodes-base.gmail': 2.1, // nur EPA-11 (Prüfpostfach des Betreibers)
 });
 
 function uuid(...teile) {

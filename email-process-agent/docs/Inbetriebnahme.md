@@ -37,6 +37,7 @@ Das Skript legt alle 17 Workflows an bzw. aktualisiert sie anhand des Namens, ve
 | OpenAI | OpenAI API | SW LLM aufrufen („OpenAI aufrufen“), EPA-06 („KI prüfen“) |
 | Teams-Dienstkonto | Microsoft Teams OAuth2 | SW Benachrichtigen, SW Freigabe senden (3 Graph-Nodes), EPA-05 und EPA-06 („Teams prüfen“, Kanal-Nodes) |
 | Outlook je Postfach | Microsoft Outlook OAuth2 | nur in der EPA-00-Kopie des Kunden (Trigger und alle Graph-Nodes) |
+| Prüfpostfach des Betreibers | Gmail OAuth2 | EPA-11 („Prüfpostfach durchsuchen“); Adresse im Node „Prüfadresse festlegen“. Ein externes Postfach, nicht beim selben Anbieter wie die Kundenpostfächer. |
 
 **Markierung in n8n:** Workflows, denen noch Credentials fehlen, tragen ein „ *“ am Namensende (z. B. „EPA-05 Error-Handler *“). Nach dem Zuweisen das Sternchen im Namen entfernen. `tools/deploy.js` ignoriert das Sternchen beim Abgleich und lässt es bei Updates stehen.
 
@@ -54,7 +55,8 @@ n8n veröffentlicht nur Workflows ohne Konfigurationsprobleme, und ein Aufrufer 
 5. EPA SW Nachfassen → EPA-04
 6. EPA-06 Watchdog
 7. EPA-00-Kopie(n) des Kunden
-8. **EPA-08 Löschjob erst nach einem Probelauf** (manuell mit `probelauf = true`, Ergebnis prüfen)
+8. EPA-11 Zustelltest (nach den EPA-00-Kopien; einmal manuell starten und das Ergebnis prüfen)
+9. **EPA-08 Löschjob erst nach einem Probelauf** (manuell mit `probelauf = true`, Ergebnis prüfen)
 
 Gesendet wird nie ohne Klick auf „Freigeben“; das Veröffentlichen allein verschickt keine Mails.
 

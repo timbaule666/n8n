@@ -45,6 +45,8 @@ Stand 2026-10-14 (M6). Für die Person, die das System betreut: Was läuft wann,
 
 **Versand nach Freigabe fehlgeschlagen** (z. B. Postfach vom Anbieter gesperrt): Es wurde nichts gesendet. Die Freigabe steht auf „fehler“ (mit Grund), alle bisherigen Links gelten nicht mehr. EPA-04 prüft stündlich, ob das Postfach wieder erreichbar ist (15 Minuten bis 72 Stunden nach dem Fehler). Dann kommt die Nachricht mit „🔁 Erneut zur Freigabe“, Grund und neuem Link wieder an die Freigeber. Nach der Freigabe geht der Vorgang von „Eskaliert / Manuell“ zurück auf „Warten auf Kunde“. Doppelversand ist ausgeschlossen, weil EPA-00 vor jedem Versand den Entwurf bzw. „Gesendete Elemente“ prüft. Grenze: Die Prüfung liest den Posteingang. Ist nur der Versand gesperrt, kann der neue Versuch erneut scheitern; dann wiederholt sich der Ablauf.
 
+**🚫 „Postfach versendet keine Mails“ (EPA-11 Zustelltest):** Jeden Morgen um 07:40 schickt jedes Kundenpostfach eine Kontrollmail („EPA-Zustelltest …“) an das Prüfpostfach des Betreibers. Kommt sie nach 10 Minuten nicht an, meldet Microsoft zwar „gesendet“, stellt aber nicht zu. Das passiert z. B. bei einem Konto, das nach einer Sperre eingeschränkt ist. Rückfragen erreichen dann keine Kunden. Was tun: Im Postfach anmelden und auf Sperr- oder Bestätigungshinweise achten (account.microsoft.com → Sicherheit). Bis zur Klärung wichtige Rückfragen telefonisch stellen. Ergebnis je Kunde steht in `epa_system_status` (Zeile `zustelltest:<kunde_id>`). Manuell prüfen: EPA-11 öffnen und „Manuell starten“ ausführen.
+
 **Mail erneut verarbeiten:** Nach einem Fehler gilt die Mail nicht als „verarbeitet“. Die fehlgeschlagene Ausführung von EPA-00 in n8n erneut ausführen; ein Duplikat entsteht nicht.
 
 ## 5. Häufige Handgriffe

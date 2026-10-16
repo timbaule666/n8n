@@ -32,6 +32,7 @@ const M2 = [
 	['sw-regeln-abgleichen', 'EPA_SW_Regeln_abgleichen.json'],
 	['epa-09-regeln-sheets', 'EPA-09_Regeln_aus_Google_Sheets.json'],
 	['epa-10-regel-sheet-anlegen', 'EPA-10_Regel-Sheet_anlegen.json'],
+	['epa-11-zustelltest', 'EPA-11_Zustelltest.json'],
 	// Testphase: KI-Qualitäts-Prüfstand (keine Nebenwirkungen)
 	['epa-t1-ki-qualitaet', 'EPA-T1_KI-Qualitaet_pruefen.json'],
 	// Nur interne Tests ohne Microsoft-365-Lizenz (Kunden nutzen Teams)
