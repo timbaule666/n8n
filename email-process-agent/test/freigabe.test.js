@@ -36,6 +36,8 @@ test('Freigabe prüfen: gültig, unbekannt, verbraucht, entschieden, abgelaufen,
 	const gesendet = f.freigabePruefen({ ...ok, freigabe: { ...ok.freigabe, status: 'gesendet', entscheider: 'a@b.de' } });
 	assert.equal(gesendet.status, 409);
 	assert.match(gesendet.meldung, /bereits freigegeben und gesendet von a@b\.de/);
+	// Betreff nennen, damit klar ist, welche Anfrage gemeint ist
+	assert.match(f.freigabePruefen({ ...ok, freigabe: { ...ok.freigabe, status: 'gesendet', betreff: 'RE: Paletten Hagen [V-1]' } }).meldung, /Betrifft: RE: Paletten Hagen \[V-1\]$/);
 	assert.equal(f.freigabePruefen({ ...ok, freigabe: { ...ok.freigabe, status: 'in_versand' } }).status, 409);
 	const ab = f.freigabePruefen({ ...ok, freigabe: { ...ok.freigabe, ablauf: '2026-10-13T09:59:59Z' } });
 	assert.deepEqual([ab.status, ab.code], [410, 'FREIGABE_ABGELAUFEN']);

@@ -79,6 +79,9 @@ test('Systemeskalation aus jedem laufenden Status, nie aus Endstatus', () => {
 test('Erinnerung läuft über Freigabe (Cronjob), Eskalation durch Cronjob', () => {
 	assert.equal(pruefeUebergang(S.WARTEN, S.FREIGABE, 'Cronjob').erlaubt, true);
 	assert.equal(pruefeUebergang(S.WARTEN, S.ESKALIERT, 'Cronjob').erlaubt, true);
+	// Erneute Freigabe nach Versandfehler: nur ein Mitarbeiter
+	assert.equal(pruefeUebergang(S.ESKALIERT, S.WARTEN, 'Mitarbeiter:a@b.de').erlaubt, true);
+	assert.equal(pruefeUebergang(S.ESKALIERT, S.WARTEN, 'System').erlaubt, false);
 	assert.equal(pruefeUebergang(S.WARTEN, S.FREIGABE, 'KI').erlaubt, false);
 });
 

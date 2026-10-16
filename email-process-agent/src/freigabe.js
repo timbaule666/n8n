@@ -47,7 +47,9 @@ function freigabePruefen({ token, freigabe, freigeberErlaubt, jetzt }) {
 	if (freigabe.status !== 'offen') {
 		const wer = freigabe.entscheider ? ` von ${freigabe.entscheider}` : '';
 		const was = { in_versand: 'wird gerade versendet', gesendet: 'wurde bereits freigegeben und gesendet', abgelehnt: 'wurde bereits abgelehnt', abgelaufen: 'ist abgelaufen', ersetzt: 'wurde durch eine neuere Freigabe ersetzt', fehler: 'ist beim Versand fehlgeschlagen' }[freigabe.status] || `hat den Status "${freigabe.status}"`;
-		return nein(freigabe.status === 'abgelaufen' ? 410 : 409, freigabe.status === 'abgelaufen' ? 'FREIGABE_ABGELAUFEN' : 'DUPLIKAT', `Diese ${freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage'} ${was}${freigabe.status === 'gesendet' || freigabe.status === 'abgelehnt' ? wer : ''}.`);
+		// Betreff nennen, damit klar ist, um welche Anfrage es geht (mehrere Links in einem Chat).
+		const betrifft = freigabe.betreff ? ` Betrifft: ${String(freigabe.betreff).slice(0, 150)}` : '';
+		return nein(freigabe.status === 'abgelaufen' ? 410 : 409, freigabe.status === 'abgelaufen' ? 'FREIGABE_ABGELAUFEN' : 'DUPLIKAT', `Diese ${freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage'} ${was}${freigabe.status === 'gesendet' || freigabe.status === 'abgelehnt' ? wer : ''}.${betrifft}`);
 	}
 	if (token.verbraucht_am) return nein(409, 'DUPLIKAT', 'Dieser Link wurde bereits verwendet.');
 	if (new Date(freigabe.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Ein neuer Link wird automatisch verschickt.');
