@@ -63,7 +63,8 @@ function zusammenfuehren(alt, neu, felder, optionen = {}) {
 		const neuWert = n.wert;
 		const roh = n.roh;
 		const angegeben = !leer(roh) && !(optionen.istPlatzhalter && optionen.istPlatzhalter(roh, f.platzhalter_muster));
-		if (angegeben) angaben += 1;
+		// Zählt nur, was die Antwort Neues bringt: neue Werte, Widersprüche oder Versuche für offene Felder.
+		// Eine bloße Wiederholung bekannter Werte (z. B. Name aus der Signatur) ist keine neue Angabe.
 
 		if (!leer(vorher.wert)) {
 			daten[f.feldname] = vorher;
@@ -75,7 +76,9 @@ function zusammenfuehren(alt, neu, felder, optionen = {}) {
 				// "Max" -> "Max Müller": Ergänzung, kein Widerspruch
 				daten[f.feldname] = { wert: neuWert, roh, quelle: n.quelle || null, konfidenz: n.konfidenz ?? null, nachgefordert: true, runde: optionen.runde ?? null };
 				uebernommen.push({ feldname: f.feldname, anzeigename: f.anzeigename, alt: vorher.wert, neu: neuWert, quelle: n.quelle || null });
+				angaben += 1;
 			} else {
+				angaben += 1;
 				konflikteNeu.push({ feldname: f.feldname, anzeigename: f.anzeigename, alt: vorher.wert, neu: neuWert, quelle: n.quelle || null, message_id: optionen.message_id || null, runde: optionen.runde ?? null });
 			}
 			continue;
@@ -84,8 +87,10 @@ function zusammenfuehren(alt, neu, felder, optionen = {}) {
 			// nachgefordert: kam per Antwort auf eine Rückfrage (für die Abschluss-Meldung "bisher" vs. "nachgefordert")
 			daten[f.feldname] = { wert: neuWert, roh, quelle: n.quelle || null, konfidenz: n.konfidenz ?? null, nachgefordert: true, runde: optionen.runde ?? null };
 			uebernommen.push({ feldname: f.feldname, anzeigename: f.anzeigename, alt: null, neu: neuWert, quelle: n.quelle || null });
+			angaben += 1;
 			if (typeof n.konfidenz === 'number' && n.konfidenz < 0.5) unsicher.push({ feldname: f.feldname, anzeigename: f.anzeigename, konfidenz: n.konfidenz });
 		} else {
+			if (angegeben) angaben += 1; // ungültiger Versuch für ein offenes Feld
 			daten[f.feldname] = { wert: null, roh: angegeben ? roh : (vorher.roh ?? null), quelle: angegeben ? n.quelle || null : vorher.quelle || null, konfidenz: null };
 		}
 	}

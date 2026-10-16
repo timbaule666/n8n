@@ -64,6 +64,14 @@ test('Merge: keine verwertbaren Angaben (nur null oder Platzhalter) -> keine_dat
 	assert.deepEqual(a.entscheiden(m, { status: 'Warten auf Kunde' }), { weg: 'keine_daten', zielstatus: null, freigabe_ersetzen: false });
 });
 
+test('Merge: Vertröstung, die nur Bekanntes wiederholt (Name aus der Signatur) -> keine_daten', () => {
+	// "Ich melde mich morgen mit der Nummer. Gruß Max Muster": KI liest den Namen erneut aus
+	const m = merge({ Ansprechpartner: 'Max Muster' });
+	assert.deepEqual(m.bestaetigt, ['Ansprechpartner']);
+	assert.equal(m.keine_daten, true);
+	assert.equal(a.entscheiden(m, { status: 'Warten auf Kunde' }).weg, 'keine_daten');
+});
+
 test('Merge: Konflikte sammeln sich über Runden, gleiche nicht doppelt', () => {
 	const m1 = merge({ Start_PLZ: '50668' });
 	const m2 = merge({ Start_PLZ: '50668', Ziel_Ort: 'Halle' }, BEKANNT, { konflikteBisher: m1.konflikte, runde: 2 });
