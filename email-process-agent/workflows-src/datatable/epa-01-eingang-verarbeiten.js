@@ -310,13 +310,13 @@ return [{ json: {
 		options: {},
 	});
 	// Übersicht zur Mail für die Freigabe-Nachricht: so kommt bei einer Rückfrage nur eine Nachricht.
-	const uebersicht = wf.code('Übersicht für Freigabe', [4730, 40], ['eingang'], `
+	const uebersicht = wf.code('Übersicht für Freigabe', [4730, 40], ['eingang', 'textHinweise'], `
 const config = $('Config laden').first().json.config;
 const k = $('Klasse auswerten').first().json;
 const p = $('Pflichtfelder prüfen').first().json;
 const v = $('Vorgang anlegen').first().json.vorgang;
 const mail = $('Mail normalisieren').first().json.mail;
-return [{ json: { kontext_html: eingang.meldungGeprueft(v.vorgangs_id, mail, config.vorgangstypen[k.vorgangstyp], p.pruefung, { verdacht_manipulation: p.verdacht_manipulation, ohneRueckfrageText: true }) } }];
+return [{ json: { kontext_html: eingang.meldungGeprueft(v.vorgangs_id, mail, config.vorgangstypen[k.vorgangstyp], p.pruefung, { verdacht_manipulation: p.verdacht_manipulation, ohneRueckfrageText: true, text_hinweise: textHinweise.alle(mail).hinweise }) } }];
 `);
 	// Fehler in EPA-02 meldet EPA-05 selbst (Alarm, Vorgang sichern); die Mailverarbeitung läuft weiter.
 	const rueckfrage = wf.aufruf('Rückfrage anfordern', [4840, 40], 'EPA-02 Rückfrage anfordern', [
@@ -326,7 +326,7 @@ return [{ json: { kontext_html: eingang.meldungGeprueft(v.vorgangs_id, mail, con
 		['referenz', 'string', `={{ ${MID} }}`],
 		['kontext_html', 'string', '={{ $json.kontext_html }}'],
 	], { onError: 'continueRegularOutput', alwaysOutputData: true });
-	const mGeprueft = wf.code('Meldung: geprüft', [5060, 120], ['eingang'], `
+	const mGeprueft = wf.code('Meldung: geprüft', [5060, 120], ['eingang', 'textHinweise'], `
 const config = $('Config laden').first().json.config;
 const k = $('Klasse auswerten').first().json;
 const p = $('Pflichtfelder prüfen').first().json;
@@ -336,6 +336,7 @@ const html = p.weg === 'extraktion_fehlgeschlagen'
 	? eingang.meldungExtraktionFehlgeschlagen(v.vorgangs_id, mail, p.fehlercode)
 	: eingang.meldungGeprueft(v.vorgangs_id, mail, config.vorgangstypen[k.vorgangstyp], p.pruefung, {
 		verdacht_manipulation: p.verdacht_manipulation,
+		text_hinweise: textHinweise.alle(mail).hinweise,
 		rueckfrage: $('Rückfrage anfordern').isExecuted ? $('Rückfrage anfordern').first().json : null,
 	});
 const r = $('Rückfrage anfordern').isExecuted ? $('Rückfrage anfordern').first().json : null;

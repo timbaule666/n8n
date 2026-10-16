@@ -209,11 +209,19 @@ function meldungVollstaendig({ vorgangs_id: vid, mail, merge, vorgang, felder, z
 	return z.join('<br>').replace(/(<br>){2,}/g, '<br><br>');
 }
 
-function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrage, alterStatus, fristNeu, ohneRueckfrageText, uebersicht }) {
+/** Hinweise aus festen Regeln (textHinweise.alle) als Zeilen; Stornierung ganz oben, gut sichtbar. */
+function zusatz(hinweise, storno) {
+	const oben = storno ? `<b>⚠️ Mögliche Stornierung / Absage – bitte prüfen</b><br>Kunde schreibt: „${esc(storno)}“<br>Der Vorgang wurde nicht automatisch geändert.<br><br>` : '';
+	const unten = (hinweise || []).map((h) => `<br>⚠️ ${esc(h)}`).join('');
+	return { oben, unten };
+}
+
+function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrage, alterStatus, fristNeu, ohneRueckfrageText, uebersicht, text_hinweise: textHinweise, storno }) {
+	const zu = zusatz(textHinweise, storno);
 	if (entscheidung.weg === 'bereit' && uebersicht) {
 		let html = meldungVollstaendig({ vorgangs_id: vid, mail, merge, ...uebersicht });
 		if (entscheidung.freigabe_ersetzen) html += '<br>Die noch offene Freigabe der vorherigen Rückfrage ist damit überholt und wurde deaktiviert.';
-		return html;
+		return zu.oben + html + zu.unten;
 	}
 	const titel = {
 		bereit: 'Antwort eingegangen – Anfrage jetzt vollständig',
@@ -225,7 +233,7 @@ function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrag
 	if (mail.web_link) z.push(`<a href="${esc(mail.web_link)}">Mail in Outlook öffnen</a>`);
 	if (entscheidung.weg === 'nur_melden') {
 		z.push(`Status "${esc(alterStatus)}": die Mail wurde dem Vorgang zugeordnet, aber nicht automatisch ausgewertet. Bitte manuell sichten.`);
-		return z.join('<br>');
+		return zu.oben + z.join('<br>') + zu.unten;
 	}
 	if (merge.uebernommen.length) z.push('Übernommen:<ul>' + merge.uebernommen.map((u) => `<li>${esc(u.anzeigename)}: ${esc(u.neu)}</li>`).join('') + '</ul>');
 	if (merge.konflikte_neu.length) {
@@ -234,7 +242,7 @@ function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrag
 	for (const h of merge.hinweise) z.push(`Hinweis ${esc(h.anzeigename)}: ${esc(h.grund)}`);
 	for (const u of merge.unsicher) z.push(`⚠️ ${esc(u.anzeigename)}: KI unsicher (Konfidenz ${esc(u.konfidenz)}), bitte prüfen`);
 	if (entscheidung.weg === 'keine_daten') {
-		z.push('Die Antwort enthält keine verwertbaren Angaben (z. B. Vertröstung). Der Vorgang bleibt unverändert.' + (fristNeu ? ` Antwortfrist verlängert bis ${esc(fristNeu)}.` : ''));
+		z.push((storno ? 'Die Antwort enthält keine neuen Transportangaben. Der Vorgang bleibt unverändert.' : 'Die Antwort enthält keine verwertbaren Angaben (z. B. Vertröstung). Der Vorgang bleibt unverändert.') + (fristNeu ? ` Antwortfrist verlängert bis ${esc(fristNeu)}.` : ''));
 	} else if (entscheidung.weg === 'luecken') {
 		z.push('Weiter offen:<ul>' + merge.fehlende.map((f) => `<li>${esc(f.anzeigename)}: ${esc(f.grund)}</li>`).join('') + '</ul>');
 		if (ohneRueckfrageText) { /* Übersicht für die Freigabe-Nachricht */ }
@@ -243,7 +251,7 @@ function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrag
 		else z.push('<b>Die nächste Rückfrage konnte nicht automatisch vorbereitet werden – bitte manuell klären.</b>');
 	}
 	if (entscheidung.freigabe_ersetzen) z.push('Die noch offene Freigabe der vorherigen Rückfrage ist damit überholt und wurde deaktiviert.');
-	return z.join('<br>');
+	return zu.oben + z.join('<br>') + zu.unten;
 }
 
 module.exports = { nameErgaenzt, AUTOMATISCH, wegBestimmen, gleich, zusammenfuehren, entscheiden, fristVerlaengern, extraktionsHinweise, meldungAntwort, meldungVollstaendig, zeitText, esc };

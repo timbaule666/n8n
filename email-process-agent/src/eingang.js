@@ -143,6 +143,7 @@ function meldungGeprueft(vorgangsId, mail, felder, pruefung, extra = {}) {
 	for (const h of pruefung.hinweise || []) w.push(`${h.anzeigename}: ${h.grund} (verworfen)`);
 	for (const u of pruefung.unsicher || []) w.push(`${u.anzeigename}: KI unsicher (Konfidenz ${u.konfidenz}), bitte prüfen`);
 	if (extra.verdacht_manipulation) w.push('Die Mail enthält möglicherweise Anweisungen an die KI (Manipulationsversuch).');
+	for (const t of extra.text_hinweise || []) w.push(t);
 	return html + warnungen(mail, w);
 }
 

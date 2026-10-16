@@ -91,10 +91,11 @@ return [{ json: { weg: antwort.wegBestimmen(v.status), status: v.status } }];
 	});
 
 	// ---------------------------------------------------------------- nur melden
-	const mNur = wf.code('Meldung: nur zugeordnet', [1320, -320], ['antwort'], `
+	const mNur = wf.code('Meldung: nur zugeordnet', [1320, -320], ['antwort', 'textHinweise'], `
 const v = $('Vorgang lesen').first().json.vorgang;
 const mail = $('Bei Aufruf').first().json.mail;
-return [{ json: { anlass: 'antwort_gemeldet', nachricht_html: antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, mail, entscheidung: { weg: 'nur_melden' }, alterStatus: v.status }), ergebnis: 'gemeldet' } }];
+const th = textHinweise.alle(mail, { antwort: true });
+return [{ json: { anlass: 'antwort_gemeldet', nachricht_html: antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, mail, entscheidung: { weg: 'nur_melden' }, alterStatus: v.status, text_hinweise: th.hinweise, storno: th.storno }), ergebnis: 'gemeldet' } }];
 `);
 
 	// ---------------------------------------------------------------- Extraktion und Merge
@@ -177,13 +178,14 @@ return [{ json: {
 		['details', 'object', `={{ { message_id: ${E}.mail.message_id, frist_neu: ${Z}.frist_neu, status: ${V}.status } }}`],
 		['referenz', 'string', `={{ ${E}.referenz }}`],
 	]);
-	const mKeine = wf.code('Meldung: keine Angaben', [2640, 300], ['antwort'], `
+	const mKeine = wf.code('Meldung: keine Angaben', [2640, 300], ['antwort', 'textHinweise'], `
 const z = $('Zusammenführen').first().json;
 const v = $('Vorgang lesen').first().json.vorgang;
 const config = $('Config laden').first().json.config;
 const mail = $('Bei Aufruf').first().json.mail;
 const fristText = z.frist_neu ? DateTime.fromISO(z.frist_neu).setZone(config.zeitzone).toFormat('dd.LL.yyyy, HH:mm') : null;
-return [{ json: { anlass: 'antwort_keine_daten', nachricht_html: antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, mail, merge: z.merge, entscheidung: { weg: 'keine_daten' }, fristNeu: fristText }), ergebnis: 'keine_daten' } }];
+const th = textHinweise.alle(mail, { antwort: true });
+return [{ json: { anlass: th.storno ? 'antwort_storno' : 'antwort_keine_daten', nachricht_html: antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, mail, merge: z.merge, entscheidung: { weg: 'keine_daten' }, fristNeu: fristText, text_hinweise: th.hinweise, storno: th.storno }), ergebnis: 'keine_daten' } }];
 `);
 
 	// ---------------------------------------------------------------- Extraktion fehlgeschlagen (422)
@@ -246,11 +248,12 @@ return zeilen.length ? zeilen.map((j) => ({ json: j })) : [{ json: { leer: true 
 		options: {},
 	});
 	// Übersicht zur Antwort für die Freigabe-Nachricht: so kommt bei einer neuen Rückfrage nur eine Nachricht.
-	const uebersicht = wf.code('Übersicht für Freigabe', [4070, -120], ['antwort'], `
+	const uebersicht = wf.code('Übersicht für Freigabe', [4070, -120], ['antwort', 'textHinweise'], `
 const z = $('Zusammenführen').first().json;
 const v = $('Vorgang lesen').first().json.vorgang;
 const mail = $('Bei Aufruf').first().json.mail;
-let html = antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, mail, merge: z.merge, entscheidung: { weg: z.ergebnis, freigabe_ersetzen: z.freigabe_ersetzen }, ohneRueckfrageText: true });
+const th = textHinweise.alle(mail, { antwort: true });
+let html = antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, mail, merge: z.merge, entscheidung: { weg: z.ergebnis, freigabe_ersetzen: z.freigabe_ersetzen }, ohneRueckfrageText: true, text_hinweise: th.hinweise, storno: th.storno });
 if (z.verdacht_manipulation) html += '<br>⚠️ Die Mail enthält möglicherweise Anweisungen an die KI (Manipulationsversuch).';
 return [{ json: { kontext_html: html } }];
 `);
@@ -261,17 +264,19 @@ return [{ json: { kontext_html: html } }];
 		['referenz', 'string', `={{ ${E}.referenz }}`],
 		['kontext_html', 'string', '={{ $json.kontext_html }}'],
 	], { onError: 'continueRegularOutput', alwaysOutputData: true });
-	const mAusw = wf.code('Meldung: ausgewertet', [4400, -40], ['antwort', 'eingang'], `
+	const mAusw = wf.code('Meldung: ausgewertet', [4400, -40], ['antwort', 'eingang', 'textHinweise'], `
 const z = $('Zusammenführen').first().json;
 const v = $('Vorgang lesen').first().json.vorgang;
 const mail = $('Bei Aufruf').first().json.mail;
 const r = $('Rückfrage anfordern').isExecuted ? $('Rückfrage anfordern').first().json : null;
 const config = $('Config laden').first().json.config;
+const th = textHinweise.alle(mail, { antwort: true });
 let html = antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, mail, merge: z.merge, entscheidung: { weg: z.ergebnis, freigabe_ersetzen: z.freigabe_ersetzen }, rueckfrage: r,
-	uebersicht: { vorgang: v, felder: config.vorgangstypen[v.vorgangstyp] || [], zeitzone: config.zeitzone } });
+	uebersicht: { vorgang: v, felder: config.vorgangstypen[v.vorgangstyp] || [], zeitzone: config.zeitzone }, text_hinweise: th.hinweise, storno: th.storno });
 if (z.verdacht_manipulation) html += '<br>⚠️ Die Mail enthält möglicherweise Anweisungen an die KI (Manipulationsversuch).';
 // Neue Rückfrage samt Übersicht ist beim Freigeber angekommen: keine zweite Nachricht.
-return [{ json: { anlass: 'antwort_' + z.ergebnis, nachricht_html: html, ergebnis: z.ergebnis, stumm: z.ergebnis === 'luecken' && eingang.meldungInFreigabe(r) } }];
+// Stornierung immer melden, auch wenn eine neue Rückfrage samt Übersicht beim Freigeber liegt.
+return [{ json: { anlass: 'antwort_' + z.ergebnis, nachricht_html: html, ergebnis: z.ergebnis, stumm: z.ergebnis === 'luecken' && eingang.meldungInFreigabe(r) && !th.storno } }];
 `);
 	const meldenFrage = wf.node('Meldung senden?', 'n8n-nodes-base.if', [4510, -40], {
 		conditions: bedingungen([bedingung('={{ $json.stumm }}', { type: 'boolean', operation: 'true', singleValue: true })]),
