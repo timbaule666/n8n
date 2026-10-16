@@ -188,7 +188,7 @@ const KLASSE_TEXT = Object.freeze({
 /** Konkrete Handlungsempfehlung aus Fehlercode und Meldung. */
 function alarmEmpfehlung(e) {
 	const m = String(e.meldung || '').toLowerCase();
-	if (/suspend|gesperrt|blocked/.test(m)) return 'Das Postfach-Konto wurde vom Anbieter gesperrt. Im Postfach anmelden und die Bestätigung durchführen, danach die betroffenen Vorgänge neu anstoßen.';
+	if (/suspend|gesperrt|blocked/.test(m)) return 'Das Postfach-Konto wurde vom Anbieter gesperrt. Im Postfach anmelden und die Bestätigung durchführen. Nicht gesendete Nachrichten kommen danach automatisch mit neuem Link erneut zur Freigabe (Prüfung stündlich).';
 	if (/401|unauthori|token|anmeld/.test(m) || e.klasse === 'Authentifizierung') return 'Zugang (Credential) in n8n prüfen und neu verbinden.';
 	if (e.klasse === 'Konfiguration') return 'Konfiguration bzw. Regel-Sheet des Kunden prüfen.';
 	if (e.retrybar) return 'Meist vorübergehend. Tritt der Fehler wiederholt auf, die Ausführung öffnen und prüfen.';

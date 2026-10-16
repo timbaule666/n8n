@@ -9,9 +9,15 @@ const LOCK_MINUTEN = 55;
 const MAX_AUFGABEN = 50;
 const EPOCHE = '1970-01-01T00:00:00.000Z';
 const WARTEN = 'Warten auf Kunde';
+// Versand nach Freigabe fehlgeschlagen (Freigabe-Status "fehler"): Erneut zur Freigabe frühestens nach dieser
+// Wartezeit und nur, solange der Fehler nicht älter ist als das Höchstalter (alte Fehler nicht wiederbeleben).
+const NACH_FEHLER_WARTEN_MINUTEN = 15;
+const NACH_FEHLER_HOECHSTALTER_STUNDEN = 72;
+// Nur in diesen Vorgangsstatus ist die fehlgeschlagene Nachricht noch aktuell.
+const NACH_FEHLER_STATUS = Object.freeze(['Eskaliert / Manuell', 'Freigabe ausstehend']);
 
 // Reihenfolge, falls mehr Aufgaben anfallen als ein Lauf abarbeitet (Rest folgt im nächsten Lauf).
-const PRIORITAET = Object.freeze({ eskalation: 1, erinnerung: 2, freigabe_erneuern: 3, freigabe_erinnerung: 4 });
+const PRIORITAET = Object.freeze({ eskalation: 1, erinnerung: 2, freigabe_nach_fehler: 3, freigabe_erneuern: 3, freigabe_erinnerung: 4 });
 
 function ms(t) {
 	if (t === null || t === undefined || t === '') return NaN;
@@ -23,7 +29,7 @@ function ms(t) {
  * Plant die Aufgaben eines Laufs.
  * @param {object} p
  * @param {object[]} p.vorgaenge  Zeilen aus epa_vorgaenge (Status "Warten auf Kunde")
- * @param {object[]} p.freigaben  Zeilen aus epa_freigaben (Status "offen")
+ * @param {object[]} p.freigaben  Zeilen aus epa_freigaben (Status "offen" oder "fehler")
  * @param {object} p.configs      kunde_id -> geprüfte Config; null = Kunde inaktiv; fehlt = Config ungültig
  * @param {string} p.jetzt        ISO-Zeitpunkt
  * @param {object} p.fristen      Modul src/fristen.js (im Code-Node eingebettet)
@@ -66,8 +72,20 @@ function planen({ vorgaenge, freigaben, configs, jetzt, fristen, max = MAX_AUFGA
 	}
 
 	for (const f of freigaben || []) {
-		if (!f || f.status !== 'offen') continue;
+		if (!f || (f.status !== 'offen' && f.status !== 'fehler')) continue;
 		const ref = { kunde_id: f.kunde_id, vorgangs_id: f.vorgangs_id, freigabe_id: f.freigabe_id };
+		if (f.status === 'fehler') {
+			// Versand fehlgeschlagen: nach kurzer Wartezeit erneut zur Freigabe (SW Nachfassen prüft vorher das Postfach).
+			const seit = jetztMs - ms(f.updatedAt);
+			if (!Number.isFinite(seit) || seit < NACH_FEHLER_WARTEN_MINUTEN * 60000 || seit > NACH_FEHLER_HOECHSTALTER_STUNDEN * 3600000) continue;
+			const cf = configs[f.kunde_id];
+			if (!cf) {
+				uebersprungen.push({ ...ref, grund: cf === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });
+				continue;
+			}
+			aufgaben.push({ aktion: 'freigabe_nach_fehler', ...ref, version: null, erinnerungen_gesendet: null });
+			continue;
+		}
 		const c = configs[f.kunde_id];
 		if (!c) {
 			uebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });
@@ -177,9 +195,20 @@ function meldungKeineReaktion({ vorgang, tage, erinnerungen, fehlende, daten, te
  * aktion: freigabe_erinnerung (neue Links zusätzlich, alte bleiben gültig)
  *         freigabe_erneuern   (neue Ablaufzeit, alle bisherigen Links werden ungültig)
  */
-function freigabeAuffrischen({ aktion, freigabe, config, jetzt }) {
-	if (!freigabe || freigabe.status !== 'offen') return { ok: false, grund: 'nicht_mehr_offen' };
+function freigabeAuffrischen({ aktion, freigabe, config, jetzt, vorgang }) {
 	const t = ms(jetzt);
+	if (aktion === 'freigabe_nach_fehler') {
+		// Versand nach Freigabe fehlgeschlagen: wieder öffnen, neue Ablaufzeit, alle alten Links gesperrt.
+		if (!freigabe || freigabe.status !== 'fehler') return { ok: false, grund: 'kein_versandfehler' };
+		if (vorgang && !NACH_FEHLER_STATUS.includes(vorgang.status)) return { ok: false, grund: 'status_geaendert' };
+		if (vorgang && vorgang.freigabe_id_aktuell && vorgang.freigabe_id_aktuell !== freigabe.freigabe_id) return { ok: false, grund: 'veraltet' };
+		const ablauf = new Date(t + Number(config.freigabe_ablauf_stunden) * 3600000).toISOString();
+		return {
+			ok: true, alteLinksSperren: true, ablauf,
+			daten: { status: 'offen', ablauf, erneuert_am: new Date(t).toISOString(), erinnert_am: null, entscheider: null, entscheidung: null, bearbeitet: false, grund: null },
+		};
+	}
+	if (!freigabe || freigabe.status !== 'offen') return { ok: false, grund: 'nicht_mehr_offen' };
 	const abgelaufen = ms(freigabe.ablauf) <= t;
 	if (aktion === 'freigabe_erneuern') {
 		if (!abgelaufen) return { ok: false, grund: 'nicht_abgelaufen' };
@@ -195,6 +224,6 @@ function freigabeAuffrischen({ aktion, freigabe, config, jetzt }) {
 }
 
 module.exports = {
-	LOCK_SCHLUESSEL, LOCK_MINUTEN, MAX_AUFGABEN, EPOCHE, PRIORITAET,
+	LOCK_SCHLUESSEL, LOCK_MINUTEN, MAX_AUFGABEN, EPOCHE, PRIORITAET, NACH_FEHLER_WARTEN_MINUTEN, NACH_FEHLER_HOECHSTALTER_STUNDEN,
 	planen, lockHolen, lockFreigeben, laufAuswerten, tageOhneReaktion, meldungKeineReaktion, freigabeAuffrischen,
 };

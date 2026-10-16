@@ -22,6 +22,7 @@ module.exports = function () {
 		'**eskalation (Fall 2):** Status "Eskaliert / Manuell" (Auslöser Cronjob, mit Versionsprüfung) und Teams-Nachricht "Kunde reagiert seit N Tagen nicht … bitte telefonisch kontaktieren" mit Kontaktdaten.',
 		'**freigabe_erinnerung:** Freigabe ist seit freigabe_erinnerung_stunden offen: neue persönliche Links an alle Freigeber (alte bleiben gültig).',
 		'**freigabe_erneuern:** Freigabe ist abgelaufen: neue Ablaufzeit, alle alten Links gesperrt (410), neue Links an alle Freigeber. Es wird nie automatisch gesendet.',
+		'**freigabe_nach_fehler:** Versand nach Freigabe ist fehlgeschlagen (z. B. Postfach gesperrt). Ist das Postfach wieder erreichbar (verbindung_pruefen), wird die Freigabe wieder geöffnet und kommt mit neuem Link und Fehlergrund erneut zur Freigabe; alte Links bleiben gesperrt.',
 		'**Trigger:** Aufruf durch EPA-04 (einzeln je Aufgabe). **Eingaben:** aktion, kunde_id, vorgangs_id, freigabe_id, jetzt, referenz. **Ausgabe:** { ergebnis }',
 	].join('\n'), { breite: 900, hoehe: 360 });
 
@@ -147,7 +148,7 @@ const e = $('Bei Aufruf').first().json;
 const config = $('Config laden').first().json.config;
 const f = $input.first().json;
 const jetzt = e.jetzt || new Date().toISOString();
-const r = nachfassen.freigabeAuffrischen({ aktion: e.aktion, freigabe: f && f.id !== undefined ? f : null, config, jetzt });
+const r = nachfassen.freigabeAuffrischen({ aktion: e.aktion, freigabe: f && f.id !== undefined ? f : null, config, jetzt, vorgang: $('Vorgang lesen').first().json.vorgang });
 if (!r.ok) return [{ json: { weiter: false, grund: r.grund } }];
 if (!config.freigeber.length) throw fehlerklassen.epaFehler('KONFIGURATIONSFEHLER', e.vorgangs_id, 'Keine Freigeber konfiguriert');
 return [{ json: {
@@ -158,6 +159,26 @@ return [{ json: {
 	tokens: config.freigeber.map((fg) => ({ freigeber: fg, ...freigabe.tokenErzeugen(crypto) })),
 } }];
 `);
+	// Nach Versandfehler erst prüfen, ob das Postfach wieder erreichbar ist. Sonst nichts tun, nächster Lauf prüft erneut.
+	const postfachNoetig = wf.node('Postfach prüfen nötig?', 'n8n-nodes-base.if', [1210, 320], {
+		conditions: bedingungen([bedingung(`={{ ${A}.weiter === true && ${E}.aktion === 'freigabe_nach_fehler' }}`, { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: {},
+	});
+	const postfach = wf.aufrufDynamisch('Postfach prüfen', [1320, 420], `={{ ${C}.postfach_workflow_id }}`, [
+		['aktion', 'string', 'verbindung_pruefen'],
+		['postfach', 'string', `={{ ${C}.postfach }}`],
+		['graph_id', 'string', ''],
+		['internet_message_id', 'string', ''],
+		['entwurf_id', 'string', ''],
+		['freigabe_id', 'string', ''],
+		['vorgangs_id', 'string', ''],
+		['html', 'string', ''],
+	], { onError: 'continueRegularOutput', alwaysOutputData: true });
+	const postfachOk = wf.code('Postfach auswerten', [1430, 420], [], `
+const r = $input.first().json || {};
+const ok = r.ok === true;
+return [{ json: { ...$('Auffrischen prüfen').first().json, weiter: ok, grund: ok ? '' : 'postfach_noch_gestoert' } }];
+`);
 	const auffrischen = wf.node('Auffrischen?', 'n8n-nodes-base.if', [1320, 200], {
 		conditions: bedingungen([bedingung('={{ $json.weiter }}', { type: 'boolean', operation: 'true', singleValue: true })]),
 		options: {},
@@ -165,9 +186,9 @@ return [{ json: {
 	const fgDaten = wf.code('Freigabe-Daten', [1540, 120], [], `
 return [{ json: $input.first().json.daten }];
 `);
-	// Bedingt auf status = offen: Hat inzwischen jemand entschieden oder kam eine Kundenantwort, passiert nichts.
+	// Bedingt auf status = offen (nach Versandfehler: fehler): Hat inzwischen jemand entschieden oder kam eine Kundenantwort, passiert nichts.
 	const fgSchreiben = wf.tabelle('Freigabe aktualisieren', [1760, 120], 'update', 'epa_freigaben', {
-		bedingungen: [['freigabe_id', 'eq', `={{ ${E}.freigabe_id }}`], ['status', 'eq', 'offen']],
+		bedingungen: [['freigabe_id', 'eq', `={{ ${E}.freigabe_id }}`], ['status', 'eq', `={{ ${E}.aktion === 'freigabe_nach_fehler' ? 'fehler' : 'offen' }}`]],
 	}, { alwaysOutputData: true });
 	const fgOk = wf.node('Freigabe noch offen?', 'n8n-nodes-base.if', [1980, 120], { conditions: existiert("={{ $('Freigabe aktualisieren').first().json.id }}"), options: { looseTypeValidation: true } });
 	const sperren = wf.node('Alte Links sperren?', 'n8n-nodes-base.if', [2200, 40], {
@@ -233,10 +254,10 @@ return [{ json: { zugestellt, nachricht_html: html } }];
 	]);
 	const ergFg = wf.code('Ergebnis: Freigabe', [4400, 40], [], `
 const e = $('Bei Aufruf').first().json;
-return [{ json: { ergebnis: e.aktion === 'freigabe_erneuern' ? 'links_erneuert' : 'freigeber_erinnert', zugestellt: $('Zustellung auswerten').first().json.zugestellt } }];
+return [{ json: { ergebnis: { freigabe_erneuern: 'links_erneuert', freigabe_nach_fehler: 'erneut_zur_freigabe' }[e.aktion] || 'freigeber_erinnert', zugestellt: $('Zustellung auswerten').first().json.zugestellt } }];
 `);
 	const ergFgNein = wf.code('Ergebnis: Freigabe entfällt', [1540, 300], [], `
-const p = $('Auffrischen prüfen').first().json;
+const p = $('Postfach auswerten').isExecuted ? $('Postfach auswerten').first().json : $('Auffrischen prüfen').first().json;
 return [{ json: { ergebnis: 'entfaellt_' + (p.grund || 'nicht_mehr_offen') } }];
 `);
 
@@ -250,7 +271,10 @@ return [{ json: { ergebnis: 'entfaellt_' + (p.grund || 'nicht_mehr_offen') } }];
 	wf.verbinde(eskOk, gesendete, 0);
 	wf.verbinde(eskOk, ergEskNein, 1);
 	wf.kette(gesendete, eskMeldung, eskStatus, eskInfo, ergEsk);
-	wf.kette(fgLesen, pruefen, auffrischen);
+	wf.kette(fgLesen, pruefen, postfachNoetig);
+	wf.verbinde(postfachNoetig, postfach, 0);
+	wf.verbinde(postfachNoetig, auffrischen, 1);
+	wf.kette(postfach, postfachOk, auffrischen);
 	wf.verbinde(auffrischen, fgDaten, 0);
 	wf.verbinde(auffrischen, ergFgNein, 1);
 	wf.kette(fgDaten, fgSchreiben, fgOk);

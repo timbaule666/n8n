@@ -76,8 +76,10 @@ return [{ json: rest }];
 		bedingungen: [['status', 'eq', 'Warten auf Kunde'], ['antwort_frist', 'lt', `={{ ${L}.jetzt }}`]],
 		alle: true,
 	}, { alwaysOutputData: true, executeOnce: true });
+	// Offene Freigaben und solche mit Versandfehler (kommen nach Behebung erneut zur Freigabe)
 	const freigaben = wf.tabelle('Offene Freigaben lesen', [1320, -100], 'get', 'epa_freigaben', {
-		bedingungen: [['status', 'eq', 'offen']],
+		bedingungen: [['status', 'eq', 'offen'], ['status', 'eq', 'fehler']],
+		match: 'anyCondition',
 		alle: true,
 	}, { alwaysOutputData: true, executeOnce: true });
 	const configs = wf.tabelle('Configs lesen', [1540, -100], 'get', 'epa_config_allgemein', { alle: true }, { alwaysOutputData: true, executeOnce: true });

@@ -123,6 +123,7 @@ function seiteMeldung(titel, text, art = 'ok') {
 const ANLASS = Object.freeze({
 	freigabe_erinnerung: 'Erinnerung: Diese Freigabe ist noch offen. Hier ist ein neuer persönlicher Link.',
 	freigabe_erneuern: 'Der bisherige Link ist abgelaufen und gilt nicht mehr. Hier ist ein neuer persönlicher Link.',
+	freigabe_nach_fehler: 'Diese Nachricht wurde wegen eines Fehlers NICHT gesendet. Das Postfach ist wieder erreichbar, bitte erneut freigeben. Die bisherigen Links gelten nicht mehr.',
 });
 
 /**
@@ -133,7 +134,10 @@ const ANLASS = Object.freeze({
 function nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art, anlass, kontext_html: kontext }) {
 	const liste = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}</li>`).join('');
 	const titel = art === 'erinnerung' ? 'Erinnerung an den Kunden freigeben' : 'Rückfrage an den Kunden freigeben';
-	const hinweis = ANLASS[anlass] ? `<i>${esc(ANLASS[anlass])}</i><br>` : '';
+	let hinweis = ANLASS[anlass] ? `<i>${esc(ANLASS[anlass])}</i><br>` : '';
+	if (anlass === 'freigabe_nach_fehler') {
+		hinweis = `<b>🔁 Erneut zur Freigabe: Versand war fehlgeschlagen</b><br>${freigabe.grund ? `Grund: ${esc(freigabe.grund)}<br>` : ''}${hinweis}<br>`;
+	}
 	const link = `<a href="${esc(url)}">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Persönlicher Link, einmal verwendbar, gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;
 	if (kontext && typeof kontext === 'string' && kontext.trim()) {
 		return `${hinweis}${kontext}<br><br><b>${esc(titel)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>` + link;

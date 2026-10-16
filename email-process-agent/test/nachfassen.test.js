@@ -163,3 +163,38 @@ test('Nachricht an Freigeber: Anlass-Hinweis', () => {
 	assert.match(freigabe.nachrichtFreigeber(basis), /^<b>Erinnerung an den Kunden freigeben/);
 	assert.match(freigabe.seiteFormular({ token: 't', freigabe: { ...basis.freigabe, art: 'erinnerung', ablauf: JETZT }, vorgang: { vorgangs_id: 'V-1' }, fehlende: [], text: '', abschluss: '' }), /Erinnerung freigeben/);
 });
+
+test('Versandfehler: nach Wartezeit erneut zur Freigabe, alte Fehler und zu frische nicht', () => {
+	const fehler = (x) => fg({ status: 'fehler', grund: 'Versand fehlgeschlagen: Konto gesperrt', ...x });
+	const vor = (min) => new Date(new Date(JETZT).getTime() - min * 60000).toISOString();
+	const aufgaben = (f) => plan({ freigaben: [f] }).aufgaben;
+	assert.deepEqual(aufgaben(fehler({ updatedAt: vor(5) })), []);
+	assert.equal(aufgaben(fehler({ updatedAt: vor(20) }))[0].aktion, 'freigabe_nach_fehler');
+	assert.deepEqual(aufgaben(fehler({ updatedAt: vor(73 * 60) })), []);
+	// Auch nachts: Die Nachricht war bereits freigegeben, nur der Versand scheiterte
+	assert.equal(plan({ freigaben: [fehler({ updatedAt: '2026-10-14T20:30:00.000Z' })], jetzt: NACHTS }).aufgaben[0].aktion, 'freigabe_nach_fehler');
+	assert.deepEqual(plan({ freigaben: [fehler({ updatedAt: vor(20), kunde_id: 'kx' })] }).uebersprungen.map((u) => u.grund), ['keine_gueltige_config']);
+});
+
+test('Versandfehler: Freigabe wieder öffnen nur, wenn noch aktuell; alte Links sperren', () => {
+	const f = fg({ status: 'fehler', entscheider: 'c@b.de', entscheidung: 'freigegeben', grund: 'x' });
+	const v = { status: 'Eskaliert / Manuell', freigabe_id_aktuell: 'F-1' };
+	const r = n.freigabeAuffrischen({ aktion: 'freigabe_nach_fehler', freigabe: f, config: CONFIG, jetzt: JETZT, vorgang: v });
+	assert.equal(r.ok, true);
+	assert.equal(r.alteLinksSperren, true);
+	assert.deepEqual([r.daten.status, r.daten.entscheider, r.daten.entscheidung, r.daten.grund], ['offen', null, null, null]);
+	assert.equal(new Date(r.ablauf).getTime() - new Date(JETZT).getTime(), CONFIG.freigabe_ablauf_stunden * 3600000);
+	const nein = (x, y) => n.freigabeAuffrischen({ aktion: 'freigabe_nach_fehler', freigabe: { ...f, ...x }, config: CONFIG, jetzt: JETZT, vorgang: { ...v, ...y } }).grund;
+	assert.equal(nein({ status: 'offen' }), 'kein_versandfehler');
+	assert.equal(nein({}, { status: 'Abgeschlossen' }), 'status_geaendert');
+	assert.equal(nein({}, { freigabe_id_aktuell: 'F-2' }), 'veraltet');
+	// Danach darf der Mitarbeiter freigeben: Eskaliert -> Warten auf Kunde
+	assert.equal(pruefeUebergang('Eskaliert / Manuell', 'Warten auf Kunde', 'Mitarbeiter:c@b.de').erlaubt, true);
+});
+
+test('Nachricht an Freigeber nach Versandfehler: Hinweis und Grund, escaped', () => {
+	const html = freigabe.nachrichtFreigeber({ vorgang: { vorgangs_id: 'V-1' }, freigabe: { empfaenger: 'a@b', betreff: 'Re: x', grund: 'Konto <gesperrt>' }, fehlende: [], link: 'https://x/webhook/epa-freigabe?t=a', ablaufText: '16.10.2026', art: 'rueckfrage', anlass: 'freigabe_nach_fehler' });
+	assert.match(html, /^<b>🔁 Erneut zur Freigabe: Versand war fehlgeschlagen<\/b><br>Grund: Konto &lt;gesperrt&gt;/);
+	assert.match(html, /NICHT gesendet/);
+	assert.match(html, /bisherigen Links gelten nicht mehr/);
+});

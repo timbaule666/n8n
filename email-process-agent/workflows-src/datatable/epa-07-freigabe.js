@@ -30,7 +30,7 @@ module.exports = function () {
 		'**Sicherheit:** Token einmalig (nur Hash gespeichert), Ablaufzeit, Freigeber muss noch in der Config stehen. Die Freigabe wird atomar übernommen (bedingtes Update auf status = offen): ein Doppelklick oder zweiter Freigeber bekommt "bereits bearbeitet". Signatur und KI-Hinweis sind nicht änderbar.',
 		'**Versand (C4):** über den Postfach-Workflow des Kunden (postfach_workflow_id): vorher prüfen, ob der Entwurf noch existiert, sonst in Gesendete Elemente suchen → kein Doppelversand. Erst nach bestätigtem Versand: Status "Warten auf Kunde", Rundenzähler +1, Antwortfrist (Geschäftszeiten), Audit mit Freigeber und "bearbeitet". Bei einer Erinnerung (M5): Erinnerungszähler +1, neue Frist = Erinnerungsintervall, Runde bleibt.',
 		'**Links (M5):** Jeder Link hat eine eigene Ablaufzeit. Erneuert EPA-04 eine abgelaufene Freigabe, gelten nur noch die neuen Links (alte → 410).',
-		'**Fehler:** Versand fehlgeschlagen → Freigabe wieder "offen", Link wieder gültig, Seite informiert, danach Fehler an EPA-05 (Vorgang wird gesichert, Alarm). Nach Behebung kann über denselben Link erneut freigegeben werden; EPA-00 verhindert Doppelversand.',
+		'**Fehler:** Versand fehlgeschlagen → Freigabe "fehler" mit Grund, alte Links ungültig, Seite informiert, danach Fehler an EPA-05 (Vorgang wird gesichert, Alarm). Ist das Postfach wieder erreichbar, schickt EPA-04 die Nachricht mit neuem Link erneut zur Freigabe; EPA-00 verhindert Doppelversand.',
 		'**Trigger:** Webhook GET/POST /webhook/epa-freigabe. Muss veröffentlicht sein. Keine Credentials nötig.',
 	].join('\n'), { breite: 920, hoehe: 400 });
 
@@ -182,7 +182,7 @@ return [{ json: { verbraucht_am: new Date().toISOString() } }];
 	const sAuswerten = wf.code('Versand auswerten', [3520, 340], [], `
 const r = $('Entwurf senden').isExecuted ? ($('Entwurf senden').first().json || {}) : {};
 const akt = $('Entwurf aktualisieren').isExecuted ? $('Entwurf aktualisieren').first().json : null;
-const fehler = akt && akt.aktualisiert !== true ? 'Bearbeiteter Text konnte nicht übernommen werden: ' + ((akt.error && (akt.error.message || akt.error)) || 'keine Bestätigung') : (r.gesendet === true ? null : 'Versand fehlgeschlagen: ' + ((r.error && (r.error.message || r.error)) || 'keine Bestätigung'));
+const fehler = akt && akt.aktualisiert !== true ? 'Bearbeiteter Text konnte nicht übernommen werden: ' + ((akt.error && (akt.error.message || akt.error)) || 'keine Bestätigung') : (r.gesendet === true ? null : 'Versand fehlgeschlagen: ' + String((r.error && (r.error.message || r.error)) || 'keine Bestätigung').replace(/\\[EPA:[^\\]]*\\]\\s*/g, ''));
 return [{ json: { gesendet: !fehler, bereits: r.bereits === true, internet_message_id: r.internet_message_id || null, fehler } }];
 `);
 	const sGesendet = wf.node('Gesendet?', 'n8n-nodes-base.if', [3740, 340], {
@@ -241,25 +241,21 @@ return [{ json: { status: 200, html: freigabe.seiteMeldung(was + ' gesendet', (p
 `);
 
 	// fehlgeschlagen
-	// Nichts gesendet: Die Freigabe wird wieder geöffnet und der Link bleibt gültig, damit nach Behebung
-	// (z. B. Postfach entsperrt) erneut freigegeben werden kann. Kein Doppelversand möglich: EPA-00 prüft vor
-	// jedem Versand, ob der Entwurf noch existiert, sonst sucht es in "Gesendete Elemente".
-	const fVorb = wf.code('Versandfehler (Daten)', [3960, 440], [], `
+	// Nichts gesendet: Freigabe "fehler" mit Grund. Alle bisherigen Links gelten nicht mehr. Ist das Postfach wieder
+	// erreichbar, schickt EPA-04 (SW Nachfassen, Aktion freigabe_nach_fehler) die Nachricht mit neuem Link erneut zur
+	// Freigabe. Kein Doppelversand möglich: EPA-00 prüft vor jedem Versand Entwurf bzw. "Gesendete Elemente".
+	const fVorb = wf.code('Versandfehler (Daten)', [3960, 440], ['fehlerklassen'], `
 const fg = $('Freigabe lesen').first().json;
 const p = $('Prüfen').first().json;
 const akt = $('Entwurf aktualisieren').isExecuted ? $('Entwurf aktualisieren').first().json : null;
 // Text so, wie er jetzt im Entwurf steht: bearbeiteter Text nur, wenn er übernommen wurde.
-return [{ json: { status: 'offen', entscheider: null, entscheidung: null, bearbeitet: false, entwurf_text: akt && akt.aktualisiert === true ? p.text : fg.entwurf_text } }];
+return [{ json: { status: 'fehler', grund: fehlerklassen.bereinigeMeldung($('Versand auswerten').first().json.fehler, 200), entwurf_text: akt && akt.aktualisiert === true ? p.text : fg.entwurf_text } }];
 `);
-	const fSchreiben = wf.tabelle('Freigabe wieder öffnen', [4180, 440], 'update', 'epa_freigaben', { bedingungen: [['freigabe_id', 'eq', `={{ ${P}.freigabe_id }}`]] });
-	const fToken = wf.code('Token wieder gültig (Daten)', [4400, 440], [], `
-return [{ json: { verbraucht_am: null } }];
-`);
-	const fTokenSchreiben = wf.tabelle('Token wieder gültig', [4620, 440], 'update', 'epa_freigabe_tokens', { bedingungen: [['id', 'eq', `={{ ${P}.token_id }}`]] });
-	const fSeite = wf.code('Seite: Versand fehlgeschlagen', [4840, 440], ['freigabe'], `
+	const fSchreiben = wf.tabelle('Freigabe als fehlgeschlagen vermerken', [4180, 440], 'update', 'epa_freigaben', { bedingungen: [['freigabe_id', 'eq', `={{ ${P}.freigabe_id }}`]] });
+	const fSeite = wf.code('Seite: Versand fehlgeschlagen', [4400, 440], ['freigabe'], `
 const p = $('Prüfen').first().json;
-return [{ json: { status: 502, nachmelden: true, vorgangs_id: p.vorgangs_id, meldung: $('Versand auswerten').first().json.fehler + ' (Freigabe wieder offen: nach Behebung über denselben Link erneut freigeben)',
-	html: freigabe.seiteMeldung('Versand fehlgeschlagen', 'Die Mail wurde nicht gesendet. Sie erhalten dazu eine Fehlermeldung mit dem Grund. Die Freigabe ist wieder offen: Sobald das Problem behoben ist, können Sie über denselben Link erneut freigeben. Es wird nichts doppelt gesendet.', 'fehler') } }];
+return [{ json: { status: 502, nachmelden: true, vorgangs_id: p.vorgangs_id, meldung: $('Versand auswerten').first().json.fehler + ' (kommt nach Behebung automatisch mit neuem Link erneut zur Freigabe)',
+	html: freigabe.seiteMeldung('Versand fehlgeschlagen', 'Die Mail wurde nicht gesendet. Sie erhalten dazu eine Fehlermeldung mit dem Grund. Dieser Link gilt nicht mehr: Sobald das Problem behoben ist, kommt die Nachricht automatisch mit einem neuen Link erneut zur Freigabe. Es wird nichts doppelt gesendet.', 'fehler') } }];
 `);
 
 	// ---------------------------------------------------------------- Antwort
@@ -307,7 +303,7 @@ throw fehlerklassen.epaFehler('UPSTREAM_FEHLER', j.vorgangs_id || null, j.meldun
 	wf.verbinde(sGesendet, gVorb, 0);
 	wf.verbinde(sGesendet, fVorb, 1);
 	wf.kette(gVorb, gSchreiben, gStatus, gConfig, gFrist, gVorgang, gSeite, antwort);
-	wf.kette(fVorb, fSchreiben, fToken, fTokenSchreiben, fSeite, antwort);
+	wf.kette(fVorb, fSchreiben, fSeite, antwort);
 	wf.kette(antwort, nachmelden);
 	wf.verbinde(nachmelden, ausloesen, 0);
 	return wf;

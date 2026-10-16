@@ -233,7 +233,7 @@ async function freigabeSzenarien(ctx) {
 	});
 
 	// ---------------------------------------------------------------- F10–F11 Versandfehler
-	await zeile('F10', 'Versandfehler: nichts gesendet, Seite 502, Freigabe wieder offen, EPA-05 sichert Vorgang, erneute Freigabe sendet genau einmal', async (check) => {
+	await zeile('F10', 'Versandfehler: nichts gesendet, Seite 502, Freigabe "fehler" (alter Link gesperrt), EPA-05 sichert Vorgang', async (check) => {
 		const a = await lueckenMail('F10');
 		const vorher = await fehlerMax();
 		mock.zustand.sendeFehler = 'vorher';
@@ -247,16 +247,11 @@ async function freigabeSzenarien(ctx) {
 		await warte(4000);
 		check('HTTP', 502, s.status);
 		check('Nicht gesendet', 'ja', !mock.zustand.entwuerfe.get(a.freigabe.entwurf_id).gesendet ? 'ja' : 'nein');
-		check('Freigabe', 'offen', (await freigabe(a.freigabe.freigabe_id)).status);
+		check('Freigabe', 'fehler', (await freigabe(a.freigabe.freigabe_id)).status);
 		const neu = (await tabelle('epa_fehler_log')).filter((z) => z.id > vorher && z.vorgangs_id === a.vid && z.node !== 'Teams-Nachricht senden');
 		check('Fehlerlog', '502 UPSTREAM_FEHLER', neu[0] ? `${neu[0].statuscode} ${neu[0].fehlercode}` : 'keiner');
 		check('Status', 'Eskaliert / Manuell', (await vorgang(a.vid)).status);
-		check('Erneuter Klick zeigt Formular', 200, (await seite(link)).status);
-		const sentVorher = mock.zustand.gesendet.length;
-		const nochmal = await seite(link, { t: tokenAus(link), aktion: 'senden', text: a.freigabe.entwurf_text, grund: '' });
-		check('Erneute Freigabe', 200, nochmal.status);
-		check('Genau ein Versand', 1, mock.zustand.gesendet.length - sentVorher);
-		check('Status danach', 'Warten auf Kunde', (await vorgang(a.vid)).status);
+		check('Erneuter Klick', 409, (await seite(link)).status);
 	});
 
 	await zeile('F11', 'Versand erfolgt, Antwort ging verloren: per Gesendete Elemente erkannt, genau ein Versand', async (check) => {
