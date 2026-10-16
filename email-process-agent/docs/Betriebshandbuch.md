@@ -43,6 +43,8 @@ Stand 2026-10-14 (M6). Für die Person, die das System betreut: Was läuft wann,
 | 422 EXTRAKTION_UNGUELTIG | KI hat zweimal kein gültiges Ergebnis geliefert | Vorgang ist „Eskaliert / Manuell“: Mail selbst lesen und bearbeiten |
 | 429/502/503/504 | Anbieter überlastet oder nicht erreichbar | wurde automatisch wiederholt. Bei Häufung Anbieterstatus prüfen. |
 
+**Versand nach Freigabe fehlgeschlagen** (z. B. Postfach vom Anbieter gesperrt): Es wurde nichts gesendet. Die Freigabe steht auf „fehler“ (mit Grund), alle bisherigen Links gelten nicht mehr. EPA-04 prüft stündlich, ob das Postfach wieder erreichbar ist (15 Minuten bis 72 Stunden nach dem Fehler). Dann kommt die Nachricht mit „🔁 Erneut zur Freigabe“, Grund und neuem Link wieder an die Freigeber. Nach der Freigabe geht der Vorgang von „Eskaliert / Manuell“ zurück auf „Warten auf Kunde“. Doppelversand ist ausgeschlossen, weil EPA-00 vor jedem Versand den Entwurf bzw. „Gesendete Elemente“ prüft. Grenze: Die Prüfung liest den Posteingang. Ist nur der Versand gesperrt, kann der neue Versuch erneut scheitern; dann wiederholt sich der Ablauf.
+
 **Mail erneut verarbeiten:** Nach einem Fehler gilt die Mail nicht als „verarbeitet“. Die fehlgeschlagene Ausführung von EPA-00 in n8n erneut ausführen; ein Duplikat entsteht nicht.
 
 ## 5. Häufige Handgriffe
