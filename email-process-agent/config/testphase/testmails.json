@@ -2038,5 +2038,39 @@
   ],
   "soll": {},
   "notiz": "Antwort an H06 -> PLZ korrigiert"
+ },
+ "H30": {
+  "nr": "H30",
+  "art": "neu",
+  "betreff": "Zwei Fahrten nächste Woche",
+  "absender_name": "Jörg Lindner",
+  "text": "Hallo,\n\nwir benötigen zwei Fahrten:\n1) 15.12.2026 von 44135 Dortmund nach 48143 Münster, 3 Paletten, 900 kg\n2) 16.12.2026 von 48143 Münster nach 49074 Osnabrück, 2 Paletten, 600 kg\n\nTelefon 0231 5551530\nJörg Lindner",
+  "erwartet": [
+   "bereit"
+  ],
+  "soll": {},
+  "notiz": "Retest H03: Hinweis 'mehrere Aufträge' muss in der Meldung stehen"
+ },
+ "H31": {
+  "nr": "H31",
+  "art": "neu",
+  "betreff": "Quote request Bonn to Berlin",
+  "absender_name": "Sarah Collins",
+  "text": "Hello,\n\ncould you quote a shipment from 53111 Bonn to 10115 Berlin on 03/12/2026? 2 pallets, 700 kg. Phone +44 20 5551531.\n\nKind regards\nSarah Collins",
+  "erwartet": [
+   "bereit"
+  ],
+  "soll": {},
+  "notiz": "Retest H07: Hinweis 'Datum mehrdeutig' muss in der Meldung stehen"
+ },
+ "H32": {
+  "nr": "H32",
+  "art": "antwort",
+  "text": "Guten Tag,\n\nwir müssen den Transport leider absagen, der Kunde hat storniert.\n\nMit freundlichen Grüßen\nClaudia Fischer",
+  "erwartet": [
+   "antwort_keine_daten"
+  ],
+  "soll": {},
+  "notiz": "Retest H22: deutliche Storno-Meldung"
  }
 }
