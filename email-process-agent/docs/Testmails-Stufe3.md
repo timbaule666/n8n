@@ -680,3 +680,7 @@ Wegen der eingeschränkten Outlook-Zustellung (seit der Kontosperre kommen Rück
 | H22 Stornierung | deutlich melden | ❌ V-0096: als „Antwort ohne neue Angaben (z. B. Vertröstung)“ gemeldet |
 | H23 nur Dank | keine Rückfrage | ✅ V-0094 |
 | H24/H25 Korrekturen | bereit | ✅ V-0109, V-0111 |
+
+**Nachtest nach festen Hinweisen (Commit be26a31):** H30 zwei Fahrten → „⚠️ möglicherweise mehrere Aufträge (3 verschiedene Postleitzahlen)“ (V-0124). H31 „03/12/2026“ → „⚠️ Datum ist mehrdeutig“ (V-0123). H32 Absage → Meldung beginnt mit „⚠️ Mögliche Stornierung / Absage – bitte prüfen“ samt Zitat (V-0110). Alle drei ✅.
+
+**Zustelltest Outlook → Gmail (16.10.2026, 09:59):** Microsoft nimmt die Mail an (HTTP 202), nach 90 Sekunden ist sie in Gmail nicht vorhanden (alle Ordner). Ausgehende Mails des Testpostfachs werden seit der Kontosperre um 06:24 nicht zugestellt.
