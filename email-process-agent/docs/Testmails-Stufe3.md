@@ -634,3 +634,23 @@ Die KI hat keine Werkzeuge. Status, Versand und Löschen steuert nur der Code, d
 | N15 | „Telefon: folgt“ | V-2026-0104 | Lücken | ✅ Platzhalter nicht übernommen, Rückfrage Telefon |
 
 Ergebnis: 15/15 wie erwartet, ein Befund (N08 Anrede bei Weiterleitung).
+
+### Unterbrechung: Sperre des Testpostfachs (16.10.2026, 06:24)
+
+Microsoft hat timbaule666@outlook.com wegen vieler automatischer Mails gesperrt (`403 ErrorAccountSuspend`). Der Versand der Rückfrage V-2026-0100 schlug fehl.
+
+**Verhalten des Agenten:**
+- „Gesendet“ wurde nicht gesetzt (Prüfung in „Gesendete Elemente“), die Freigabe steht auf „fehler“.
+- Der Vorgang ging auf „Eskaliert / Manuell“, der Fehler wurde gemeldet.
+- Nichts wurde doppelt gesendet.
+
+Nach der Entsperrung durch Tim funktionieren Lesen und Senden wieder (Runde 2 von V-2026-0101 gesendet).
+
+**Folgerung für den Echtbetrieb:** ein Microsoft-365-Geschäftspostfach verwenden.
+
+### Runde 2: Antworten
+
+| Nr | Vorgang | Ergebnis | Bewertung |
+|---|---|---|---|
+| N15b (Telefon) | V-2026-0104 | antwort_bereit | ✅ |
+| N09b („melde mich morgen“) | V-2026-0101 | antwort_luecken, neue Rückfrage | ❌ Befund: Die KI las nur den bekannten Namen aus der Signatur erneut. Das zählte als neue Angabe. **Behoben** (Commit cdba68b): Nur neue Werte, Widersprüche und Versuche für offene Felder zählen. |
