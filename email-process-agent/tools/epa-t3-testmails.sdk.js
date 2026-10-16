@@ -14,11 +14,17 @@ const senden = node({ type: "n8n-nodes-base.gmail", version: 2.2, config: { name
 
 const sendenPdf = node({ type: "n8n-nodes-base.gmail", version: 2.2, config: { name: "Neue Mail mit PDF senden", parameters: { resource: "message", operation: "send", sendTo: expr("{{ $json.an }}"), subject: expr("{{ $json.betreff }}"), emailType: "text", message: expr("{{ $json.text }}"), options: { appendAttribution: false, senderName: expr("{{ $json.absender_name }}"), attachmentsUi: { attachmentsBinary: [{ property: "data" }] } } }, credentials: { gmailOAuth2: { id: "Oi8TlgGarWUwJ8OM", name: "Gmail account" } } } });
 
-const suchen = node({ type: "n8n-nodes-base.gmail", version: 2.2, config: { name: "Rückfrage im Gmail suchen", parameters: { resource: "message", operation: "getAll", returnAll: false, limit: 1, simple: true, filters: { q: expr("{{ 'in:anywhere from:timbaule666@outlook.com subject:' + $json.vorgang }}"), readStatus: "both" } }, credentials: { gmailOAuth2: { id: "Oi8TlgGarWUwJ8OM", name: "Gmail account" } } } });
+const suchen = node({ type: "n8n-nodes-base.gmail", version: 2.2, config: { name: "Rückfrage im Gmail suchen", alwaysOutputData: true, parameters: { resource: "message", operation: "getAll", returnAll: false, limit: 1, simple: true, filters: { q: expr("{{ 'in:anywhere from:timbaule666@outlook.com subject:' + $json.vorgang }}"), readStatus: "both" } }, credentials: { gmailOAuth2: { id: "Oi8TlgGarWUwJ8OM", name: "Gmail account" } } } });
 
 const antworten = node({ type: "n8n-nodes-base.gmail", version: 2.2, config: { name: "Auf Rückfrage antworten", parameters: { resource: "message", operation: "reply", messageId: expr("{{ $json.id }}"), emailType: "text", message: expr("{{ $('Mails vorbereiten').item.json.text }}"), options: { appendAttribution: false, replyToSenderOnly: true } }, credentials: { gmailOAuth2: { id: "Oi8TlgGarWUwJ8OM", name: "Gmail account" } } } });
+
+// Kommt die Rückfrage nicht in Gmail an (z. B. Outlook-Konto nach Sperre eingeschränkt), geht die Antwort als neue Mail
+// mit Vorgangs-ID im Betreff raus. Der Agent ordnet sie über Absender + Vorgangs-ID zu (ohne Thread-Bezug).
+const gefunden = node({ type: "n8n-nodes-base.if", version: 2.2, config: { name: "Rückfrage gefunden?", parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "loose" }, conditions: [{ leftValue: expr("{{ !!$json.id }}"), operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} } } });
+
+const neueAntwort = node({ type: "n8n-nodes-base.gmail", version: 2.2, config: { name: "Antwort als neue Mail", parameters: { resource: "message", operation: "send", sendTo: "timbaule666@outlook.com", subject: expr("{{ 'AW: Ihre Rückfrage [' + $('Mails vorbereiten').item.json.vorgang + ']' }}"), emailType: "text", message: expr("{{ $('Mails vorbereiten').item.json.text }}"), options: { appendAttribution: false, senderName: expr("{{ $('Mails vorbereiten').item.json.absender_name }}") } }, credentials: { gmailOAuth2: { id: "Oi8TlgGarWUwJ8OM", name: "Gmail account" } } } });
 
 export default workflow("epa-t3", "EPA-T3 Testmails senden (Test) *")
   .add(start)
   .to(vorbereiten)
-  .to(weiche.onCase(0, senden).onCase(1, sendenPdf).onCase(2, suchen.to(antworten)));
+  .to(weiche.onCase(0, senden).onCase(1, sendenPdf).onCase(2, suchen.to(gefunden.onTrue(antworten).onFalse(neueAntwort))));
