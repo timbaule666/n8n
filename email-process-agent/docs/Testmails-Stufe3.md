@@ -654,3 +654,29 @@ Nach der Entsperrung durch Tim funktionieren Lesen und Senden wieder (Runde 2 vo
 |---|---|---|---|
 | N15b (Telefon) | V-2026-0104 | antwort_bereit | ✅ |
 | N09b („melde mich morgen“) | V-2026-0101 | antwort_luecken, neue Rückfrage | ❌ Befund: Die KI las nur den bekannten Namen aus der Signatur erneut. Das zählte als neue Angabe. **Behoben** (Commit cdba68b): Nur neue Werte, Widersprüche und Versuche für offene Felder zählen. |
+
+## Härtetest (16.10.2026, H01–H25)
+
+Runde 1: 16 neue Mails als Schwall (H14 doppelt). Runde 2: 6 Antworten fast gleichzeitig. Keine fehlgeschlagene Ausführung.
+Wegen der eingeschränkten Outlook-Zustellung (seit der Kontosperre kommen Rückfragen nicht in Gmail an) gingen Antworten als neue Mail mit Vorgangs-ID im Betreff raus; Zuordnung jeweils eindeutig (85 Punkte).
+
+| Fall | Erwartung | Ergebnis |
+|---|---|---|
+| H01 Fließtext, 2,5 t | bereit, 2500 kg | ✅ V-0107 |
+| H02 Schlüssel-Wert, 1.150 kg, Gitterboxen | bereit | ✅ V-0114, Ladungsart „Sonstiges“ (Konfidenz 0,5, Warnung) |
+| H03 zwei Aufträge in einer Mail | sichtbar machen | ❌ V-0108: nur der erste Auftrag erfasst, kein Hinweis auf den zweiten |
+| H04 Datum in der Vergangenheit | Rückfrage | ✅ V-0109, nach Antwort H24 bereit |
+| H05 lange Signatur, Fax | Telefon statt Fax | ✅ V-0110 |
+| H06 vierstellige PLZ | Rückfrage | ✅ V-0111 (KI ergänzte eine Ziffer, Prüfung hat es abgefangen), nach H25 bereit |
+| H07 Englisch, 12/11/2026 | Datum prüfen | ⚠️ V-0115: als 12.11. übernommen, Mehrdeutigkeit nicht gemeldet |
+| H08 versteckte Injection | Systemwarnung | ✅ V-0112, verdacht_manipulation, Daten korrekt |
+| H09 Newsletter, H10 Rechnung, H11 leer | ignoriert | ✅ V-0113, V-0116, V-0117 |
+| H12 Französisch | verarbeiten | ✅ V-0119 (Sprache fr; Rückfrage auf Französisch nicht getestet) |
+| H14 Dublette | nicht doppelt | ✅ V-0120 bereit, Kopie V-0122 „Zuordnung unklar“ |
+| H15 Sonderzeichen/HTML/Emoji | sauber | ✅ V-0118, Telegram ohne Fehler |
+| H16 „morgen“, nur Vorname | Datum auflösen | ✅ V-0121 → 17.10.2026 |
+| H20 Antwort auf Runde 2 (Bayern) | bereit | ✅ V-0093 |
+| H21 nachträgliche Datumsänderung | Widerspruch | ✅ V-0097 Widerspruch Abholdatum, nicht übernommen |
+| H22 Stornierung | deutlich melden | ❌ V-0096: als „Antwort ohne neue Angaben (z. B. Vertröstung)“ gemeldet |
+| H23 nur Dank | keine Rückfrage | ✅ V-0094 |
+| H24/H25 Korrekturen | bereit | ✅ V-0109, V-0111 |
