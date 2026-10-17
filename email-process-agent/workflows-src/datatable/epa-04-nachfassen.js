@@ -15,6 +15,7 @@ module.exports = function () {
 		'**Zweck:** Stündlich überfällige Vorgänge und offene Freigaben finden und je Fall genau eine Aufgabe an "EPA SW Nachfassen" geben. Entschieden wird im Code (src/nachfassen.js), nicht durch die KI.',
 		'**Fall 1:** "Warten auf Kunde", Frist abgelaufen, Erinnerungen < anzahl_erinnerungen → Erinnerungsentwurf mit Freigabe (EPA-02). Nach dem Versand: Frist = erinnerung_intervall_stunden, Zähler +1, Status wieder "Warten auf Kunde".',
 		'**Fall 2:** Alle Erinnerungen gesendet und Frist wieder abgelaufen → "Eskaliert / Manuell" und Teams-Nachricht: bitte telefonisch kontaktieren.',
+		'**Direkt in Outlook gesendet:** Jede offene Freigabe wird in jedem Lauf zuerst geprüft (versand_pruefen): Liegt ihr Entwurf schon in "Gesendete Elemente", vermerkt SW Nachfassen den Versand und der Vorgang wartet auf den Kunden.',
 		'**Freigeber:** Nach freigabe_erinnerung_stunden Erinnerung mit neuem Link, nach freigabe_ablauf_stunden neue Links (alte ungültig). Nie automatischer Versand.',
 		'**Geschäftszeiten:** Aufgaben eines Kunden laufen nur innerhalb seiner Geschäftszeiten (inkl. Feiertage); außerhalb wird nichts verloren, der nächste Lauf holt es nach.',
 		'**Lauf-Lock:** Zeile "' + LOCK_SCHLUESSEL + '" in epa_system_status, atomar übernommen (bedingtes Update auf lock_bis < jetzt). Überlappende Läufe brechen sofort ab. Max. 50 Aufgaben je Lauf, der Rest folgt im nächsten Lauf.',
@@ -104,12 +105,13 @@ const plan = nachfassen.planen({ vorgaenge: zeilen('Überfällige Vorgänge lese
 return [{ json: { ...plan, ungueltige_configs: ungueltig } }];
 `);
 	const vorhanden = wf.node('Aufgaben vorhanden?', 'n8n-nodes-base.if', [2200, -100], {
-		conditions: bedingungen([bedingung('={{ $json.aufgaben.length }}', { type: 'number', operation: 'gt' }, 0)]),
+		conditions: bedingungen([bedingung('={{ $json.aufgaben.length + ($json.pruefungen || []).length }}', { type: 'number', operation: 'gt' }, 0)]),
 		options: {},
 	});
-	const aufteilen = wf.code('Aufgaben aufteilen', [2420, -180], [], `
+	const aufteilen = wf.code('Aufgaben aufteilen', [2420, -180], ['nachfassen'], `
 const l = $('Lauf vorbereiten').first().json;
-return $input.first().json.aufgaben.map((a) => ({ json: { ...a, jetzt: l.jetzt, referenz: 'EPA-04:' + l.lauf_id } }));
+// Erst die Versandprüfungen, dann die Aufgaben: Eine direkt in Outlook gesendete Nachricht bekommt so keine Erinnerung mehr.
+return nachfassen.ausfuehrungen($input.first().json).map((a) => ({ json: { ...a, jetzt: l.jetzt, referenz: 'EPA-04:' + l.lauf_id } }));
 `);
 	// Je Aufgabe ein eigener Aufruf: ein Fehler bei einem Vorgang hält die anderen nicht auf (Fehler protokolliert EPA-05).
 	const ausfuehren = wf.aufruf('Nachfassen ausführen', [2640, -180], 'EPA SW Nachfassen', [

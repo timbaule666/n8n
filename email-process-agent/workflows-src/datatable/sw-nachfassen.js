@@ -22,6 +22,7 @@ module.exports = function () {
 		'**eskalation (Fall 2):** Status "Eskaliert / Manuell" (Auslöser Cronjob, mit Versionsprüfung) und Teams-Nachricht "Kunde reagiert seit N Tagen nicht … bitte telefonisch kontaktieren" mit Kontaktdaten.',
 		'**freigabe_erinnerung:** Freigabe ist seit freigabe_erinnerung_stunden offen: neue persönliche Links an alle Freigeber (alte bleiben gültig).',
 		'**freigabe_erneuern:** Freigabe ist abgelaufen: neue Ablaufzeit, alle alten Links gesperrt (410), neue Links an alle Freigeber. Es wird nie automatisch gesendet.',
+		'**versand_pruefen:** Offene Freigabe: Liegt der Entwurf schon in "Gesendete Elemente" (jemand hat ihn direkt in Outlook gesendet)? Dann Freigabe "gesendet" (entscheidung manuell_gesendet), Links gesperrt, Status "Warten auf Kunde" mit Antwortfrist, Meldung im Kanal. Sonst nichts.',
 		'**freigabe_nach_fehler:** Versand nach Freigabe ist fehlgeschlagen (z. B. Postfach gesperrt). Ist das Postfach wieder erreichbar (verbindung_pruefen), wird die Freigabe wieder geöffnet und kommt mit neuem Link und Fehlergrund erneut zur Freigabe; alte Links bleiben gesperrt.',
 		'**Trigger:** Aufruf durch EPA-04 (einzeln je Aufgabe). **Eingaben:** aktion, kunde_id, vorgangs_id, freigabe_id, jetzt, referenz. **Ausgabe:** { ergebnis }',
 	].join('\n'), { breite: 900, hoehe: 360 });
@@ -54,6 +55,7 @@ module.exports = function () {
 				['erinnerung', 'equals', 'erinnerung'],
 				['eskalation', 'equals', 'eskalation'],
 				['freigabe', 'startsWith', 'freigabe_'],
+				['versand', 'equals', 'versand_pruefen'],
 			].map(([key, operation, wert]) => ({
 				conditions: bedingungen([bedingung(`={{ ${E}.aktion }}`, { type: 'string', operation }, wert)]),
 				renameOutput: true,
@@ -261,11 +263,121 @@ const p = $('Postfach auswerten').isExecuted ? $('Postfach auswerten').first().j
 return [{ json: { ergebnis: 'entfaellt_' + (p.grund || 'nicht_mehr_offen') } }];
 `);
 
+	// ---------------------------------------------------------------- Versand prüfen: direkt in Outlook gesendet?
+	const vLesen = wf.tabelle('Freigabe lesen (Versand)', [880, 640], 'get', 'epa_freigaben', {
+		bedingungen: [['freigabe_id', 'eq', `={{ ${E}.freigabe_id || '__keine__' }}`], ['kunde_id', 'eq', `={{ ${E}.kunde_id }}`]],
+	}, { alwaysOutputData: true });
+	const vNoetig = wf.node('Freigabe offen?', 'n8n-nodes-base.if', [1100, 640], {
+		conditions: bedingungen([bedingung("={{ $json.status === 'offen' && Boolean($json.entwurf_id) }}", { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: {},
+	});
+	const vPostfach = wf.aufrufDynamisch('Gesendete Elemente prüfen', [1320, 560], `={{ ${C}.postfach_workflow_id }}`, [
+		['aktion', 'string', 'versand_pruefen'],
+		['postfach', 'string', `={{ ${C}.postfach }}`],
+		['graph_id', 'string', ''],
+		['internet_message_id', 'string', ''],
+		['entwurf_id', 'string', ''],
+		['freigabe_id', 'string', `={{ ${E}.freigabe_id }}`],
+		['vorgangs_id', 'string', `={{ ${E}.vorgangs_id }}`],
+		['html', 'string', ''],
+	], { onError: 'continueRegularOutput', alwaysOutputData: true });
+	const vAuswerten = wf.code('Versand auswerten', [1540, 560], ['nachfassen'], `
+const r = nachfassen.manuellGesendet({ freigabe: $('Freigabe lesen (Versand)').first().json, pruefung: $input.first().json });
+return [{ json: r.ok ? { weiter: true, daten: r.daten } : { weiter: false, grund: r.grund } }];
+`);
+	const vGesendet = wf.node('Direkt gesendet?', 'n8n-nodes-base.if', [1760, 560], {
+		conditions: bedingungen([bedingung('={{ $json.weiter }}', { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: {},
+	});
+	const vDaten = wf.code('Gesendet-Daten', [1980, 480], [], `
+return [{ json: $input.first().json.daten }];
+`);
+	// Bedingt auf status = offen: Hat inzwischen jemand über den Link entschieden, passiert nichts.
+	const vSchreiben = wf.tabelle('Freigabe als gesendet vermerken', [2200, 480], 'update', 'epa_freigaben', {
+		bedingungen: [['freigabe_id', 'eq', `={{ ${E}.freigabe_id }}`], ['status', 'eq', 'offen']],
+	}, { alwaysOutputData: true });
+	const vOk = wf.node('Vermerkt?', 'n8n-nodes-base.if', [2420, 480], { conditions: existiert("={{ $('Freigabe als gesendet vermerken').first().json.id }}"), options: { looseTypeValidation: true } });
+	const vSperrDaten = wf.code('Sperrdaten (Versand)', [2640, 400], [], `
+return [{ json: { ablauf: new Date().toISOString() } }];
+`);
+	const vSperren = wf.tabelle('Links sperren (Versand)', [2860, 400], 'update', 'epa_freigabe_tokens', {
+		bedingungen: [['freigabe_id', 'eq', `={{ ${E}.freigabe_id }}`], ['verbraucht_am', 'isEmpty']],
+	}, { alwaysOutputData: true, executeOnce: true });
+	const vStatus = wf.aufruf('Status: Warten auf Kunde (Outlook)', [3080, 400], 'EPA SW Status setzen', [
+		['kunde_id', 'string', `={{ ${E}.kunde_id }}`],
+		['vorgangs_id', 'string', `={{ ${E}.vorgangs_id }}`],
+		['neuer_status', 'string', 'Warten auf Kunde'],
+		['ausloeser', 'string', 'Mitarbeiter:Outlook (direkt gesendet)'],
+		['details', 'object', `={{ { freigabe_id: ${E}.freigabe_id, art: $('Freigabe lesen (Versand)').first().json.art, runde: $('Freigabe lesen (Versand)').first().json.runde, manuell_gesendet: true } }}`],
+		['referenz', 'string', `={{ ${E}.freigabe_id }}`],
+		['erwartete_version', 'number', '={{ null }}'],
+		['nur_wenn_erlaubt', 'boolean', '={{ false }}'],
+	], { executeOnce: true });
+	const vFrist = wf.code('Frist berechnen (Versand)', [3300, 400], ['fristen'], `
+const config = $('Config laden').first().json.config;
+const f = $('Freigabe lesen (Versand)').first().json;
+const v = $('Vorgang lesen').first().json.vorgang;
+const g = $('Versand auswerten').first().json.daten;
+// Wie nach einer Freigabe über den Link (EPA-07); Frist ab dem tatsächlichen Versand.
+const daten = f.art === 'erinnerung'
+	? { antwort_frist: fristen.berechneFrist(g.gesendet_am, config.erinnerung_intervall_stunden, config), erinnerungen_gesendet: Number(v.erinnerungen_gesendet || 0) + 1 }
+	: { rundenzaehler: Number(f.runde), antwort_frist: fristen.berechneFrist(g.gesendet_am, config.frist_stunden, config), erinnerungen_gesendet: 0 };
+if (g.gesendet_message_id) daten.neue_message_ids = [g.gesendet_message_id];
+return [{ json: { daten, version: $input.first().json.version } }];
+`);
+	const vVorgang = wf.aufruf('Vorgang nach Versand aktualisieren', [3520, 400], 'EPA SW Vorgang verwalten', [
+		['aktion', 'string', 'aktualisieren'],
+		['kunde_id', 'string', `={{ ${E}.kunde_id }}`],
+		['vorgangs_id', 'string', `={{ ${E}.vorgangs_id }}`],
+		['daten', 'object', '={{ $json.daten }}'],
+		['erwartete_version', 'number', '={{ $json.version }}'],
+		['referenz', 'string', `={{ ${E}.freigabe_id }}`],
+		['lock_sekunden', 'number', '={{ null }}'],
+	]);
+	const vMeldung = wf.code('Meldung: direkt gesendet', [3740, 400], ['nachfassen'], `
+const config = $('Config laden').first().json.config;
+const f = $('Freigabe lesen (Versand)').first().json;
+const g = $('Versand auswerten').first().json.daten;
+const frist = $('Frist berechnen (Versand)').first().json.daten.antwort_frist;
+const fmt = (t) => DateTime.fromISO(t).setZone(config.zeitzone).toFormat('dd.LL.yyyy, HH:mm');
+return [{ json: { nachricht_html: nachfassen.meldungManuellGesendet({ vorgang: $('Vorgang lesen').first().json.vorgang, freigabe: f, gesendetText: 'am ' + fmt(g.gesendet_am), fristText: fmt(frist) }) } }];
+`);
+	const vInfo = wf.aufruf('Kanal informieren (Versand)', [3960, 400], 'EPA SW Benachrichtigen', [
+		['kunde_id', 'string', `={{ ${E}.kunde_id }}`],
+		['vorgangs_id', 'string', `={{ ${E}.vorgangs_id }}`],
+		['team_id', 'string', `={{ ${C}.benachrichtigung.team_id }}`],
+		['channel_id', 'string', `={{ ${C}.benachrichtigung.channel_id }}`],
+		['kanal', 'string', `={{ ${C}.benachrichtigung.kanal }}`],
+		['chat_id', 'string', `={{ ${C}.benachrichtigung.chat_id || '' }}`],
+		['telegram_workflow_id', 'string', `={{ ${C}.benachrichtigung.telegram_workflow_id || '' }}`],
+		['nachricht_html', 'string', '={{ $json.nachricht_html }}'],
+		['anlass', 'string', 'manuell_gesendet'],
+	]);
+	const vErg = wf.code('Ergebnis: direkt gesendet', [4180, 400], [], `
+return [{ json: { ergebnis: 'manuell_gesendet' } }];
+`);
+	const vErgNein = wf.code('Ergebnis: Versandprüfung', [1980, 680], [], `
+const a = $('Versand auswerten').isExecuted ? $('Versand auswerten').first().json : { grund: 'nicht_mehr_offen' };
+const grund = $('Vermerkt?').isExecuted && a.weiter ? 'inzwischen_entschieden' : a.grund;
+return [{ json: { ergebnis: grund === 'nicht_gesendet' ? 'nicht_gesendet' : 'entfaellt_' + grund } }];
+`);
+
 	wf.kette(trigger, config, vorgang, weiche);
 	wf.verbinde(weiche, erinnerung, 0);
 	wf.verbinde(weiche, eskPruefen, 1);
 	wf.verbinde(weiche, fgLesen, 2);
-	wf.verbinde(weiche, unbekannt, 3);
+	wf.verbinde(weiche, vLesen, 3);
+	wf.verbinde(weiche, unbekannt, 4);
+	wf.kette(vLesen, vNoetig);
+	wf.verbinde(vNoetig, vPostfach, 0);
+	wf.verbinde(vNoetig, vErgNein, 1);
+	wf.kette(vPostfach, vAuswerten, vGesendet);
+	wf.verbinde(vGesendet, vDaten, 0);
+	wf.verbinde(vGesendet, vErgNein, 1);
+	wf.kette(vDaten, vSchreiben, vOk);
+	wf.verbinde(vOk, vSperrDaten, 0);
+	wf.verbinde(vOk, vErgNein, 1);
+	wf.kette(vSperrDaten, vSperren, vStatus, vFrist, vVorgang, vMeldung, vInfo, vErg);
 	wf.kette(erinnerung, ergErinnerung);
 	wf.kette(eskPruefen, eskOk);
 	wf.verbinde(eskOk, gesendete, 0);

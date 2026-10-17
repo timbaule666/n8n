@@ -54,6 +54,7 @@ Stand 2026-10-14 (M6). Für die Person, die das System betreut: Was läuft wann,
 - **Vorgang abschließen:** Status auf „Abgeschlossen“ setzen (Mitarbeiter-Auslöser). Danach greift nach `aufbewahrung_tage` der Löschjob.
 - **Freigeber ändern:** `freigeber` (JSON-Liste) in der Config. Wer dort nicht mehr steht, kann keine offenen Links mehr nutzen (403).
 - **System anhalten (Notfall):** EPA-00-Kopien „unpublish“ (es werden keine Mails mehr abgeholt). Zusätzlich EPA-04 (keine Erinnerungen) und EPA-07 (keine Freigaben). Eingehende Mails bleiben im Postfach und werden nach dem Wiedereinschalten abgeholt.
+- **Entwurf direkt in Outlook gesendet:** Mitarbeiter dürfen einen Rückfrage-Entwurf auch direkt im Postfach („Entwürfe“) öffnen, ändern und senden. EPA-04 erkennt das beim nächsten stündlichen Lauf an der Freigabe-Kennung in „Gesendete Elemente“: Die Freigabe gilt als gesendet (`entscheidung = manuell_gesendet`), alle Links werden gesperrt, der Vorgang wartet auf den Kunden (Frist ab dem tatsächlichen Versand), und im Kanal erscheint „📤 Rückfrage direkt in Outlook gesendet“. Den gesendeten Text prüft der Agent dabei nicht.
 - **Löschjob testen:** EPA-08 manuell mit `probelauf = true` aufrufen. Er zeigt nur an, was gelöscht würde.
 
 ## 6. Datenschutzanfragen (Auskunft, Löschung)

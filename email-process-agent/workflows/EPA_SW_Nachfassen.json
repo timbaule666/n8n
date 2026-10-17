@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## EPA SW Nachfassen (Phase E, eine Aufgabe)\n**Zweck:** Führt eine von EPA-04 geplante Aufgabe für genau einen Vorgang bzw. eine Freigabe aus. Prüft vorher erneut, ob die Aufgabe noch gilt (der Kunde kann inzwischen geantwortet haben).\n**erinnerung (Fall 1):** Erinnerungsentwurf über EPA-02 (art = erinnerung): Vorlage mit den Bausteinen der offenen Felder, Freigabe nötig, nie automatischer Versand.\n**eskalation (Fall 2):** Status \"Eskaliert / Manuell\" (Auslöser Cronjob, mit Versionsprüfung) und Teams-Nachricht \"Kunde reagiert seit N Tagen nicht … bitte telefonisch kontaktieren\" mit Kontaktdaten.\n**freigabe_erinnerung:** Freigabe ist seit freigabe_erinnerung_stunden offen: neue persönliche Links an alle Freigeber (alte bleiben gültig).\n**freigabe_erneuern:** Freigabe ist abgelaufen: neue Ablaufzeit, alle alten Links gesperrt (410), neue Links an alle Freigeber. Es wird nie automatisch gesendet.\n**freigabe_nach_fehler:** Versand nach Freigabe ist fehlgeschlagen (z. B. Postfach gesperrt). Ist das Postfach wieder erreichbar (verbindung_pruefen), wird die Freigabe wieder geöffnet und kommt mit neuem Link und Fehlergrund erneut zur Freigabe; alte Links bleiben gesperrt.\n**Trigger:** Aufruf durch EPA-04 (einzeln je Aufgabe). **Eingaben:** aktion, kunde_id, vorgangs_id, freigabe_id, jetzt, referenz. **Ausgabe:** { ergebnis }",
+        "content": "## EPA SW Nachfassen (Phase E, eine Aufgabe)\n**Zweck:** Führt eine von EPA-04 geplante Aufgabe für genau einen Vorgang bzw. eine Freigabe aus. Prüft vorher erneut, ob die Aufgabe noch gilt (der Kunde kann inzwischen geantwortet haben).\n**erinnerung (Fall 1):** Erinnerungsentwurf über EPA-02 (art = erinnerung): Vorlage mit den Bausteinen der offenen Felder, Freigabe nötig, nie automatischer Versand.\n**eskalation (Fall 2):** Status \"Eskaliert / Manuell\" (Auslöser Cronjob, mit Versionsprüfung) und Teams-Nachricht \"Kunde reagiert seit N Tagen nicht … bitte telefonisch kontaktieren\" mit Kontaktdaten.\n**freigabe_erinnerung:** Freigabe ist seit freigabe_erinnerung_stunden offen: neue persönliche Links an alle Freigeber (alte bleiben gültig).\n**freigabe_erneuern:** Freigabe ist abgelaufen: neue Ablaufzeit, alle alten Links gesperrt (410), neue Links an alle Freigeber. Es wird nie automatisch gesendet.\n**versand_pruefen:** Offene Freigabe: Liegt der Entwurf schon in \"Gesendete Elemente\" (jemand hat ihn direkt in Outlook gesendet)? Dann Freigabe \"gesendet\" (entscheidung manuell_gesendet), Links gesperrt, Status \"Warten auf Kunde\" mit Antwortfrist, Meldung im Kanal. Sonst nichts.\n**freigabe_nach_fehler:** Versand nach Freigabe ist fehlgeschlagen (z. B. Postfach gesperrt). Ist das Postfach wieder erreichbar (verbindung_pruefen), wird die Freigabe wieder geöffnet und kommt mit neuem Link und Fehlergrund erneut zur Freigabe; alte Links bleiben gesperrt.\n**Trigger:** Aufruf durch EPA-04 (einzeln je Aufgabe). **Eingaben:** aktion, kunde_id, vorgangs_id, freigabe_id, jetzt, referenz. **Ausgabe:** { ergebnis }",
         "width": 900,
         "height": 360,
         "color": 7
@@ -297,6 +297,30 @@
               },
               "renameOutput": true,
               "outputKey": "freigabe"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "0e85da30-84c5-480d-ab28-5ac7f14fc65c",
+                    "leftValue": "={{ $('Bei Aufruf').first().json.aktion }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "versand_pruefen"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "versand"
             }
           ]
         },
@@ -516,7 +540,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// ===== eingebettet aus src/nachfassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst nachfassen = (() => {\nconst module = { exports: {} };\n// Phase E (Masterprompt Workflow 4, Bauplan 2.2/6): Nachfassen beim Kunden, Eskalation, Erinnerung an Freigeber\n// und Erneuerung abgelaufener Freigabe-Links. Reine Planungslogik: EPA-04 liest Vorgänge, offene Freigaben und\n// Configs, dieses Modul entscheidet, was zu tun ist. Ausgeführt wird jede Aufgabe einzeln in \"EPA SW Nachfassen\".\n// Es wird nie automatisch an Kunden gesendet: Eine Erinnerung an den Kunden ist immer ein Entwurf mit Freigabe.\n\nconst LOCK_SCHLUESSEL = 'epa04_lauf';\nconst LOCK_MINUTEN = 55;\nconst MAX_AUFGABEN = 50;\nconst EPOCHE = '1970-01-01T00:00:00.000Z';\nconst WARTEN = 'Warten auf Kunde';\n// Versand nach Freigabe fehlgeschlagen (Freigabe-Status \"fehler\"): Erneut zur Freigabe frühestens nach dieser\n// Wartezeit und nur, solange der Fehler nicht älter ist als das Höchstalter (alte Fehler nicht wiederbeleben).\nconst NACH_FEHLER_WARTEN_MINUTEN = 15;\nconst NACH_FEHLER_HOECHSTALTER_STUNDEN = 72;\n// Nur in diesen Vorgangsstatus ist die fehlgeschlagene Nachricht noch aktuell.\nconst NACH_FEHLER_STATUS = Object.freeze(['Eskaliert / Manuell', 'Freigabe ausstehend']);\n\n// Reihenfolge, falls mehr Aufgaben anfallen als ein Lauf abarbeitet (Rest folgt im nächsten Lauf).\nconst PRIORITAET = Object.freeze({ eskalation: 1, erinnerung: 2, freigabe_nach_fehler: 3, freigabe_erneuern: 3, freigabe_erinnerung: 4 });\n\nfunction ms(t) {\n\tif (t === null || t === undefined || t === '') return NaN;\n\tconst x = new Date(t).getTime();\n\treturn Number.isFinite(x) ? x : NaN;\n}\n\n/**\n * Plant die Aufgaben eines Laufs.\n * @param {object} p\n * @param {object[]} p.vorgaenge  Zeilen aus epa_vorgaenge (Status \"Warten auf Kunde\")\n * @param {object[]} p.freigaben  Zeilen aus epa_freigaben (Status \"offen\" oder \"fehler\")\n * @param {object} p.configs      kunde_id -> geprüfte Config; null = Kunde inaktiv; fehlt = Config ungültig\n * @param {string} p.jetzt        ISO-Zeitpunkt\n * @param {object} p.fristen      Modul src/fristen.js (im Code-Node eingebettet)\n * @returns {{ aufgaben: object[], uebersprungen: object[], verschoben: number }}\n */\nfunction planen({ vorgaenge, freigaben, configs, jetzt, fristen, max = MAX_AUFGABEN }) {\n\tconst jetztMs = ms(jetzt);\n\tif (!Number.isFinite(jetztMs)) throw new Error(`Ungültiger Zeitpunkt \"${jetzt}\"`);\n\tconst aufgaben = [];\n\tconst uebersprungen = [];\n\tconst imDienst = {};\n\tconst geschaeftszeit = (kunde, c) => {\n\t\tif (!(kunde in imDienst)) imDienst[kunde] = fristen.istGeschaeftszeit(jetzt, c);\n\t\treturn imDienst[kunde];\n\t};\n\n\tfor (const v of vorgaenge || []) {\n\t\tif (!v || v.status !== WARTEN) continue;\n\t\tconst frist = ms(v.antwort_frist);\n\t\tif (!Number.isFinite(frist) || frist >= jetztMs) continue;\n\t\tconst ref = { kunde_id: v.kunde_id, vorgangs_id: v.vorgangs_id };\n\t\tconst c = configs[v.kunde_id];\n\t\tif (!c) {\n\t\t\tuebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\tcontinue;\n\t\t}\n\t\tif (!geschaeftszeit(v.kunde_id, c)) {\n\t\t\tuebersprungen.push({ ...ref, grund: 'ausserhalb_geschaeftszeit' });\n\t\t\tcontinue;\n\t\t}\n\t\tconst gesendet = Number(v.erinnerungen_gesendet || 0);\n\t\tconst erlaubt = Number(c.anzahl_erinnerungen || 0);\n\t\taufgaben.push({\n\t\t\taktion: gesendet < erlaubt ? 'erinnerung' : 'eskalation',\n\t\t\t...ref,\n\t\t\tfreigabe_id: '',\n\t\t\tversion: v.version ?? null,\n\t\t\terinnerungen_gesendet: gesendet,\n\t\t});\n\t}\n\n\tfor (const f of freigaben || []) {\n\t\tif (!f || (f.status !== 'offen' && f.status !== 'fehler')) continue;\n\t\tconst ref = { kunde_id: f.kunde_id, vorgangs_id: f.vorgangs_id, freigabe_id: f.freigabe_id };\n\t\tif (f.status === 'fehler') {\n\t\t\t// Versand fehlgeschlagen: nach kurzer Wartezeit erneut zur Freigabe (SW Nachfassen prüft vorher das Postfach).\n\t\t\tconst seit = jetztMs - ms(f.updatedAt);\n\t\t\tif (!Number.isFinite(seit) || seit < NACH_FEHLER_WARTEN_MINUTEN * 60000 || seit > NACH_FEHLER_HOECHSTALTER_STUNDEN * 3600000) continue;\n\t\t\tconst cf = configs[f.kunde_id];\n\t\t\tif (!cf) {\n\t\t\t\tuebersprungen.push({ ...ref, grund: cf === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\t\tcontinue;\n\t\t\t}\n\t\t\taufgaben.push({ aktion: 'freigabe_nach_fehler', ...ref, version: null, erinnerungen_gesendet: null });\n\t\t\tcontinue;\n\t\t}\n\t\tconst c = configs[f.kunde_id];\n\t\tif (!c) {\n\t\t\tuebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\tcontinue;\n\t\t}\n\t\tconst abgelaufen = ms(f.ablauf) <= jetztMs;\n\t\tlet erinnern = false;\n\t\tif (!abgelaufen && !f.erinnert_am && Number(c.freigabe_erinnerung_stunden) > 0) {\n\t\t\tconst basis = f.erneuert_am || f.createdAt;\n\t\t\tif (Number.isFinite(ms(basis))) erinnern = ms(fristen.berechneFrist(new Date(basis).toISOString(), c.freigabe_erinnerung_stunden, c)) <= jetztMs;\n\t\t}\n\t\tif (!abgelaufen && !erinnern) continue;\n\t\tif (!geschaeftszeit(f.kunde_id, c)) {\n\t\t\tuebersprungen.push({ ...ref, grund: 'ausserhalb_geschaeftszeit' });\n\t\t\tcontinue;\n\t\t}\n\t\taufgaben.push({ aktion: abgelaufen ? 'freigabe_erneuern' : 'freigabe_erinnerung', ...ref, version: null, erinnerungen_gesendet: null });\n\t}\n\n\taufgaben.sort((a, b) => PRIORITAET[a.aktion] - PRIORITAET[b.aktion]);\n\treturn { aufgaben: aufgaben.slice(0, max), uebersprungen, verschoben: Math.max(0, aufgaben.length - max) };\n}\n\n// ---------------------------------------------------------------- Lauf-Lock (Tabelle epa_system_status)\n\nfunction lockHolen(laufId, jetztEcht) {\n\tconst t = ms(jetztEcht);\n\treturn {\n\t\tlock_bis: new Date(t + LOCK_MINUTEN * 60000).toISOString(),\n\t\tlock_durch: String(laufId),\n\t\tletzter_start: new Date(t).toISOString(),\n\t};\n}\n\nfunction lockFreigeben(jetztEcht, ergebnis) {\n\treturn {\n\t\tlock_bis: EPOCHE,\n\t\tlock_durch: '',\n\t\tletzter_lauf: new Date(ms(jetztEcht)).toISOString(),\n\t\tletztes_ergebnis: JSON.stringify(ergebnis || {}),\n\t};\n}\n\n/** Zusammenfassung eines Laufs, nur Zähler und IDs (keine personenbezogenen Daten). */\nfunction laufAuswerten(plan, ergebnisse) {\n\tconst zaehler = {};\n\tconst fehler = [];\n\t(plan.aufgaben || []).forEach((a, i) => {\n\t\tconst r = (ergebnisse || [])[i] || {};\n\t\tconst ergebnis = r.error ? 'fehler' : String(r.ergebnis || 'unbekannt');\n\t\tconst k = `${a.aktion}:${ergebnis}`;\n\t\tzaehler[k] = (zaehler[k] || 0) + 1;\n\t\tif (r.error) fehler.push({ aktion: a.aktion, vorgangs_id: a.vorgangs_id, freigabe_id: a.freigabe_id || null });\n\t});\n\treturn {\n\t\taufgaben: (plan.aufgaben || []).length,\n\t\tergebnisse: zaehler,\n\t\tfehler,\n\t\tuebersprungen: (plan.uebersprungen || []).length,\n\t\tverschoben: plan.verschoben || 0,\n\t};\n}\n\n// ---------------------------------------------------------------- Eskalation (Fall 2)\n\n/**\n * Seit wann wartet der Vorgang? Erste versendete Rückfrage der aktuellen Runde, sonst die jüngste versendete\n * Nachricht. Liefert ganze Tage oder null, wenn kein Versand bekannt ist.\n */\nfunction tageOhneReaktion(vorgang, gesendete, jetzt) {\n\tconst liste = (gesendete || []).filter((f) => f && f.status === 'gesendet' && Number.isFinite(ms(f.gesendet_am)));\n\tconst runde = Number(vorgang.rundenzaehler || 0);\n\tconst dieseRunde = liste.filter((f) => f.art === 'rueckfrage' && Number(f.runde) === runde);\n\tlet start = NaN;\n\tif (dieseRunde.length) start = Math.min(...dieseRunde.map((f) => ms(f.gesendet_am)));\n\telse if (liste.length) start = Math.max(...liste.map((f) => ms(f.gesendet_am)));\n\tif (!Number.isFinite(start)) return null;\n\treturn Math.max(0, Math.floor((ms(jetzt) - start) / 86400000));\n}\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction wertAus(daten, feld) {\n\tconst d = daten && daten[feld];\n\tif (d === null || d === undefined) return '';\n\treturn typeof d === 'object' ? String(d.wert ?? '') : String(d);\n}\n\n/** Teams-Nachricht an die Mitarbeiter (Masterprompt Fall 2) mit Kontaktdaten aus dem Vorgang. */\nfunction meldungKeineReaktion({ vorgang, tage, erinnerungen, fehlende, daten, telefonFeld = 'Telefon' }) {\n\tconst name = vorgang.absender_name ? `${vorgang.absender_name} ` : '';\n\tconst seit = tage === null || tage === undefined ? 'seit längerer Zeit' : tage === 1 ? 'seit 1 Tag' : `seit ${tage} Tagen`;\n\tconst tel = wertAus(daten, telefonFeld);\n\tconst offen = (fehlende || []).map((f) => esc(f.anzeigename || f.feldname)).join(', ');\n\treturn `<b>Kunde reagiert nicht – bitte telefonisch kontaktieren</b><br>Vorgang: <b>${esc(vorgang.vorgangs_id)}</b><br>` +\n\t\t`Kunde ${esc(name)}(${esc(vorgang.absender_adresse)}) reagiert ${esc(seit)} nicht auf Nachfragen (${Number(erinnerungen || 0)} Erinnerung(en) gesendet).<br>` +\n\t\t`Betreff: ${esc(vorgang.betreff)}${tel ? `<br>Telefon: ${esc(tel)}` : ''}${offen ? `<br>Noch offen: ${offen}` : ''}` +\n\t\t'<br>Es gehen keine automatischen Nachfragen mehr raus. Der Vorgang steht auf \"Eskaliert / Manuell\".';\n}\n\n// ---------------------------------------------------------------- Freigabe erinnern / erneuern\n\n/**\n * Prüft, ob die Aufgabe für diese Freigabe noch gilt, und liefert die zu schreibenden Daten.\n * aktion: freigabe_erinnerung (neue Links zusätzlich, alte bleiben gültig)\n *         freigabe_erneuern   (neue Ablaufzeit, alle bisherigen Links werden ungültig)\n */\nfunction freigabeAuffrischen({ aktion, freigabe, config, jetzt, vorgang }) {\n\tconst t = ms(jetzt);\n\tif (aktion === 'freigabe_nach_fehler') {\n\t\t// Versand nach Freigabe fehlgeschlagen: wieder öffnen, neue Ablaufzeit, alle alten Links gesperrt.\n\t\tif (!freigabe || freigabe.status !== 'fehler') return { ok: false, grund: 'kein_versandfehler' };\n\t\tif (vorgang && !NACH_FEHLER_STATUS.includes(vorgang.status)) return { ok: false, grund: 'status_geaendert' };\n\t\tif (vorgang && vorgang.freigabe_id_aktuell && vorgang.freigabe_id_aktuell !== freigabe.freigabe_id) return { ok: false, grund: 'veraltet' };\n\t\tconst ablauf = new Date(t + Number(config.freigabe_ablauf_stunden) * 3600000).toISOString();\n\t\treturn {\n\t\t\tok: true, alteLinksSperren: true, ablauf,\n\t\t\tdaten: { status: 'offen', ablauf, erneuert_am: new Date(t).toISOString(), erinnert_am: null, entscheider: null, entscheidung: null, bearbeitet: false, grund: null },\n\t\t};\n\t}\n\tif (!freigabe || freigabe.status !== 'offen') return { ok: false, grund: 'nicht_mehr_offen' };\n\tconst abgelaufen = ms(freigabe.ablauf) <= t;\n\tif (aktion === 'freigabe_erneuern') {\n\t\tif (!abgelaufen) return { ok: false, grund: 'nicht_abgelaufen' };\n\t\tconst ablauf = new Date(t + Number(config.freigabe_ablauf_stunden) * 3600000).toISOString();\n\t\treturn { ok: true, alteLinksSperren: true, ablauf, daten: { ablauf, erneuert_am: new Date(t).toISOString(), erinnert_am: null } };\n\t}\n\tif (aktion === 'freigabe_erinnerung') {\n\t\tif (abgelaufen) return { ok: false, grund: 'abgelaufen' };\n\t\tif (freigabe.erinnert_am) return { ok: false, grund: 'schon_erinnert' };\n\t\treturn { ok: true, alteLinksSperren: false, ablauf: new Date(ms(freigabe.ablauf)).toISOString(), daten: { erinnert_am: new Date(t).toISOString() } };\n\t}\n\treturn { ok: false, grund: 'unbekannte_aktion' };\n}\n\nmodule.exports = {\n\tLOCK_SCHLUESSEL, LOCK_MINUTEN, MAX_AUFGABEN, EPOCHE, PRIORITAET, NACH_FEHLER_WARTEN_MINUTEN, NACH_FEHLER_HOECHSTALTER_STUNDEN,\n\tplanen, lockHolen, lockFreigeben, laufAuswerten, tageOhneReaktion, meldungKeineReaktion, freigabeAuffrischen,\n};\nreturn module.exports;\n})();\n// ===== Ende src/nachfassen.js =====\n\n// ----- Node-Logik -----\nconst v = $('Vorgang lesen').first().json.vorgang;\nconst jetzt = $('Eskalation prüfen').first().json.jetzt;\nconst gesendet = $input.all().map((i) => i.json).filter((z) => z && z.id !== undefined);\nconst tage = nachfassen.tageOhneReaktion(v, gesendet, jetzt);\nconst daten = v.extrahierte_daten || {};\nreturn [{ json: {\n\ttage,\n\tnachricht_html: nachfassen.meldungKeineReaktion({ vorgang: v, tage, erinnerungen: v.erinnerungen_gesendet, fehlende: v.fehlende_felder, daten }),\n} }];\n"
+        "jsCode": "// ===== eingebettet aus src/nachfassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst nachfassen = (() => {\nconst module = { exports: {} };\n// Phase E (Masterprompt Workflow 4, Bauplan 2.2/6): Nachfassen beim Kunden, Eskalation, Erinnerung an Freigeber\n// und Erneuerung abgelaufener Freigabe-Links. Reine Planungslogik: EPA-04 liest Vorgänge, offene Freigaben und\n// Configs, dieses Modul entscheidet, was zu tun ist. Ausgeführt wird jede Aufgabe einzeln in \"EPA SW Nachfassen\".\n// Es wird nie automatisch an Kunden gesendet: Eine Erinnerung an den Kunden ist immer ein Entwurf mit Freigabe.\n\nconst LOCK_SCHLUESSEL = 'epa04_lauf';\nconst LOCK_MINUTEN = 55;\nconst MAX_AUFGABEN = 50;\nconst EPOCHE = '1970-01-01T00:00:00.000Z';\nconst WARTEN = 'Warten auf Kunde';\n// Versand nach Freigabe fehlgeschlagen (Freigabe-Status \"fehler\"): Erneut zur Freigabe frühestens nach dieser\n// Wartezeit und nur, solange der Fehler nicht älter ist als das Höchstalter (alte Fehler nicht wiederbeleben).\nconst NACH_FEHLER_WARTEN_MINUTEN = 15;\nconst NACH_FEHLER_HOECHSTALTER_STUNDEN = 72;\n// Nur in diesen Vorgangsstatus ist die fehlgeschlagene Nachricht noch aktuell.\nconst NACH_FEHLER_STATUS = Object.freeze(['Eskaliert / Manuell', 'Freigabe ausstehend']);\n// Offene Freigaben: Wurde der Entwurf inzwischen direkt in Outlook gesendet (an der Freigabe vorbei)? Geprüft wird\n// jede offene Freigabe ab diesem Alter in jedem Lauf, unabhängig von Geschäftszeiten (es geht nichts an Kunden).\nconst VERSAND_PRUEFEN_AB_MINUTEN = 5;\nconst MAX_PRUEFUNGEN = 50;\n\n// Reihenfolge, falls mehr Aufgaben anfallen als ein Lauf abarbeitet (Rest folgt im nächsten Lauf).\nconst PRIORITAET = Object.freeze({ eskalation: 1, erinnerung: 2, freigabe_nach_fehler: 3, freigabe_erneuern: 3, freigabe_erinnerung: 4 });\n\nfunction ms(t) {\n\tif (t === null || t === undefined || t === '') return NaN;\n\tconst x = new Date(t).getTime();\n\treturn Number.isFinite(x) ? x : NaN;\n}\n\n/**\n * Plant die Aufgaben eines Laufs.\n * @param {object} p\n * @param {object[]} p.vorgaenge  Zeilen aus epa_vorgaenge (Status \"Warten auf Kunde\")\n * @param {object[]} p.freigaben  Zeilen aus epa_freigaben (Status \"offen\" oder \"fehler\")\n * @param {object} p.configs      kunde_id -> geprüfte Config; null = Kunde inaktiv; fehlt = Config ungültig\n * @param {string} p.jetzt        ISO-Zeitpunkt\n * @param {object} p.fristen      Modul src/fristen.js (im Code-Node eingebettet)\n * @returns {{ aufgaben: object[], pruefungen: object[], uebersprungen: object[], verschoben: number }}\n *   pruefungen: Versandprüfungen offener Freigaben (aktion versand_pruefen); EPA-04 führt sie vor den Aufgaben aus.\n */\nfunction planen({ vorgaenge, freigaben, configs, jetzt, fristen, max = MAX_AUFGABEN }) {\n\tconst jetztMs = ms(jetzt);\n\tif (!Number.isFinite(jetztMs)) throw new Error(`Ungültiger Zeitpunkt \"${jetzt}\"`);\n\tconst aufgaben = [];\n\tconst pruefungen = [];\n\tconst uebersprungen = [];\n\tconst imDienst = {};\n\tconst geschaeftszeit = (kunde, c) => {\n\t\tif (!(kunde in imDienst)) imDienst[kunde] = fristen.istGeschaeftszeit(jetzt, c);\n\t\treturn imDienst[kunde];\n\t};\n\n\tfor (const v of vorgaenge || []) {\n\t\tif (!v || v.status !== WARTEN) continue;\n\t\tconst frist = ms(v.antwort_frist);\n\t\tif (!Number.isFinite(frist) || frist >= jetztMs) continue;\n\t\tconst ref = { kunde_id: v.kunde_id, vorgangs_id: v.vorgangs_id };\n\t\tconst c = configs[v.kunde_id];\n\t\tif (!c) {\n\t\t\tuebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\tcontinue;\n\t\t}\n\t\tif (!geschaeftszeit(v.kunde_id, c)) {\n\t\t\tuebersprungen.push({ ...ref, grund: 'ausserhalb_geschaeftszeit' });\n\t\t\tcontinue;\n\t\t}\n\t\tconst gesendet = Number(v.erinnerungen_gesendet || 0);\n\t\tconst erlaubt = Number(c.anzahl_erinnerungen || 0);\n\t\taufgaben.push({\n\t\t\taktion: gesendet < erlaubt ? 'erinnerung' : 'eskalation',\n\t\t\t...ref,\n\t\t\tfreigabe_id: '',\n\t\t\tversion: v.version ?? null,\n\t\t\terinnerungen_gesendet: gesendet,\n\t\t});\n\t}\n\n\tfor (const f of freigaben || []) {\n\t\tif (!f || (f.status !== 'offen' && f.status !== 'fehler')) continue;\n\t\tconst ref = { kunde_id: f.kunde_id, vorgangs_id: f.vorgangs_id, freigabe_id: f.freigabe_id };\n\t\tif (f.status === 'fehler') {\n\t\t\t// Versand fehlgeschlagen: nach kurzer Wartezeit erneut zur Freigabe (SW Nachfassen prüft vorher das Postfach).\n\t\t\tconst seit = jetztMs - ms(f.updatedAt);\n\t\t\tif (!Number.isFinite(seit) || seit < NACH_FEHLER_WARTEN_MINUTEN * 60000 || seit > NACH_FEHLER_HOECHSTALTER_STUNDEN * 3600000) continue;\n\t\t\tconst cf = configs[f.kunde_id];\n\t\t\tif (!cf) {\n\t\t\t\tuebersprungen.push({ ...ref, grund: cf === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\t\tcontinue;\n\t\t\t}\n\t\t\taufgaben.push({ aktion: 'freigabe_nach_fehler', ...ref, version: null, erinnerungen_gesendet: null });\n\t\t\tcontinue;\n\t\t}\n\t\tconst c = configs[f.kunde_id];\n\t\tif (!c) {\n\t\t\tuebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\tcontinue;\n\t\t}\n\t\tif (f.entwurf_id && jetztMs - ms(f.createdAt) >= VERSAND_PRUEFEN_AB_MINUTEN * 60000) {\n\t\t\tpruefungen.push({ aktion: 'versand_pruefen', ...ref, version: null, erinnerungen_gesendet: null });\n\t\t}\n\t\tconst abgelaufen = ms(f.ablauf) <= jetztMs;\n\t\tlet erinnern = false;\n\t\tif (!abgelaufen && !f.erinnert_am && Number(c.freigabe_erinnerung_stunden) > 0) {\n\t\t\tconst basis = f.erneuert_am || f.createdAt;\n\t\t\tif (Number.isFinite(ms(basis))) erinnern = ms(fristen.berechneFrist(new Date(basis).toISOString(), c.freigabe_erinnerung_stunden, c)) <= jetztMs;\n\t\t}\n\t\tif (!abgelaufen && !erinnern) continue;\n\t\tif (!geschaeftszeit(f.kunde_id, c)) {\n\t\t\tuebersprungen.push({ ...ref, grund: 'ausserhalb_geschaeftszeit' });\n\t\t\tcontinue;\n\t\t}\n\t\taufgaben.push({ aktion: abgelaufen ? 'freigabe_erneuern' : 'freigabe_erinnerung', ...ref, version: null, erinnerungen_gesendet: null });\n\t}\n\n\taufgaben.sort((a, b) => PRIORITAET[a.aktion] - PRIORITAET[b.aktion]);\n\treturn {\n\t\taufgaben: aufgaben.slice(0, max),\n\t\tpruefungen: pruefungen.slice(0, MAX_PRUEFUNGEN),\n\t\tuebersprungen,\n\t\tverschoben: Math.max(0, aufgaben.length - max) + Math.max(0, pruefungen.length - MAX_PRUEFUNGEN),\n\t};\n}\n\n// ---------------------------------------------------------------- Lauf-Lock (Tabelle epa_system_status)\n\nfunction lockHolen(laufId, jetztEcht) {\n\tconst t = ms(jetztEcht);\n\treturn {\n\t\tlock_bis: new Date(t + LOCK_MINUTEN * 60000).toISOString(),\n\t\tlock_durch: String(laufId),\n\t\tletzter_start: new Date(t).toISOString(),\n\t};\n}\n\nfunction lockFreigeben(jetztEcht, ergebnis) {\n\treturn {\n\t\tlock_bis: EPOCHE,\n\t\tlock_durch: '',\n\t\tletzter_lauf: new Date(ms(jetztEcht)).toISOString(),\n\t\tletztes_ergebnis: JSON.stringify(ergebnis || {}),\n\t};\n}\n\n/** Alle auszuführenden Aufrufe eines Laufs in fester Reihenfolge: erst Versandprüfungen, dann Aufgaben. */\nfunction ausfuehrungen(plan) {\n\treturn [...((plan && plan.pruefungen) || []), ...((plan && plan.aufgaben) || [])];\n}\n\n/** Zusammenfassung eines Laufs, nur Zähler und IDs (keine personenbezogenen Daten). ergebnisse wie ausfuehrungen(plan). */\nfunction laufAuswerten(plan, ergebnisse) {\n\tconst zaehler = {};\n\tconst fehler = [];\n\tausfuehrungen(plan).forEach((a, i) => {\n\t\tconst r = (ergebnisse || [])[i] || {};\n\t\tconst ergebnis = r.error ? 'fehler' : String(r.ergebnis || 'unbekannt');\n\t\tconst k = `${a.aktion}:${ergebnis}`;\n\t\tzaehler[k] = (zaehler[k] || 0) + 1;\n\t\tif (r.error) fehler.push({ aktion: a.aktion, vorgangs_id: a.vorgangs_id, freigabe_id: a.freigabe_id || null });\n\t});\n\treturn {\n\t\taufgaben: (plan.aufgaben || []).length,\n\t\tpruefungen: (plan.pruefungen || []).length,\n\t\tergebnisse: zaehler,\n\t\tfehler,\n\t\tuebersprungen: (plan.uebersprungen || []).length,\n\t\tverschoben: plan.verschoben || 0,\n\t};\n}\n\n// ---------------------------------------------------------------- Eskalation (Fall 2)\n\n/**\n * Seit wann wartet der Vorgang? Erste versendete Rückfrage der aktuellen Runde, sonst die jüngste versendete\n * Nachricht. Liefert ganze Tage oder null, wenn kein Versand bekannt ist.\n */\nfunction tageOhneReaktion(vorgang, gesendete, jetzt) {\n\tconst liste = (gesendete || []).filter((f) => f && f.status === 'gesendet' && Number.isFinite(ms(f.gesendet_am)));\n\tconst runde = Number(vorgang.rundenzaehler || 0);\n\tconst dieseRunde = liste.filter((f) => f.art === 'rueckfrage' && Number(f.runde) === runde);\n\tlet start = NaN;\n\tif (dieseRunde.length) start = Math.min(...dieseRunde.map((f) => ms(f.gesendet_am)));\n\telse if (liste.length) start = Math.max(...liste.map((f) => ms(f.gesendet_am)));\n\tif (!Number.isFinite(start)) return null;\n\treturn Math.max(0, Math.floor((ms(jetzt) - start) / 86400000));\n}\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction wertAus(daten, feld) {\n\tconst d = daten && daten[feld];\n\tif (d === null || d === undefined) return '';\n\treturn typeof d === 'object' ? String(d.wert ?? '') : String(d);\n}\n\n/** Teams-Nachricht an die Mitarbeiter (Masterprompt Fall 2) mit Kontaktdaten aus dem Vorgang. */\nfunction meldungKeineReaktion({ vorgang, tage, erinnerungen, fehlende, daten, telefonFeld = 'Telefon' }) {\n\tconst name = vorgang.absender_name ? `${vorgang.absender_name} ` : '';\n\tconst seit = tage === null || tage === undefined ? 'seit längerer Zeit' : tage === 1 ? 'seit 1 Tag' : `seit ${tage} Tagen`;\n\tconst tel = wertAus(daten, telefonFeld);\n\tconst offen = (fehlende || []).map((f) => esc(f.anzeigename || f.feldname)).join(', ');\n\treturn `<b>Kunde reagiert nicht – bitte telefonisch kontaktieren</b><br>Vorgang: <b>${esc(vorgang.vorgangs_id)}</b><br>` +\n\t\t`Kunde ${esc(name)}(${esc(vorgang.absender_adresse)}) reagiert ${esc(seit)} nicht auf Nachfragen (${Number(erinnerungen || 0)} Erinnerung(en) gesendet).<br>` +\n\t\t`Betreff: ${esc(vorgang.betreff)}${tel ? `<br>Telefon: ${esc(tel)}` : ''}${offen ? `<br>Noch offen: ${offen}` : ''}` +\n\t\t'<br>Es gehen keine automatischen Nachfragen mehr raus. Der Vorgang steht auf \"Eskaliert / Manuell\".';\n}\n\n// ---------------------------------------------------------------- Freigabe erinnern / erneuern\n\n/**\n * Prüft, ob die Aufgabe für diese Freigabe noch gilt, und liefert die zu schreibenden Daten.\n * aktion: freigabe_erinnerung (neue Links zusätzlich, alte bleiben gültig)\n *         freigabe_erneuern   (neue Ablaufzeit, alle bisherigen Links werden ungültig)\n */\nfunction freigabeAuffrischen({ aktion, freigabe, config, jetzt, vorgang }) {\n\tconst t = ms(jetzt);\n\tif (aktion === 'freigabe_nach_fehler') {\n\t\t// Versand nach Freigabe fehlgeschlagen: wieder öffnen, neue Ablaufzeit, alle alten Links gesperrt.\n\t\tif (!freigabe || freigabe.status !== 'fehler') return { ok: false, grund: 'kein_versandfehler' };\n\t\tif (vorgang && !NACH_FEHLER_STATUS.includes(vorgang.status)) return { ok: false, grund: 'status_geaendert' };\n\t\tif (vorgang && vorgang.freigabe_id_aktuell && vorgang.freigabe_id_aktuell !== freigabe.freigabe_id) return { ok: false, grund: 'veraltet' };\n\t\tconst ablauf = new Date(t + Number(config.freigabe_ablauf_stunden) * 3600000).toISOString();\n\t\treturn {\n\t\t\tok: true, alteLinksSperren: true, ablauf,\n\t\t\tdaten: { status: 'offen', ablauf, erneuert_am: new Date(t).toISOString(), erinnert_am: null, entscheider: null, entscheidung: null, bearbeitet: false, grund: null },\n\t\t};\n\t}\n\tif (!freigabe || freigabe.status !== 'offen') return { ok: false, grund: 'nicht_mehr_offen' };\n\tconst abgelaufen = ms(freigabe.ablauf) <= t;\n\tif (aktion === 'freigabe_erneuern') {\n\t\tif (!abgelaufen) return { ok: false, grund: 'nicht_abgelaufen' };\n\t\tconst ablauf = new Date(t + Number(config.freigabe_ablauf_stunden) * 3600000).toISOString();\n\t\treturn { ok: true, alteLinksSperren: true, ablauf, daten: { ablauf, erneuert_am: new Date(t).toISOString(), erinnert_am: null } };\n\t}\n\tif (aktion === 'freigabe_erinnerung') {\n\t\tif (abgelaufen) return { ok: false, grund: 'abgelaufen' };\n\t\tif (freigabe.erinnert_am) return { ok: false, grund: 'schon_erinnert' };\n\t\treturn { ok: true, alteLinksSperren: false, ablauf: new Date(ms(freigabe.ablauf)).toISOString(), daten: { erinnert_am: new Date(t).toISOString() } };\n\t}\n\treturn { ok: false, grund: 'unbekannte_aktion' };\n}\n\n// ---------------------------------------------------------------- Direkt in Outlook gesendet\n\n/**\n * Ergebnis der Postfach-Aktion versand_pruefen auswerten: Liegt der Entwurf dieser Freigabe in \"Gesendete Elemente\",\n * hat ihn jemand direkt im Postfach gesendet. Dann wird die Freigabe wie nach einem Versand vermerkt.\n * @param {object} p\n * @param {object} p.freigabe  Zeile aus epa_freigaben\n * @param {object} p.pruefung  Antwort von EPA-00 { gesendet, internet_message_id, gesendet_am } bzw. { error }\n */\nfunction manuellGesendet({ freigabe, pruefung }) {\n\tif (!freigabe || freigabe.status !== 'offen') return { ok: false, grund: 'nicht_mehr_offen' };\n\tconst r = pruefung || {};\n\tif (r.error || r.ok === false) return { ok: false, grund: 'pruefung_fehlgeschlagen' };\n\tif (r.gesendet !== true) return { ok: false, grund: 'nicht_gesendet' };\n\tconst am = Number.isFinite(ms(r.gesendet_am)) ? new Date(ms(r.gesendet_am)).toISOString() : null;\n\treturn {\n\t\tok: true,\n\t\tdaten: {\n\t\t\tstatus: 'gesendet', gesendet_am: am || new Date().toISOString(), gesendet_message_id: r.internet_message_id || null,\n\t\t\tentscheider: 'Outlook (direkt gesendet)', entscheidung: 'manuell_gesendet', bearbeitet: false,\n\t\t},\n\t};\n}\n\n/** Meldung an den Kanal: Nachricht wurde an der Freigabe vorbei direkt im Postfach gesendet. */\nfunction meldungManuellGesendet({ vorgang, freigabe, gesendetText, fristText }) {\n\tconst was = freigabe && freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';\n\treturn `<b>📤 ${was} direkt in Outlook gesendet</b><br>Vorgang: <b>${esc(vorgang.vorgangs_id)}</b><br>` +\n\t\t`Betreff: ${esc(freigabe && freigabe.betreff)}<br>` +\n\t\t`Der Entwurf wurde nicht über den Freigabe-Link, sondern direkt im Postfach gesendet${gesendetText ? ` (${esc(gesendetText)})` : ''}. ` +\n\t\t`Der Vorgang wartet jetzt auf die Antwort des Kunden${fristText ? ` (Frist: ${esc(fristText)})` : ''}. Die Freigabe-Links gelten nicht mehr.` +\n\t\t'<br>Hinweis: Den tatsächlich gesendeten Text hat der Agent nicht geprüft.';\n}\n\nmodule.exports = {\n\tVERSAND_PRUEFEN_AB_MINUTEN, MAX_PRUEFUNGEN, ausfuehrungen, manuellGesendet, meldungManuellGesendet,\n\tLOCK_SCHLUESSEL, LOCK_MINUTEN, MAX_AUFGABEN, EPOCHE, PRIORITAET, NACH_FEHLER_WARTEN_MINUTEN, NACH_FEHLER_HOECHSTALTER_STUNDEN,\n\tplanen, lockHolen, lockFreigeben, laufAuswerten, tageOhneReaktion, meldungKeineReaktion, freigabeAuffrischen,\n};\nreturn module.exports;\n})();\n// ===== Ende src/nachfassen.js =====\n\n// ----- Node-Logik -----\nconst v = $('Vorgang lesen').first().json.vorgang;\nconst jetzt = $('Eskalation prüfen').first().json.jetzt;\nconst gesendet = $input.all().map((i) => i.json).filter((z) => z && z.id !== undefined);\nconst tage = nachfassen.tageOhneReaktion(v, gesendet, jetzt);\nconst daten = v.extrahierte_daten || {};\nreturn [{ json: {\n\ttage,\n\tnachricht_html: nachfassen.meldungKeineReaktion({ vorgang: v, tage, erinnerungen: v.erinnerungen_gesendet, fehlende: v.fehlende_felder, daten }),\n} }];\n"
       },
       "id": "3d0f2bde-89c3-4a7d-a24c-96a0331cba15",
       "name": "Meldung: keine Reaktion",
@@ -851,7 +875,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\n// Fehler aus diesen Workflows werden gemeldet, aber nicht durch \"Vorgang sichern\" eskaliert: EPA-05 sichert Vorgänge\n// selbst über \"EPA SW Status setzen\". Schlüge das fehl und würde erneut gesichert, entstünde eine Fehlerschleife.\nconst OHNE_SICHERUNG_AUS = Object.freeze(['EPA SW Status setzen']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\t// Markierung \" *\" (fehlende Credentials) gehört nicht zum Namen\n\tconst ausSicherung = OHNE_SICHERUNG_AUS.includes(String(workflow.name || '').replace(/\\s*\\*$/, ''));\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId) && !ausSicherung,\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\n// Klartext je Fehlerklasse für die Alarmmeldung (Mitarbeiter sollen verstehen, was passiert ist).\nconst KLASSE_TEXT = Object.freeze({\n\tUpstream: 'Ein externer Dienst (Outlook, KI oder Telegram) hat nicht wie erwartet geantwortet.',\n\tKonfiguration: 'Die Konfiguration ist unvollständig oder fehlerhaft.',\n\tAuthentifizierung: 'Zugangsdaten sind ungültig oder abgelaufen.',\n\tKonflikt: 'Zwei Abläufe haben sich überschnitten.',\n\tEingabe: 'Ein Ablauf hat ungültige Daten erhalten.',\n\tLLM: 'Die KI hat keine verwertbare Antwort geliefert.',\n\tFreigabe: 'Eine Freigabe ist abgelaufen.',\n\t'Nicht gefunden': 'Ein Datensatz wurde nicht gefunden.',\n\tUnbekannt: 'Ein unerwarteter Fehler ist aufgetreten.',\n});\n\n/** Konkrete Handlungsempfehlung aus Fehlercode und Meldung. */\nfunction alarmEmpfehlung(e) {\n\tconst m = String(e.meldung || '').toLowerCase();\n\tif (/suspend|gesperrt|blocked/.test(m)) return 'Das Postfach-Konto wurde vom Anbieter gesperrt. Im Postfach anmelden und die Bestätigung durchführen. Nicht gesendete Nachrichten kommen danach automatisch mit neuem Link erneut zur Freigabe (Prüfung stündlich).';\n\tif (/401|unauthori|token|anmeld/.test(m) || e.klasse === 'Authentifizierung') return 'Zugang (Credential) in n8n prüfen und neu verbinden.';\n\tif (e.klasse === 'Konfiguration') return 'Konfiguration bzw. Regel-Sheet des Kunden prüfen.';\n\tif (e.retrybar) return 'Meist vorübergehend. Tritt der Fehler wiederholt auf, die Ausführung öffnen und prüfen.';\n\treturn 'Bitte die Ausführung öffnen und prüfen.';\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst meldung = String(e.meldung || '');\n\t// Titel: erster Satzteil der Meldung (\"Rückfrage nicht gesendet: …\"), sonst die Fehlerklasse\n\tconst kopf = meldung.split(/[:.]/)[0].trim();\n\tconst titel = kopf && kopf.length <= 70 ? kopf : (KLASSE_TEXT[e.klasse] || 'Systemfehler');\n\tconst zeilen = [\n\t\t`🚨 <b>Systemfehler: ${escapeHtml(titel)}</b>`,\n\t\tescapeHtml(KLASSE_TEXT[e.klasse] || KLASSE_TEXT.Unbekannt),\n\t];\n\tif (e.vorgangs_id) zeilen.push(`Vorgang: <b>${escapeHtml(e.vorgangs_id)}</b>`);\n\tzeilen.push(`Grund: ${escapeHtml(meldung || '–')}`);\n\tzeilen.push(`Was tun: ${escapeHtml(alarmEmpfehlung(e))}`);\n\tzeilen.push('');\n\tzeilen.push(`Technik: ${escapeHtml(e.workflow_name || e.workflow_id || '?')} · ${escapeHtml(e.node || '?')} · EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)} (${escapeHtml(e.klasse)})`);\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tOHNE_SICHERUNG_AUS,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\talarmEmpfehlung,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n// ===== eingebettet aus src/nachfassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst nachfassen = (() => {\nconst module = { exports: {} };\n// Phase E (Masterprompt Workflow 4, Bauplan 2.2/6): Nachfassen beim Kunden, Eskalation, Erinnerung an Freigeber\n// und Erneuerung abgelaufener Freigabe-Links. Reine Planungslogik: EPA-04 liest Vorgänge, offene Freigaben und\n// Configs, dieses Modul entscheidet, was zu tun ist. Ausgeführt wird jede Aufgabe einzeln in \"EPA SW Nachfassen\".\n// Es wird nie automatisch an Kunden gesendet: Eine Erinnerung an den Kunden ist immer ein Entwurf mit Freigabe.\n\nconst LOCK_SCHLUESSEL = 'epa04_lauf';\nconst LOCK_MINUTEN = 55;\nconst MAX_AUFGABEN = 50;\nconst EPOCHE = '1970-01-01T00:00:00.000Z';\nconst WARTEN = 'Warten auf Kunde';\n// Versand nach Freigabe fehlgeschlagen (Freigabe-Status \"fehler\"): Erneut zur Freigabe frühestens nach dieser\n// Wartezeit und nur, solange der Fehler nicht älter ist als das Höchstalter (alte Fehler nicht wiederbeleben).\nconst NACH_FEHLER_WARTEN_MINUTEN = 15;\nconst NACH_FEHLER_HOECHSTALTER_STUNDEN = 72;\n// Nur in diesen Vorgangsstatus ist die fehlgeschlagene Nachricht noch aktuell.\nconst NACH_FEHLER_STATUS = Object.freeze(['Eskaliert / Manuell', 'Freigabe ausstehend']);\n\n// Reihenfolge, falls mehr Aufgaben anfallen als ein Lauf abarbeitet (Rest folgt im nächsten Lauf).\nconst PRIORITAET = Object.freeze({ eskalation: 1, erinnerung: 2, freigabe_nach_fehler: 3, freigabe_erneuern: 3, freigabe_erinnerung: 4 });\n\nfunction ms(t) {\n\tif (t === null || t === undefined || t === '') return NaN;\n\tconst x = new Date(t).getTime();\n\treturn Number.isFinite(x) ? x : NaN;\n}\n\n/**\n * Plant die Aufgaben eines Laufs.\n * @param {object} p\n * @param {object[]} p.vorgaenge  Zeilen aus epa_vorgaenge (Status \"Warten auf Kunde\")\n * @param {object[]} p.freigaben  Zeilen aus epa_freigaben (Status \"offen\" oder \"fehler\")\n * @param {object} p.configs      kunde_id -> geprüfte Config; null = Kunde inaktiv; fehlt = Config ungültig\n * @param {string} p.jetzt        ISO-Zeitpunkt\n * @param {object} p.fristen      Modul src/fristen.js (im Code-Node eingebettet)\n * @returns {{ aufgaben: object[], uebersprungen: object[], verschoben: number }}\n */\nfunction planen({ vorgaenge, freigaben, configs, jetzt, fristen, max = MAX_AUFGABEN }) {\n\tconst jetztMs = ms(jetzt);\n\tif (!Number.isFinite(jetztMs)) throw new Error(`Ungültiger Zeitpunkt \"${jetzt}\"`);\n\tconst aufgaben = [];\n\tconst uebersprungen = [];\n\tconst imDienst = {};\n\tconst geschaeftszeit = (kunde, c) => {\n\t\tif (!(kunde in imDienst)) imDienst[kunde] = fristen.istGeschaeftszeit(jetzt, c);\n\t\treturn imDienst[kunde];\n\t};\n\n\tfor (const v of vorgaenge || []) {\n\t\tif (!v || v.status !== WARTEN) continue;\n\t\tconst frist = ms(v.antwort_frist);\n\t\tif (!Number.isFinite(frist) || frist >= jetztMs) continue;\n\t\tconst ref = { kunde_id: v.kunde_id, vorgangs_id: v.vorgangs_id };\n\t\tconst c = configs[v.kunde_id];\n\t\tif (!c) {\n\t\t\tuebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\tcontinue;\n\t\t}\n\t\tif (!geschaeftszeit(v.kunde_id, c)) {\n\t\t\tuebersprungen.push({ ...ref, grund: 'ausserhalb_geschaeftszeit' });\n\t\t\tcontinue;\n\t\t}\n\t\tconst gesendet = Number(v.erinnerungen_gesendet || 0);\n\t\tconst erlaubt = Number(c.anzahl_erinnerungen || 0);\n\t\taufgaben.push({\n\t\t\taktion: gesendet < erlaubt ? 'erinnerung' : 'eskalation',\n\t\t\t...ref,\n\t\t\tfreigabe_id: '',\n\t\t\tversion: v.version ?? null,\n\t\t\terinnerungen_gesendet: gesendet,\n\t\t});\n\t}\n\n\tfor (const f of freigaben || []) {\n\t\tif (!f || (f.status !== 'offen' && f.status !== 'fehler')) continue;\n\t\tconst ref = { kunde_id: f.kunde_id, vorgangs_id: f.vorgangs_id, freigabe_id: f.freigabe_id };\n\t\tif (f.status === 'fehler') {\n\t\t\t// Versand fehlgeschlagen: nach kurzer Wartezeit erneut zur Freigabe (SW Nachfassen prüft vorher das Postfach).\n\t\t\tconst seit = jetztMs - ms(f.updatedAt);\n\t\t\tif (!Number.isFinite(seit) || seit < NACH_FEHLER_WARTEN_MINUTEN * 60000 || seit > NACH_FEHLER_HOECHSTALTER_STUNDEN * 3600000) continue;\n\t\t\tconst cf = configs[f.kunde_id];\n\t\t\tif (!cf) {\n\t\t\t\tuebersprungen.push({ ...ref, grund: cf === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\t\tcontinue;\n\t\t\t}\n\t\t\taufgaben.push({ aktion: 'freigabe_nach_fehler', ...ref, version: null, erinnerungen_gesendet: null });\n\t\t\tcontinue;\n\t\t}\n\t\tconst c = configs[f.kunde_id];\n\t\tif (!c) {\n\t\t\tuebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\tcontinue;\n\t\t}\n\t\tconst abgelaufen = ms(f.ablauf) <= jetztMs;\n\t\tlet erinnern = false;\n\t\tif (!abgelaufen && !f.erinnert_am && Number(c.freigabe_erinnerung_stunden) > 0) {\n\t\t\tconst basis = f.erneuert_am || f.createdAt;\n\t\t\tif (Number.isFinite(ms(basis))) erinnern = ms(fristen.berechneFrist(new Date(basis).toISOString(), c.freigabe_erinnerung_stunden, c)) <= jetztMs;\n\t\t}\n\t\tif (!abgelaufen && !erinnern) continue;\n\t\tif (!geschaeftszeit(f.kunde_id, c)) {\n\t\t\tuebersprungen.push({ ...ref, grund: 'ausserhalb_geschaeftszeit' });\n\t\t\tcontinue;\n\t\t}\n\t\taufgaben.push({ aktion: abgelaufen ? 'freigabe_erneuern' : 'freigabe_erinnerung', ...ref, version: null, erinnerungen_gesendet: null });\n\t}\n\n\taufgaben.sort((a, b) => PRIORITAET[a.aktion] - PRIORITAET[b.aktion]);\n\treturn { aufgaben: aufgaben.slice(0, max), uebersprungen, verschoben: Math.max(0, aufgaben.length - max) };\n}\n\n// ---------------------------------------------------------------- Lauf-Lock (Tabelle epa_system_status)\n\nfunction lockHolen(laufId, jetztEcht) {\n\tconst t = ms(jetztEcht);\n\treturn {\n\t\tlock_bis: new Date(t + LOCK_MINUTEN * 60000).toISOString(),\n\t\tlock_durch: String(laufId),\n\t\tletzter_start: new Date(t).toISOString(),\n\t};\n}\n\nfunction lockFreigeben(jetztEcht, ergebnis) {\n\treturn {\n\t\tlock_bis: EPOCHE,\n\t\tlock_durch: '',\n\t\tletzter_lauf: new Date(ms(jetztEcht)).toISOString(),\n\t\tletztes_ergebnis: JSON.stringify(ergebnis || {}),\n\t};\n}\n\n/** Zusammenfassung eines Laufs, nur Zähler und IDs (keine personenbezogenen Daten). */\nfunction laufAuswerten(plan, ergebnisse) {\n\tconst zaehler = {};\n\tconst fehler = [];\n\t(plan.aufgaben || []).forEach((a, i) => {\n\t\tconst r = (ergebnisse || [])[i] || {};\n\t\tconst ergebnis = r.error ? 'fehler' : String(r.ergebnis || 'unbekannt');\n\t\tconst k = `${a.aktion}:${ergebnis}`;\n\t\tzaehler[k] = (zaehler[k] || 0) + 1;\n\t\tif (r.error) fehler.push({ aktion: a.aktion, vorgangs_id: a.vorgangs_id, freigabe_id: a.freigabe_id || null });\n\t});\n\treturn {\n\t\taufgaben: (plan.aufgaben || []).length,\n\t\tergebnisse: zaehler,\n\t\tfehler,\n\t\tuebersprungen: (plan.uebersprungen || []).length,\n\t\tverschoben: plan.verschoben || 0,\n\t};\n}\n\n// ---------------------------------------------------------------- Eskalation (Fall 2)\n\n/**\n * Seit wann wartet der Vorgang? Erste versendete Rückfrage der aktuellen Runde, sonst die jüngste versendete\n * Nachricht. Liefert ganze Tage oder null, wenn kein Versand bekannt ist.\n */\nfunction tageOhneReaktion(vorgang, gesendete, jetzt) {\n\tconst liste = (gesendete || []).filter((f) => f && f.status === 'gesendet' && Number.isFinite(ms(f.gesendet_am)));\n\tconst runde = Number(vorgang.rundenzaehler || 0);\n\tconst dieseRunde = liste.filter((f) => f.art === 'rueckfrage' && Number(f.runde) === runde);\n\tlet start = NaN;\n\tif (dieseRunde.length) start = Math.min(...dieseRunde.map((f) => ms(f.gesendet_am)));\n\telse if (liste.length) start = Math.max(...liste.map((f) => ms(f.gesendet_am)));\n\tif (!Number.isFinite(start)) return null;\n\treturn Math.max(0, Math.floor((ms(jetzt) - start) / 86400000));\n}\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction wertAus(daten, feld) {\n\tconst d = daten && daten[feld];\n\tif (d === null || d === undefined) return '';\n\treturn typeof d === 'object' ? String(d.wert ?? '') : String(d);\n}\n\n/** Teams-Nachricht an die Mitarbeiter (Masterprompt Fall 2) mit Kontaktdaten aus dem Vorgang. */\nfunction meldungKeineReaktion({ vorgang, tage, erinnerungen, fehlende, daten, telefonFeld = 'Telefon' }) {\n\tconst name = vorgang.absender_name ? `${vorgang.absender_name} ` : '';\n\tconst seit = tage === null || tage === undefined ? 'seit längerer Zeit' : tage === 1 ? 'seit 1 Tag' : `seit ${tage} Tagen`;\n\tconst tel = wertAus(daten, telefonFeld);\n\tconst offen = (fehlende || []).map((f) => esc(f.anzeigename || f.feldname)).join(', ');\n\treturn `<b>Kunde reagiert nicht – bitte telefonisch kontaktieren</b><br>Vorgang: <b>${esc(vorgang.vorgangs_id)}</b><br>` +\n\t\t`Kunde ${esc(name)}(${esc(vorgang.absender_adresse)}) reagiert ${esc(seit)} nicht auf Nachfragen (${Number(erinnerungen || 0)} Erinnerung(en) gesendet).<br>` +\n\t\t`Betreff: ${esc(vorgang.betreff)}${tel ? `<br>Telefon: ${esc(tel)}` : ''}${offen ? `<br>Noch offen: ${offen}` : ''}` +\n\t\t'<br>Es gehen keine automatischen Nachfragen mehr raus. Der Vorgang steht auf \"Eskaliert / Manuell\".';\n}\n\n// ---------------------------------------------------------------- Freigabe erinnern / erneuern\n\n/**\n * Prüft, ob die Aufgabe für diese Freigabe noch gilt, und liefert die zu schreibenden Daten.\n * aktion: freigabe_erinnerung (neue Links zusätzlich, alte bleiben gültig)\n *         freigabe_erneuern   (neue Ablaufzeit, alle bisherigen Links werden ungültig)\n */\nfunction freigabeAuffrischen({ aktion, freigabe, config, jetzt, vorgang }) {\n\tconst t = ms(jetzt);\n\tif (aktion === 'freigabe_nach_fehler') {\n\t\t// Versand nach Freigabe fehlgeschlagen: wieder öffnen, neue Ablaufzeit, alle alten Links gesperrt.\n\t\tif (!freigabe || freigabe.status !== 'fehler') return { ok: false, grund: 'kein_versandfehler' };\n\t\tif (vorgang && !NACH_FEHLER_STATUS.includes(vorgang.status)) return { ok: false, grund: 'status_geaendert' };\n\t\tif (vorgang && vorgang.freigabe_id_aktuell && vorgang.freigabe_id_aktuell !== freigabe.freigabe_id) return { ok: false, grund: 'veraltet' };\n\t\tconst ablauf = new Date(t + Number(config.freigabe_ablauf_stunden) * 3600000).toISOString();\n\t\treturn {\n\t\t\tok: true, alteLinksSperren: true, ablauf,\n\t\t\tdaten: { status: 'offen', ablauf, erneuert_am: new Date(t).toISOString(), erinnert_am: null, entscheider: null, entscheidung: null, bearbeitet: false, grund: null },\n\t\t};\n\t}\n\tif (!freigabe || freigabe.status !== 'offen') return { ok: false, grund: 'nicht_mehr_offen' };\n\tconst abgelaufen = ms(freigabe.ablauf) <= t;\n\tif (aktion === 'freigabe_erneuern') {\n\t\tif (!abgelaufen) return { ok: false, grund: 'nicht_abgelaufen' };\n\t\tconst ablauf = new Date(t + Number(config.freigabe_ablauf_stunden) * 3600000).toISOString();\n\t\treturn { ok: true, alteLinksSperren: true, ablauf, daten: { ablauf, erneuert_am: new Date(t).toISOString(), erinnert_am: null } };\n\t}\n\tif (aktion === 'freigabe_erinnerung') {\n\t\tif (abgelaufen) return { ok: false, grund: 'abgelaufen' };\n\t\tif (freigabe.erinnert_am) return { ok: false, grund: 'schon_erinnert' };\n\t\treturn { ok: true, alteLinksSperren: false, ablauf: new Date(ms(freigabe.ablauf)).toISOString(), daten: { erinnert_am: new Date(t).toISOString() } };\n\t}\n\treturn { ok: false, grund: 'unbekannte_aktion' };\n}\n\nmodule.exports = {\n\tLOCK_SCHLUESSEL, LOCK_MINUTEN, MAX_AUFGABEN, EPOCHE, PRIORITAET, NACH_FEHLER_WARTEN_MINUTEN, NACH_FEHLER_HOECHSTALTER_STUNDEN,\n\tplanen, lockHolen, lockFreigeben, laufAuswerten, tageOhneReaktion, meldungKeineReaktion, freigabeAuffrischen,\n};\nreturn module.exports;\n})();\n// ===== Ende src/nachfassen.js =====\n// ===== eingebettet aus src/freigabe.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst freigabe = (() => {\nconst module = { exports: {} };\n// Freigabe Variante B (Bauplan 6): einmaliges, ablaufendes Token je Freigeber. Gespeichert wird nur der\n// SHA-256-Hash. Der Endpunkt EPA-07 zeigt ein Formular (Vorschau, Text bearbeitbar, Senden/Ablehnen) und\n// verbraucht die Freigabe atomar (bedingtes Update auf status = 'offen').\n\nconst TOKEN_MUSTER = /^[A-Za-z0-9_-]{43}$/; // 32 Byte base64url\nconst AKTIONEN = ['senden', 'ablehnen'];\n\n/** @param {object} c Node-Modul \"crypto\" (im Code-Node per require('crypto')) */\nfunction tokenErzeugen(c) {\n\tconst token = c.randomBytes(32).toString('base64url');\n\treturn { token, hash: tokenHash(c, token) };\n}\n\nfunction tokenHash(c, token) {\n\treturn c.createHash('sha256').update(String(token), 'utf8').digest('hex');\n}\n\nfunction freigabeIdErzeugen(c) {\n\treturn 'F-' + c.randomUUID();\n}\n\nfunction istGueltigesToken(t) {\n\treturn typeof t === 'string' && TOKEN_MUSTER.test(t);\n}\n\n/** Basis-URL der Instanz aus $execution.resumeUrl (…/webhook-waiting/<id>) bzw. einem Override. */\nfunction basisUrl(resumeUrl, override) {\n\tif (override) return String(override).replace(/\\/+$/, '');\n\tconst m = String(resumeUrl || '').match(/^(https?:\\/\\/[^/]+(?:\\/[^/]+)*?)\\/webhook-waiting\\//);\n\tif (!m) throw new Error('Basis-URL der Instanz nicht ermittelbar');\n\treturn m[1];\n}\n\nfunction link(basis, token) {\n\treturn `${basis}/webhook/epa-freigabe?t=${encodeURIComponent(token)}`;\n}\n\n/**\n * Prüft Token und Freigabe vor Anzeige bzw. Entscheidung.\n * @returns {{ ok: true } | { ok: false, status: number, code: string, meldung: string }}\n */\nfunction freigabePruefen({ token, freigabe, freigeberErlaubt, jetzt }) {\n\tconst nein = (status, code, meldung) => ({ ok: false, status, code, meldung });\n\tif (!token || token.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Dieser Freigabe-Link ist ungültig.');\n\tif (!freigabe || freigabe.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Die Freigabe existiert nicht mehr.');\n\tif (freigabe.status !== 'offen') {\n\t\tconst wer = freigabe.entscheider ? ` von ${freigabe.entscheider}` : '';\n\t\tconst was = { in_versand: 'wird gerade versendet', gesendet: 'wurde bereits freigegeben und gesendet', abgelehnt: 'wurde bereits abgelehnt', abgelaufen: 'ist abgelaufen', ersetzt: 'wurde durch eine neuere Freigabe ersetzt', fehler: 'ist beim Versand fehlgeschlagen' }[freigabe.status] || `hat den Status \"${freigabe.status}\"`;\n\t\t// Betreff nennen, damit klar ist, um welche Anfrage es geht (mehrere Links in einem Chat).\n\t\tconst betrifft = freigabe.betreff ? ` Betrifft: ${String(freigabe.betreff).slice(0, 150)}` : '';\n\t\treturn nein(freigabe.status === 'abgelaufen' ? 410 : 409, freigabe.status === 'abgelaufen' ? 'FREIGABE_ABGELAUFEN' : 'DUPLIKAT', `Diese ${freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage'} ${was}${freigabe.status === 'gesendet' || freigabe.status === 'abgelehnt' ? wer : ''}.${betrifft}`);\n\t}\n\tif (token.verbraucht_am) return nein(409, 'DUPLIKAT', 'Dieser Link wurde bereits verwendet.');\n\tif (new Date(freigabe.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Ein neuer Link wird automatisch verschickt.');\n\t// Ab M5: Links haben eine eigene Ablaufzeit. Bei der Erneuerung einer abgelaufenen Freigabe werden alle alten Links gesperrt.\n\tif (token.ablauf && new Date(token.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Sie haben inzwischen einen neuen Link erhalten.');\n\tif (!freigeberErlaubt) return nein(403, 'KEINE_BERECHTIGUNG', 'Sie sind für diesen Kunden nicht (mehr) als Freigeber eingetragen.');\n\treturn { ok: true };\n}\n\n/** Formulardaten aus EPA-07 (POST, application/x-www-form-urlencoded). */\nfunction formularLesen(body) {\n\tconst b = body && typeof body === 'object' ? body : {};\n\tconst aktion = String(b.aktion || '');\n\tif (!AKTIONEN.includes(aktion)) return { ok: false, meldung: 'Unbekannte Aktion.' };\n\tif (!istGueltigesToken(b.t)) return { ok: false, meldung: 'Ungültiger Link.' };\n\tconst grund = String(b.grund || '').trim().slice(0, 500);\n\tif (aktion === 'ablehnen' && !grund) return { ok: false, meldung: 'Bitte einen Grund für die Ablehnung angeben.' };\n\treturn { ok: true, aktion, token: b.t, text: typeof b.text === 'string' ? b.text : '', grund };\n}\n\nfunction istBearbeitet(original, neu) {\n\tconst n = (s) => String(s ?? '').replace(/\\r\\n?/g, '\\n').replace(/[ \\t]+/g, ' ').replace(/\\s+$/gm, '').trim();\n\treturn n(original) !== n(neu);\n}\n\n// ---------------------------------------------------------------- HTML\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nconst STIL = `body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;margin:0;background:#f4f5f7;color:#1d2433}\nmain{max-width:760px;margin:0 auto;padding:16px}\n.karte{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}\nh1{font-size:1.3rem;margin:0 0 12px}dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0}\ndt{color:#5b6475}dd{margin:0;overflow-wrap:anywhere}textarea{width:100%;box-sizing:border-box;min-height:260px;font:inherit;padding:8px}\npre{white-space:pre-wrap;font:inherit;color:#5b6475;margin:8px 0 0}.knoepfe{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}\nbutton{font:inherit;padding:10px 16px;border-radius:6px;border:0;cursor:pointer}.senden{background:#1f6f43;color:#fff}.ablehnen{background:#a3222b;color:#fff}\ninput[type=text]{width:100%;box-sizing:border-box;font:inherit;padding:8px}.hinweis{color:#5b6475;font-size:.9rem}\n.ok{border-left:4px solid #1f6f43}.fehler{border-left:4px solid #a3222b}`;\n\nfunction seite(titel, inhalt) {\n\treturn `<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><title>${esc(titel)}</title><style>${STIL}</style></head><body><main>${inhalt}</main></body></html>`;\n}\n\nfunction seiteFormular({ token, freigabe, vorgang, fehlende, text, abschluss }) {\n\tconst luecken = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}${f.grund ? ` <span class=\"hinweis\">(${esc(f.grund)})</span>` : ''}</li>`).join('');\n\tconst was = freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';\n\treturn seite(`${was} ${vorgang.vorgangs_id}`, `\n<div class=\"karte\"><h1>${was} freigeben – ${esc(vorgang.vorgangs_id)}</h1>\n<dl><dt>An</dt><dd>${esc(freigabe.empfaenger)}</dd><dt>Betreff</dt><dd>${esc(freigabe.betreff)}</dd>\n<dt>Runde</dt><dd>${esc(Number(vorgang.rundenzaehler || 0) + 1)}</dd><dt>Gültig bis</dt><dd>${esc(new Date(freigabe.ablauf).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }))}</dd></dl>\n<p>Fehlende Angaben:</p><ul>${luecken}</ul>${freigabe.fallback ? '<p class=\"hinweis\">Hinweis: Die KI-Formulierung hat die Prüfung nicht bestanden, es wird die Standardvorlage verwendet.</p>' : ''}</div>\n<form class=\"karte\" method=\"post\" onsubmit=\"var f=this;setTimeout(function(){var b=f.querySelectorAll('button');for(var i=0;i<b.length;i++)b[i].disabled=true},0)\">\n<input type=\"hidden\" name=\"t\" value=\"${esc(token)}\">\n<label for=\"text\"><b>Text der Mail</b> (bearbeitbar)</label>\n<textarea id=\"text\" name=\"text\">${esc(text)}</textarea>\n<pre>${esc(abschluss)}</pre>\n<p class=\"hinweis\">Signatur und KI-Hinweis werden immer automatisch angehängt.</p>\n<label for=\"grund\">Grund (nur bei Ablehnung)</label><input type=\"text\" id=\"grund\" name=\"grund\" maxlength=\"500\">\n<div class=\"knoepfe\"><button class=\"senden\" name=\"aktion\" value=\"senden\">Freigeben und senden</button>\n<button class=\"ablehnen\" name=\"aktion\" value=\"ablehnen\">Ablehnen (manuell bearbeiten)</button></div>\n<p class=\"hinweis\">Der Link ist nur einmal verwendbar. Nichts wird ohne Ihren Klick versendet.</p></form>`);\n}\n\nfunction seiteMeldung(titel, text, art = 'ok') {\n\treturn seite(titel, `<div class=\"karte ${art === 'ok' ? 'ok' : 'fehler'}\"><h1>${esc(titel)}</h1><p>${esc(text)}</p></div>`);\n}\n\n/** Teams-Nachricht an den Freigeber (1:1-Chat). */\nconst ANLASS = Object.freeze({\n\tfreigabe_erinnerung: 'Erinnerung: Diese Freigabe ist noch offen. Hier ist ein neuer persönlicher Link.',\n\tfreigabe_erneuern: 'Der bisherige Link ist abgelaufen und gilt nicht mehr. Hier ist ein neuer persönlicher Link.',\n\tfreigabe_nach_fehler: 'Diese Nachricht wurde wegen eines Fehlers NICHT gesendet. Das Postfach ist wieder erreichbar, bitte erneut freigeben. Die bisherigen Links gelten nicht mehr.',\n});\n\n/**\n * Nachricht an einen Freigeber. kontext_html (optional, vom Aufrufer erzeugt, bereits escaped) ist die Übersicht\n * zur Mail (erkannte und fehlende Angaben, Warnhinweise). Dann ersetzt diese eine Nachricht die sonst zusätzliche\n * Eingangsmeldung, und die Liste der fehlenden Angaben steht nicht doppelt drin.\n */\nfunction nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art, anlass, kontext_html: kontext }) {\n\tconst liste = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}</li>`).join('');\n\tconst titel = art === 'erinnerung' ? 'Erinnerung an den Kunden freigeben' : 'Rückfrage an den Kunden freigeben';\n\tlet hinweis = ANLASS[anlass] ? `<i>${esc(ANLASS[anlass])}</i><br>` : '';\n\tif (anlass === 'freigabe_nach_fehler') {\n\t\thinweis = `<b>🔁 Erneut zur Freigabe: Versand war fehlgeschlagen</b><br>${freigabe.grund ? `Grund: ${esc(freigabe.grund)}<br>` : ''}${hinweis}<br>`;\n\t}\n\tconst link = `<a href=\"${esc(url)}\">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Persönlicher Link, einmal verwendbar, gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;\n\tif (kontext && typeof kontext === 'string' && kontext.trim()) {\n\t\treturn `${hinweis}${kontext}<br><br><b>${esc(titel)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>` + link;\n\t}\n\treturn `${hinweis}<b>${esc(titel)}: ${esc(vorgang.vorgangs_id)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>Fehlende Angaben:<ul>${liste}</ul>` + link;\n}\n\nmodule.exports = {\n\tTOKEN_MUSTER, AKTIONEN, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,\n\tfreigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber, ANLASS,\n};\nreturn module.exports;\n})();\n// ===== Ende src/freigabe.js =====\n\n// ----- Node-Logik -----\nconst crypto = require('crypto');\nconst e = $('Bei Aufruf').first().json;\nconst config = $('Config laden').first().json.config;\nconst f = $input.first().json;\nconst jetzt = e.jetzt || new Date().toISOString();\nconst r = nachfassen.freigabeAuffrischen({ aktion: e.aktion, freigabe: f && f.id !== undefined ? f : null, config, jetzt, vorgang: $('Vorgang lesen').first().json.vorgang });\nif (!r.ok) return [{ json: { weiter: false, grund: r.grund } }];\nif (!config.freigeber.length) throw fehlerklassen.epaFehler('KONFIGURATIONSFEHLER', e.vorgangs_id, 'Keine Freigeber konfiguriert');\nreturn [{ json: {\n\tweiter: true,\n\talte_sperren: r.alteLinksSperren,\n\tablauf: r.ablauf,\n\tdaten: r.daten,\n\ttokens: config.freigeber.map((fg) => ({ freigeber: fg, ...freigabe.tokenErzeugen(crypto) })),\n} }];\n"
+        "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\n// Fehler aus diesen Workflows werden gemeldet, aber nicht durch \"Vorgang sichern\" eskaliert: EPA-05 sichert Vorgänge\n// selbst über \"EPA SW Status setzen\". Schlüge das fehl und würde erneut gesichert, entstünde eine Fehlerschleife.\nconst OHNE_SICHERUNG_AUS = Object.freeze(['EPA SW Status setzen']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\t// Markierung \" *\" (fehlende Credentials) gehört nicht zum Namen\n\tconst ausSicherung = OHNE_SICHERUNG_AUS.includes(String(workflow.name || '').replace(/\\s*\\*$/, ''));\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId) && !ausSicherung,\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\n// Klartext je Fehlerklasse für die Alarmmeldung (Mitarbeiter sollen verstehen, was passiert ist).\nconst KLASSE_TEXT = Object.freeze({\n\tUpstream: 'Ein externer Dienst (Outlook, KI oder Telegram) hat nicht wie erwartet geantwortet.',\n\tKonfiguration: 'Die Konfiguration ist unvollständig oder fehlerhaft.',\n\tAuthentifizierung: 'Zugangsdaten sind ungültig oder abgelaufen.',\n\tKonflikt: 'Zwei Abläufe haben sich überschnitten.',\n\tEingabe: 'Ein Ablauf hat ungültige Daten erhalten.',\n\tLLM: 'Die KI hat keine verwertbare Antwort geliefert.',\n\tFreigabe: 'Eine Freigabe ist abgelaufen.',\n\t'Nicht gefunden': 'Ein Datensatz wurde nicht gefunden.',\n\tUnbekannt: 'Ein unerwarteter Fehler ist aufgetreten.',\n});\n\n/** Konkrete Handlungsempfehlung aus Fehlercode und Meldung. */\nfunction alarmEmpfehlung(e) {\n\tconst m = String(e.meldung || '').toLowerCase();\n\tif (/suspend|gesperrt|blocked/.test(m)) return 'Das Postfach-Konto wurde vom Anbieter gesperrt. Im Postfach anmelden und die Bestätigung durchführen. Nicht gesendete Nachrichten kommen danach automatisch mit neuem Link erneut zur Freigabe (Prüfung stündlich).';\n\tif (/401|unauthori|token|anmeld/.test(m) || e.klasse === 'Authentifizierung') return 'Zugang (Credential) in n8n prüfen und neu verbinden.';\n\tif (e.klasse === 'Konfiguration') return 'Konfiguration bzw. Regel-Sheet des Kunden prüfen.';\n\tif (e.retrybar) return 'Meist vorübergehend. Tritt der Fehler wiederholt auf, die Ausführung öffnen und prüfen.';\n\treturn 'Bitte die Ausführung öffnen und prüfen.';\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst meldung = String(e.meldung || '');\n\t// Titel: erster Satzteil der Meldung (\"Rückfrage nicht gesendet: …\"), sonst die Fehlerklasse\n\tconst kopf = meldung.split(/[:.]/)[0].trim();\n\tconst titel = kopf && kopf.length <= 70 ? kopf : (KLASSE_TEXT[e.klasse] || 'Systemfehler');\n\tconst zeilen = [\n\t\t`🚨 <b>Systemfehler: ${escapeHtml(titel)}</b>`,\n\t\tescapeHtml(KLASSE_TEXT[e.klasse] || KLASSE_TEXT.Unbekannt),\n\t];\n\tif (e.vorgangs_id) zeilen.push(`Vorgang: <b>${escapeHtml(e.vorgangs_id)}</b>`);\n\tzeilen.push(`Grund: ${escapeHtml(meldung || '–')}`);\n\tzeilen.push(`Was tun: ${escapeHtml(alarmEmpfehlung(e))}`);\n\tzeilen.push('');\n\tzeilen.push(`Technik: ${escapeHtml(e.workflow_name || e.workflow_id || '?')} · ${escapeHtml(e.node || '?')} · EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)} (${escapeHtml(e.klasse)})`);\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tOHNE_SICHERUNG_AUS,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\talarmEmpfehlung,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n// ===== eingebettet aus src/nachfassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst nachfassen = (() => {\nconst module = { exports: {} };\n// Phase E (Masterprompt Workflow 4, Bauplan 2.2/6): Nachfassen beim Kunden, Eskalation, Erinnerung an Freigeber\n// und Erneuerung abgelaufener Freigabe-Links. Reine Planungslogik: EPA-04 liest Vorgänge, offene Freigaben und\n// Configs, dieses Modul entscheidet, was zu tun ist. Ausgeführt wird jede Aufgabe einzeln in \"EPA SW Nachfassen\".\n// Es wird nie automatisch an Kunden gesendet: Eine Erinnerung an den Kunden ist immer ein Entwurf mit Freigabe.\n\nconst LOCK_SCHLUESSEL = 'epa04_lauf';\nconst LOCK_MINUTEN = 55;\nconst MAX_AUFGABEN = 50;\nconst EPOCHE = '1970-01-01T00:00:00.000Z';\nconst WARTEN = 'Warten auf Kunde';\n// Versand nach Freigabe fehlgeschlagen (Freigabe-Status \"fehler\"): Erneut zur Freigabe frühestens nach dieser\n// Wartezeit und nur, solange der Fehler nicht älter ist als das Höchstalter (alte Fehler nicht wiederbeleben).\nconst NACH_FEHLER_WARTEN_MINUTEN = 15;\nconst NACH_FEHLER_HOECHSTALTER_STUNDEN = 72;\n// Nur in diesen Vorgangsstatus ist die fehlgeschlagene Nachricht noch aktuell.\nconst NACH_FEHLER_STATUS = Object.freeze(['Eskaliert / Manuell', 'Freigabe ausstehend']);\n// Offene Freigaben: Wurde der Entwurf inzwischen direkt in Outlook gesendet (an der Freigabe vorbei)? Geprüft wird\n// jede offene Freigabe ab diesem Alter in jedem Lauf, unabhängig von Geschäftszeiten (es geht nichts an Kunden).\nconst VERSAND_PRUEFEN_AB_MINUTEN = 5;\nconst MAX_PRUEFUNGEN = 50;\n\n// Reihenfolge, falls mehr Aufgaben anfallen als ein Lauf abarbeitet (Rest folgt im nächsten Lauf).\nconst PRIORITAET = Object.freeze({ eskalation: 1, erinnerung: 2, freigabe_nach_fehler: 3, freigabe_erneuern: 3, freigabe_erinnerung: 4 });\n\nfunction ms(t) {\n\tif (t === null || t === undefined || t === '') return NaN;\n\tconst x = new Date(t).getTime();\n\treturn Number.isFinite(x) ? x : NaN;\n}\n\n/**\n * Plant die Aufgaben eines Laufs.\n * @param {object} p\n * @param {object[]} p.vorgaenge  Zeilen aus epa_vorgaenge (Status \"Warten auf Kunde\")\n * @param {object[]} p.freigaben  Zeilen aus epa_freigaben (Status \"offen\" oder \"fehler\")\n * @param {object} p.configs      kunde_id -> geprüfte Config; null = Kunde inaktiv; fehlt = Config ungültig\n * @param {string} p.jetzt        ISO-Zeitpunkt\n * @param {object} p.fristen      Modul src/fristen.js (im Code-Node eingebettet)\n * @returns {{ aufgaben: object[], pruefungen: object[], uebersprungen: object[], verschoben: number }}\n *   pruefungen: Versandprüfungen offener Freigaben (aktion versand_pruefen); EPA-04 führt sie vor den Aufgaben aus.\n */\nfunction planen({ vorgaenge, freigaben, configs, jetzt, fristen, max = MAX_AUFGABEN }) {\n\tconst jetztMs = ms(jetzt);\n\tif (!Number.isFinite(jetztMs)) throw new Error(`Ungültiger Zeitpunkt \"${jetzt}\"`);\n\tconst aufgaben = [];\n\tconst pruefungen = [];\n\tconst uebersprungen = [];\n\tconst imDienst = {};\n\tconst geschaeftszeit = (kunde, c) => {\n\t\tif (!(kunde in imDienst)) imDienst[kunde] = fristen.istGeschaeftszeit(jetzt, c);\n\t\treturn imDienst[kunde];\n\t};\n\n\tfor (const v of vorgaenge || []) {\n\t\tif (!v || v.status !== WARTEN) continue;\n\t\tconst frist = ms(v.antwort_frist);\n\t\tif (!Number.isFinite(frist) || frist >= jetztMs) continue;\n\t\tconst ref = { kunde_id: v.kunde_id, vorgangs_id: v.vorgangs_id };\n\t\tconst c = configs[v.kunde_id];\n\t\tif (!c) {\n\t\t\tuebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\tcontinue;\n\t\t}\n\t\tif (!geschaeftszeit(v.kunde_id, c)) {\n\t\t\tuebersprungen.push({ ...ref, grund: 'ausserhalb_geschaeftszeit' });\n\t\t\tcontinue;\n\t\t}\n\t\tconst gesendet = Number(v.erinnerungen_gesendet || 0);\n\t\tconst erlaubt = Number(c.anzahl_erinnerungen || 0);\n\t\taufgaben.push({\n\t\t\taktion: gesendet < erlaubt ? 'erinnerung' : 'eskalation',\n\t\t\t...ref,\n\t\t\tfreigabe_id: '',\n\t\t\tversion: v.version ?? null,\n\t\t\terinnerungen_gesendet: gesendet,\n\t\t});\n\t}\n\n\tfor (const f of freigaben || []) {\n\t\tif (!f || (f.status !== 'offen' && f.status !== 'fehler')) continue;\n\t\tconst ref = { kunde_id: f.kunde_id, vorgangs_id: f.vorgangs_id, freigabe_id: f.freigabe_id };\n\t\tif (f.status === 'fehler') {\n\t\t\t// Versand fehlgeschlagen: nach kurzer Wartezeit erneut zur Freigabe (SW Nachfassen prüft vorher das Postfach).\n\t\t\tconst seit = jetztMs - ms(f.updatedAt);\n\t\t\tif (!Number.isFinite(seit) || seit < NACH_FEHLER_WARTEN_MINUTEN * 60000 || seit > NACH_FEHLER_HOECHSTALTER_STUNDEN * 3600000) continue;\n\t\t\tconst cf = configs[f.kunde_id];\n\t\t\tif (!cf) {\n\t\t\t\tuebersprungen.push({ ...ref, grund: cf === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\t\tcontinue;\n\t\t\t}\n\t\t\taufgaben.push({ aktion: 'freigabe_nach_fehler', ...ref, version: null, erinnerungen_gesendet: null });\n\t\t\tcontinue;\n\t\t}\n\t\tconst c = configs[f.kunde_id];\n\t\tif (!c) {\n\t\t\tuebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\tcontinue;\n\t\t}\n\t\tif (f.entwurf_id && jetztMs - ms(f.createdAt) >= VERSAND_PRUEFEN_AB_MINUTEN * 60000) {\n\t\t\tpruefungen.push({ aktion: 'versand_pruefen', ...ref, version: null, erinnerungen_gesendet: null });\n\t\t}\n\t\tconst abgelaufen = ms(f.ablauf) <= jetztMs;\n\t\tlet erinnern = false;\n\t\tif (!abgelaufen && !f.erinnert_am && Number(c.freigabe_erinnerung_stunden) > 0) {\n\t\t\tconst basis = f.erneuert_am || f.createdAt;\n\t\t\tif (Number.isFinite(ms(basis))) erinnern = ms(fristen.berechneFrist(new Date(basis).toISOString(), c.freigabe_erinnerung_stunden, c)) <= jetztMs;\n\t\t}\n\t\tif (!abgelaufen && !erinnern) continue;\n\t\tif (!geschaeftszeit(f.kunde_id, c)) {\n\t\t\tuebersprungen.push({ ...ref, grund: 'ausserhalb_geschaeftszeit' });\n\t\t\tcontinue;\n\t\t}\n\t\taufgaben.push({ aktion: abgelaufen ? 'freigabe_erneuern' : 'freigabe_erinnerung', ...ref, version: null, erinnerungen_gesendet: null });\n\t}\n\n\taufgaben.sort((a, b) => PRIORITAET[a.aktion] - PRIORITAET[b.aktion]);\n\treturn {\n\t\taufgaben: aufgaben.slice(0, max),\n\t\tpruefungen: pruefungen.slice(0, MAX_PRUEFUNGEN),\n\t\tuebersprungen,\n\t\tverschoben: Math.max(0, aufgaben.length - max) + Math.max(0, pruefungen.length - MAX_PRUEFUNGEN),\n\t};\n}\n\n// ---------------------------------------------------------------- Lauf-Lock (Tabelle epa_system_status)\n\nfunction lockHolen(laufId, jetztEcht) {\n\tconst t = ms(jetztEcht);\n\treturn {\n\t\tlock_bis: new Date(t + LOCK_MINUTEN * 60000).toISOString(),\n\t\tlock_durch: String(laufId),\n\t\tletzter_start: new Date(t).toISOString(),\n\t};\n}\n\nfunction lockFreigeben(jetztEcht, ergebnis) {\n\treturn {\n\t\tlock_bis: EPOCHE,\n\t\tlock_durch: '',\n\t\tletzter_lauf: new Date(ms(jetztEcht)).toISOString(),\n\t\tletztes_ergebnis: JSON.stringify(ergebnis || {}),\n\t};\n}\n\n/** Alle auszuführenden Aufrufe eines Laufs in fester Reihenfolge: erst Versandprüfungen, dann Aufgaben. */\nfunction ausfuehrungen(plan) {\n\treturn [...((plan && plan.pruefungen) || []), ...((plan && plan.aufgaben) || [])];\n}\n\n/** Zusammenfassung eines Laufs, nur Zähler und IDs (keine personenbezogenen Daten). ergebnisse wie ausfuehrungen(plan). */\nfunction laufAuswerten(plan, ergebnisse) {\n\tconst zaehler = {};\n\tconst fehler = [];\n\tausfuehrungen(plan).forEach((a, i) => {\n\t\tconst r = (ergebnisse || [])[i] || {};\n\t\tconst ergebnis = r.error ? 'fehler' : String(r.ergebnis || 'unbekannt');\n\t\tconst k = `${a.aktion}:${ergebnis}`;\n\t\tzaehler[k] = (zaehler[k] || 0) + 1;\n\t\tif (r.error) fehler.push({ aktion: a.aktion, vorgangs_id: a.vorgangs_id, freigabe_id: a.freigabe_id || null });\n\t});\n\treturn {\n\t\taufgaben: (plan.aufgaben || []).length,\n\t\tpruefungen: (plan.pruefungen || []).length,\n\t\tergebnisse: zaehler,\n\t\tfehler,\n\t\tuebersprungen: (plan.uebersprungen || []).length,\n\t\tverschoben: plan.verschoben || 0,\n\t};\n}\n\n// ---------------------------------------------------------------- Eskalation (Fall 2)\n\n/**\n * Seit wann wartet der Vorgang? Erste versendete Rückfrage der aktuellen Runde, sonst die jüngste versendete\n * Nachricht. Liefert ganze Tage oder null, wenn kein Versand bekannt ist.\n */\nfunction tageOhneReaktion(vorgang, gesendete, jetzt) {\n\tconst liste = (gesendete || []).filter((f) => f && f.status === 'gesendet' && Number.isFinite(ms(f.gesendet_am)));\n\tconst runde = Number(vorgang.rundenzaehler || 0);\n\tconst dieseRunde = liste.filter((f) => f.art === 'rueckfrage' && Number(f.runde) === runde);\n\tlet start = NaN;\n\tif (dieseRunde.length) start = Math.min(...dieseRunde.map((f) => ms(f.gesendet_am)));\n\telse if (liste.length) start = Math.max(...liste.map((f) => ms(f.gesendet_am)));\n\tif (!Number.isFinite(start)) return null;\n\treturn Math.max(0, Math.floor((ms(jetzt) - start) / 86400000));\n}\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction wertAus(daten, feld) {\n\tconst d = daten && daten[feld];\n\tif (d === null || d === undefined) return '';\n\treturn typeof d === 'object' ? String(d.wert ?? '') : String(d);\n}\n\n/** Teams-Nachricht an die Mitarbeiter (Masterprompt Fall 2) mit Kontaktdaten aus dem Vorgang. */\nfunction meldungKeineReaktion({ vorgang, tage, erinnerungen, fehlende, daten, telefonFeld = 'Telefon' }) {\n\tconst name = vorgang.absender_name ? `${vorgang.absender_name} ` : '';\n\tconst seit = tage === null || tage === undefined ? 'seit längerer Zeit' : tage === 1 ? 'seit 1 Tag' : `seit ${tage} Tagen`;\n\tconst tel = wertAus(daten, telefonFeld);\n\tconst offen = (fehlende || []).map((f) => esc(f.anzeigename || f.feldname)).join(', ');\n\treturn `<b>Kunde reagiert nicht – bitte telefonisch kontaktieren</b><br>Vorgang: <b>${esc(vorgang.vorgangs_id)}</b><br>` +\n\t\t`Kunde ${esc(name)}(${esc(vorgang.absender_adresse)}) reagiert ${esc(seit)} nicht auf Nachfragen (${Number(erinnerungen || 0)} Erinnerung(en) gesendet).<br>` +\n\t\t`Betreff: ${esc(vorgang.betreff)}${tel ? `<br>Telefon: ${esc(tel)}` : ''}${offen ? `<br>Noch offen: ${offen}` : ''}` +\n\t\t'<br>Es gehen keine automatischen Nachfragen mehr raus. Der Vorgang steht auf \"Eskaliert / Manuell\".';\n}\n\n// ---------------------------------------------------------------- Freigabe erinnern / erneuern\n\n/**\n * Prüft, ob die Aufgabe für diese Freigabe noch gilt, und liefert die zu schreibenden Daten.\n * aktion: freigabe_erinnerung (neue Links zusätzlich, alte bleiben gültig)\n *         freigabe_erneuern   (neue Ablaufzeit, alle bisherigen Links werden ungültig)\n */\nfunction freigabeAuffrischen({ aktion, freigabe, config, jetzt, vorgang }) {\n\tconst t = ms(jetzt);\n\tif (aktion === 'freigabe_nach_fehler') {\n\t\t// Versand nach Freigabe fehlgeschlagen: wieder öffnen, neue Ablaufzeit, alle alten Links gesperrt.\n\t\tif (!freigabe || freigabe.status !== 'fehler') return { ok: false, grund: 'kein_versandfehler' };\n\t\tif (vorgang && !NACH_FEHLER_STATUS.includes(vorgang.status)) return { ok: false, grund: 'status_geaendert' };\n\t\tif (vorgang && vorgang.freigabe_id_aktuell && vorgang.freigabe_id_aktuell !== freigabe.freigabe_id) return { ok: false, grund: 'veraltet' };\n\t\tconst ablauf = new Date(t + Number(config.freigabe_ablauf_stunden) * 3600000).toISOString();\n\t\treturn {\n\t\t\tok: true, alteLinksSperren: true, ablauf,\n\t\t\tdaten: { status: 'offen', ablauf, erneuert_am: new Date(t).toISOString(), erinnert_am: null, entscheider: null, entscheidung: null, bearbeitet: false, grund: null },\n\t\t};\n\t}\n\tif (!freigabe || freigabe.status !== 'offen') return { ok: false, grund: 'nicht_mehr_offen' };\n\tconst abgelaufen = ms(freigabe.ablauf) <= t;\n\tif (aktion === 'freigabe_erneuern') {\n\t\tif (!abgelaufen) return { ok: false, grund: 'nicht_abgelaufen' };\n\t\tconst ablauf = new Date(t + Number(config.freigabe_ablauf_stunden) * 3600000).toISOString();\n\t\treturn { ok: true, alteLinksSperren: true, ablauf, daten: { ablauf, erneuert_am: new Date(t).toISOString(), erinnert_am: null } };\n\t}\n\tif (aktion === 'freigabe_erinnerung') {\n\t\tif (abgelaufen) return { ok: false, grund: 'abgelaufen' };\n\t\tif (freigabe.erinnert_am) return { ok: false, grund: 'schon_erinnert' };\n\t\treturn { ok: true, alteLinksSperren: false, ablauf: new Date(ms(freigabe.ablauf)).toISOString(), daten: { erinnert_am: new Date(t).toISOString() } };\n\t}\n\treturn { ok: false, grund: 'unbekannte_aktion' };\n}\n\n// ---------------------------------------------------------------- Direkt in Outlook gesendet\n\n/**\n * Ergebnis der Postfach-Aktion versand_pruefen auswerten: Liegt der Entwurf dieser Freigabe in \"Gesendete Elemente\",\n * hat ihn jemand direkt im Postfach gesendet. Dann wird die Freigabe wie nach einem Versand vermerkt.\n * @param {object} p\n * @param {object} p.freigabe  Zeile aus epa_freigaben\n * @param {object} p.pruefung  Antwort von EPA-00 { gesendet, internet_message_id, gesendet_am } bzw. { error }\n */\nfunction manuellGesendet({ freigabe, pruefung }) {\n\tif (!freigabe || freigabe.status !== 'offen') return { ok: false, grund: 'nicht_mehr_offen' };\n\tconst r = pruefung || {};\n\tif (r.error || r.ok === false) return { ok: false, grund: 'pruefung_fehlgeschlagen' };\n\tif (r.gesendet !== true) return { ok: false, grund: 'nicht_gesendet' };\n\tconst am = Number.isFinite(ms(r.gesendet_am)) ? new Date(ms(r.gesendet_am)).toISOString() : null;\n\treturn {\n\t\tok: true,\n\t\tdaten: {\n\t\t\tstatus: 'gesendet', gesendet_am: am || new Date().toISOString(), gesendet_message_id: r.internet_message_id || null,\n\t\t\tentscheider: 'Outlook (direkt gesendet)', entscheidung: 'manuell_gesendet', bearbeitet: false,\n\t\t},\n\t};\n}\n\n/** Meldung an den Kanal: Nachricht wurde an der Freigabe vorbei direkt im Postfach gesendet. */\nfunction meldungManuellGesendet({ vorgang, freigabe, gesendetText, fristText }) {\n\tconst was = freigabe && freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';\n\treturn `<b>📤 ${was} direkt in Outlook gesendet</b><br>Vorgang: <b>${esc(vorgang.vorgangs_id)}</b><br>` +\n\t\t`Betreff: ${esc(freigabe && freigabe.betreff)}<br>` +\n\t\t`Der Entwurf wurde nicht über den Freigabe-Link, sondern direkt im Postfach gesendet${gesendetText ? ` (${esc(gesendetText)})` : ''}. ` +\n\t\t`Der Vorgang wartet jetzt auf die Antwort des Kunden${fristText ? ` (Frist: ${esc(fristText)})` : ''}. Die Freigabe-Links gelten nicht mehr.` +\n\t\t'<br>Hinweis: Den tatsächlich gesendeten Text hat der Agent nicht geprüft.';\n}\n\nmodule.exports = {\n\tVERSAND_PRUEFEN_AB_MINUTEN, MAX_PRUEFUNGEN, ausfuehrungen, manuellGesendet, meldungManuellGesendet,\n\tLOCK_SCHLUESSEL, LOCK_MINUTEN, MAX_AUFGABEN, EPOCHE, PRIORITAET, NACH_FEHLER_WARTEN_MINUTEN, NACH_FEHLER_HOECHSTALTER_STUNDEN,\n\tplanen, lockHolen, lockFreigeben, laufAuswerten, tageOhneReaktion, meldungKeineReaktion, freigabeAuffrischen,\n};\nreturn module.exports;\n})();\n// ===== Ende src/nachfassen.js =====\n// ===== eingebettet aus src/freigabe.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst freigabe = (() => {\nconst module = { exports: {} };\n// Freigabe Variante B (Bauplan 6): einmaliges, ablaufendes Token je Freigeber. Gespeichert wird nur der\n// SHA-256-Hash. Der Endpunkt EPA-07 zeigt ein Formular (Vorschau, Text bearbeitbar, Senden/Ablehnen) und\n// verbraucht die Freigabe atomar (bedingtes Update auf status = 'offen').\n\nconst TOKEN_MUSTER = /^[A-Za-z0-9_-]{43}$/; // 32 Byte base64url\nconst AKTIONEN = ['senden', 'ablehnen'];\n\n/** @param {object} c Node-Modul \"crypto\" (im Code-Node per require('crypto')) */\nfunction tokenErzeugen(c) {\n\tconst token = c.randomBytes(32).toString('base64url');\n\treturn { token, hash: tokenHash(c, token) };\n}\n\nfunction tokenHash(c, token) {\n\treturn c.createHash('sha256').update(String(token), 'utf8').digest('hex');\n}\n\nfunction freigabeIdErzeugen(c) {\n\treturn 'F-' + c.randomUUID();\n}\n\nfunction istGueltigesToken(t) {\n\treturn typeof t === 'string' && TOKEN_MUSTER.test(t);\n}\n\n/** Basis-URL der Instanz aus $execution.resumeUrl (…/webhook-waiting/<id>) bzw. einem Override. */\nfunction basisUrl(resumeUrl, override) {\n\tif (override) return String(override).replace(/\\/+$/, '');\n\tconst m = String(resumeUrl || '').match(/^(https?:\\/\\/[^/]+(?:\\/[^/]+)*?)\\/webhook-waiting\\//);\n\tif (!m) throw new Error('Basis-URL der Instanz nicht ermittelbar');\n\treturn m[1];\n}\n\nfunction link(basis, token) {\n\treturn `${basis}/webhook/epa-freigabe?t=${encodeURIComponent(token)}`;\n}\n\n/**\n * Prüft Token und Freigabe vor Anzeige bzw. Entscheidung.\n * @returns {{ ok: true } | { ok: false, status: number, code: string, meldung: string }}\n */\nfunction freigabePruefen({ token, freigabe, freigeberErlaubt, jetzt }) {\n\tconst nein = (status, code, meldung) => ({ ok: false, status, code, meldung });\n\tif (!token || token.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Dieser Freigabe-Link ist ungültig.');\n\tif (!freigabe || freigabe.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Die Freigabe existiert nicht mehr.');\n\tif (freigabe.status !== 'offen') {\n\t\tconst wer = freigabe.entscheider ? ` von ${freigabe.entscheider}` : '';\n\t\tconst was = { in_versand: 'wird gerade versendet', gesendet: 'wurde bereits freigegeben und gesendet', abgelehnt: 'wurde bereits abgelehnt', abgelaufen: 'ist abgelaufen', ersetzt: 'wurde durch eine neuere Freigabe ersetzt', fehler: 'ist beim Versand fehlgeschlagen' }[freigabe.status] || `hat den Status \"${freigabe.status}\"`;\n\t\t// Betreff nennen, damit klar ist, um welche Anfrage es geht (mehrere Links in einem Chat).\n\t\tconst betrifft = freigabe.betreff ? ` Betrifft: ${String(freigabe.betreff).slice(0, 150)}` : '';\n\t\treturn nein(freigabe.status === 'abgelaufen' ? 410 : 409, freigabe.status === 'abgelaufen' ? 'FREIGABE_ABGELAUFEN' : 'DUPLIKAT', `Diese ${freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage'} ${was}${freigabe.status === 'gesendet' || freigabe.status === 'abgelehnt' ? wer : ''}.${betrifft}`);\n\t}\n\tif (token.verbraucht_am) return nein(409, 'DUPLIKAT', 'Dieser Link wurde bereits verwendet.');\n\tif (new Date(freigabe.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Ein neuer Link wird automatisch verschickt.');\n\t// Ab M5: Links haben eine eigene Ablaufzeit. Bei der Erneuerung einer abgelaufenen Freigabe werden alle alten Links gesperrt.\n\tif (token.ablauf && new Date(token.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Sie haben inzwischen einen neuen Link erhalten.');\n\tif (!freigeberErlaubt) return nein(403, 'KEINE_BERECHTIGUNG', 'Sie sind für diesen Kunden nicht (mehr) als Freigeber eingetragen.');\n\treturn { ok: true };\n}\n\n/** Formulardaten aus EPA-07 (POST, application/x-www-form-urlencoded). */\nfunction formularLesen(body) {\n\tconst b = body && typeof body === 'object' ? body : {};\n\tconst aktion = String(b.aktion || '');\n\tif (!AKTIONEN.includes(aktion)) return { ok: false, meldung: 'Unbekannte Aktion.' };\n\tif (!istGueltigesToken(b.t)) return { ok: false, meldung: 'Ungültiger Link.' };\n\tconst grund = String(b.grund || '').trim().slice(0, 500);\n\tif (aktion === 'ablehnen' && !grund) return { ok: false, meldung: 'Bitte einen Grund für die Ablehnung angeben.' };\n\treturn { ok: true, aktion, token: b.t, text: typeof b.text === 'string' ? b.text : '', grund };\n}\n\nfunction istBearbeitet(original, neu) {\n\tconst n = (s) => String(s ?? '').replace(/\\r\\n?/g, '\\n').replace(/[ \\t]+/g, ' ').replace(/\\s+$/gm, '').trim();\n\treturn n(original) !== n(neu);\n}\n\n// ---------------------------------------------------------------- HTML\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nconst STIL = `body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;margin:0;background:#f4f5f7;color:#1d2433}\nmain{max-width:760px;margin:0 auto;padding:16px}\n.karte{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}\nh1{font-size:1.3rem;margin:0 0 12px}dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0}\ndt{color:#5b6475}dd{margin:0;overflow-wrap:anywhere}textarea{width:100%;box-sizing:border-box;min-height:260px;font:inherit;padding:8px}\npre{white-space:pre-wrap;font:inherit;color:#5b6475;margin:8px 0 0}.knoepfe{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}\nbutton{font:inherit;padding:10px 16px;border-radius:6px;border:0;cursor:pointer}.senden{background:#1f6f43;color:#fff}.ablehnen{background:#a3222b;color:#fff}\ninput[type=text]{width:100%;box-sizing:border-box;font:inherit;padding:8px}.hinweis{color:#5b6475;font-size:.9rem}\n.ok{border-left:4px solid #1f6f43}.fehler{border-left:4px solid #a3222b}`;\n\nfunction seite(titel, inhalt) {\n\treturn `<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><title>${esc(titel)}</title><style>${STIL}</style></head><body><main>${inhalt}</main></body></html>`;\n}\n\nfunction seiteFormular({ token, freigabe, vorgang, fehlende, text, abschluss }) {\n\tconst luecken = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}${f.grund ? ` <span class=\"hinweis\">(${esc(f.grund)})</span>` : ''}</li>`).join('');\n\tconst was = freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';\n\treturn seite(`${was} ${vorgang.vorgangs_id}`, `\n<div class=\"karte\"><h1>${was} freigeben – ${esc(vorgang.vorgangs_id)}</h1>\n<dl><dt>An</dt><dd>${esc(freigabe.empfaenger)}</dd><dt>Betreff</dt><dd>${esc(freigabe.betreff)}</dd>\n<dt>Runde</dt><dd>${esc(Number(vorgang.rundenzaehler || 0) + 1)}</dd><dt>Gültig bis</dt><dd>${esc(new Date(freigabe.ablauf).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }))}</dd></dl>\n<p>Fehlende Angaben:</p><ul>${luecken}</ul>${freigabe.fallback ? '<p class=\"hinweis\">Hinweis: Die KI-Formulierung hat die Prüfung nicht bestanden, es wird die Standardvorlage verwendet.</p>' : ''}</div>\n<form class=\"karte\" method=\"post\" onsubmit=\"var f=this;setTimeout(function(){var b=f.querySelectorAll('button');for(var i=0;i<b.length;i++)b[i].disabled=true},0)\">\n<input type=\"hidden\" name=\"t\" value=\"${esc(token)}\">\n<label for=\"text\"><b>Text der Mail</b> (bearbeitbar)</label>\n<textarea id=\"text\" name=\"text\">${esc(text)}</textarea>\n<pre>${esc(abschluss)}</pre>\n<p class=\"hinweis\">Signatur und KI-Hinweis werden immer automatisch angehängt.</p>\n<label for=\"grund\">Grund (nur bei Ablehnung)</label><input type=\"text\" id=\"grund\" name=\"grund\" maxlength=\"500\">\n<div class=\"knoepfe\"><button class=\"senden\" name=\"aktion\" value=\"senden\">Freigeben und senden</button>\n<button class=\"ablehnen\" name=\"aktion\" value=\"ablehnen\">Ablehnen (manuell bearbeiten)</button></div>\n<p class=\"hinweis\">Der Link ist nur einmal verwendbar. Nichts wird ohne Ihren Klick versendet.</p></form>`);\n}\n\nfunction seiteMeldung(titel, text, art = 'ok') {\n\treturn seite(titel, `<div class=\"karte ${art === 'ok' ? 'ok' : 'fehler'}\"><h1>${esc(titel)}</h1><p>${esc(text)}</p></div>`);\n}\n\n/** Teams-Nachricht an den Freigeber (1:1-Chat). */\nconst ANLASS = Object.freeze({\n\tfreigabe_erinnerung: 'Erinnerung: Diese Freigabe ist noch offen. Hier ist ein neuer persönlicher Link.',\n\tfreigabe_erneuern: 'Der bisherige Link ist abgelaufen und gilt nicht mehr. Hier ist ein neuer persönlicher Link.',\n\tfreigabe_nach_fehler: 'Diese Nachricht wurde wegen eines Fehlers NICHT gesendet. Das Postfach ist wieder erreichbar, bitte erneut freigeben. Die bisherigen Links gelten nicht mehr.',\n});\n\n/**\n * Nachricht an einen Freigeber. kontext_html (optional, vom Aufrufer erzeugt, bereits escaped) ist die Übersicht\n * zur Mail (erkannte und fehlende Angaben, Warnhinweise). Dann ersetzt diese eine Nachricht die sonst zusätzliche\n * Eingangsmeldung, und die Liste der fehlenden Angaben steht nicht doppelt drin.\n */\nfunction nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art, anlass, kontext_html: kontext }) {\n\tconst liste = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}</li>`).join('');\n\tconst titel = art === 'erinnerung' ? 'Erinnerung an den Kunden freigeben' : 'Rückfrage an den Kunden freigeben';\n\tlet hinweis = ANLASS[anlass] ? `<i>${esc(ANLASS[anlass])}</i><br>` : '';\n\tif (anlass === 'freigabe_nach_fehler') {\n\t\thinweis = `<b>🔁 Erneut zur Freigabe: Versand war fehlgeschlagen</b><br>${freigabe.grund ? `Grund: ${esc(freigabe.grund)}<br>` : ''}${hinweis}<br>`;\n\t}\n\tconst link = `<a href=\"${esc(url)}\">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Persönlicher Link, einmal verwendbar, gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;\n\tif (kontext && typeof kontext === 'string' && kontext.trim()) {\n\t\treturn `${hinweis}${kontext}<br><br><b>${esc(titel)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>` + link;\n\t}\n\treturn `${hinweis}<b>${esc(titel)}: ${esc(vorgang.vorgangs_id)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>Fehlende Angaben:<ul>${liste}</ul>` + link;\n}\n\nmodule.exports = {\n\tTOKEN_MUSTER, AKTIONEN, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,\n\tfreigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber, ANLASS,\n};\nreturn module.exports;\n})();\n// ===== Ende src/freigabe.js =====\n\n// ----- Node-Logik -----\nconst crypto = require('crypto');\nconst e = $('Bei Aufruf').first().json;\nconst config = $('Config laden').first().json.config;\nconst f = $input.first().json;\nconst jetzt = e.jetzt || new Date().toISOString();\nconst r = nachfassen.freigabeAuffrischen({ aktion: e.aktion, freigabe: f && f.id !== undefined ? f : null, config, jetzt, vorgang: $('Vorgang lesen').first().json.vorgang });\nif (!r.ok) return [{ json: { weiter: false, grund: r.grund } }];\nif (!config.freigeber.length) throw fehlerklassen.epaFehler('KONFIGURATIONSFEHLER', e.vorgangs_id, 'Keine Freigeber konfiguriert');\nreturn [{ json: {\n\tweiter: true,\n\talte_sperren: r.alteLinksSperren,\n\tablauf: r.ablauf,\n\tdaten: r.daten,\n\ttokens: config.freigeber.map((fg) => ({ freigeber: fg, ...freigabe.tokenErzeugen(crypto) })),\n} }];\n"
       },
       "id": "1d68b734-3aff-41d8-ae35-f32ee6e315b8",
       "name": "Auffrischen prüfen",
@@ -1620,6 +1644,817 @@
         1540,
         300
       ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigaben"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "freigabe_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Bei Aufruf').first().json.freigabe_id || '__keine__' }}"
+            },
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Bei Aufruf').first().json.kunde_id }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "id": "8e56fd97-b819-4687-a59f-f7b5bacafcaf",
+      "name": "Freigabe lesen (Versand)",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        640
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6fb27246-af86-4a18-a94f-78fc1d963881",
+              "leftValue": "={{ $json.status === 'offen' && Boolean($json.entwurf_id) }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1204480-b8d9-4c47-a50b-394cd8791f22",
+      "name": "Freigabe offen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1100,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Config laden').first().json.config.postfach_workflow_id }}"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "aktion": "versand_pruefen",
+            "postfach": "={{ $('Config laden').first().json.config.postfach }}",
+            "graph_id": "",
+            "internet_message_id": "",
+            "entwurf_id": "",
+            "freigabe_id": "={{ $('Bei Aufruf').first().json.freigabe_id }}",
+            "vorgangs_id": "={{ $('Bei Aufruf').first().json.vorgangs_id }}",
+            "html": ""
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "aktion",
+              "displayName": "aktion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "postfach",
+              "displayName": "postfach",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "graph_id",
+              "displayName": "graph_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "internet_message_id",
+              "displayName": "internet_message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "entwurf_id",
+              "displayName": "entwurf_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "freigabe_id",
+              "displayName": "freigabe_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "html",
+              "displayName": "html",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "7ebdf4ea-447c-4aa9-ae62-763f218931b9",
+      "name": "Gesendete Elemente prüfen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1320,
+        560
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/nachfassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst nachfassen = (() => {\nconst module = { exports: {} };\n// Phase E (Masterprompt Workflow 4, Bauplan 2.2/6): Nachfassen beim Kunden, Eskalation, Erinnerung an Freigeber\n// und Erneuerung abgelaufener Freigabe-Links. Reine Planungslogik: EPA-04 liest Vorgänge, offene Freigaben und\n// Configs, dieses Modul entscheidet, was zu tun ist. Ausgeführt wird jede Aufgabe einzeln in \"EPA SW Nachfassen\".\n// Es wird nie automatisch an Kunden gesendet: Eine Erinnerung an den Kunden ist immer ein Entwurf mit Freigabe.\n\nconst LOCK_SCHLUESSEL = 'epa04_lauf';\nconst LOCK_MINUTEN = 55;\nconst MAX_AUFGABEN = 50;\nconst EPOCHE = '1970-01-01T00:00:00.000Z';\nconst WARTEN = 'Warten auf Kunde';\n// Versand nach Freigabe fehlgeschlagen (Freigabe-Status \"fehler\"): Erneut zur Freigabe frühestens nach dieser\n// Wartezeit und nur, solange der Fehler nicht älter ist als das Höchstalter (alte Fehler nicht wiederbeleben).\nconst NACH_FEHLER_WARTEN_MINUTEN = 15;\nconst NACH_FEHLER_HOECHSTALTER_STUNDEN = 72;\n// Nur in diesen Vorgangsstatus ist die fehlgeschlagene Nachricht noch aktuell.\nconst NACH_FEHLER_STATUS = Object.freeze(['Eskaliert / Manuell', 'Freigabe ausstehend']);\n// Offene Freigaben: Wurde der Entwurf inzwischen direkt in Outlook gesendet (an der Freigabe vorbei)? Geprüft wird\n// jede offene Freigabe ab diesem Alter in jedem Lauf, unabhängig von Geschäftszeiten (es geht nichts an Kunden).\nconst VERSAND_PRUEFEN_AB_MINUTEN = 5;\nconst MAX_PRUEFUNGEN = 50;\n\n// Reihenfolge, falls mehr Aufgaben anfallen als ein Lauf abarbeitet (Rest folgt im nächsten Lauf).\nconst PRIORITAET = Object.freeze({ eskalation: 1, erinnerung: 2, freigabe_nach_fehler: 3, freigabe_erneuern: 3, freigabe_erinnerung: 4 });\n\nfunction ms(t) {\n\tif (t === null || t === undefined || t === '') return NaN;\n\tconst x = new Date(t).getTime();\n\treturn Number.isFinite(x) ? x : NaN;\n}\n\n/**\n * Plant die Aufgaben eines Laufs.\n * @param {object} p\n * @param {object[]} p.vorgaenge  Zeilen aus epa_vorgaenge (Status \"Warten auf Kunde\")\n * @param {object[]} p.freigaben  Zeilen aus epa_freigaben (Status \"offen\" oder \"fehler\")\n * @param {object} p.configs      kunde_id -> geprüfte Config; null = Kunde inaktiv; fehlt = Config ungültig\n * @param {string} p.jetzt        ISO-Zeitpunkt\n * @param {object} p.fristen      Modul src/fristen.js (im Code-Node eingebettet)\n * @returns {{ aufgaben: object[], pruefungen: object[], uebersprungen: object[], verschoben: number }}\n *   pruefungen: Versandprüfungen offener Freigaben (aktion versand_pruefen); EPA-04 führt sie vor den Aufgaben aus.\n */\nfunction planen({ vorgaenge, freigaben, configs, jetzt, fristen, max = MAX_AUFGABEN }) {\n\tconst jetztMs = ms(jetzt);\n\tif (!Number.isFinite(jetztMs)) throw new Error(`Ungültiger Zeitpunkt \"${jetzt}\"`);\n\tconst aufgaben = [];\n\tconst pruefungen = [];\n\tconst uebersprungen = [];\n\tconst imDienst = {};\n\tconst geschaeftszeit = (kunde, c) => {\n\t\tif (!(kunde in imDienst)) imDienst[kunde] = fristen.istGeschaeftszeit(jetzt, c);\n\t\treturn imDienst[kunde];\n\t};\n\n\tfor (const v of vorgaenge || []) {\n\t\tif (!v || v.status !== WARTEN) continue;\n\t\tconst frist = ms(v.antwort_frist);\n\t\tif (!Number.isFinite(frist) || frist >= jetztMs) continue;\n\t\tconst ref = { kunde_id: v.kunde_id, vorgangs_id: v.vorgangs_id };\n\t\tconst c = configs[v.kunde_id];\n\t\tif (!c) {\n\t\t\tuebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\tcontinue;\n\t\t}\n\t\tif (!geschaeftszeit(v.kunde_id, c)) {\n\t\t\tuebersprungen.push({ ...ref, grund: 'ausserhalb_geschaeftszeit' });\n\t\t\tcontinue;\n\t\t}\n\t\tconst gesendet = Number(v.erinnerungen_gesendet || 0);\n\t\tconst erlaubt = Number(c.anzahl_erinnerungen || 0);\n\t\taufgaben.push({\n\t\t\taktion: gesendet < erlaubt ? 'erinnerung' : 'eskalation',\n\t\t\t...ref,\n\t\t\tfreigabe_id: '',\n\t\t\tversion: v.version ?? null,\n\t\t\terinnerungen_gesendet: gesendet,\n\t\t});\n\t}\n\n\tfor (const f of freigaben || []) {\n\t\tif (!f || (f.status !== 'offen' && f.status !== 'fehler')) continue;\n\t\tconst ref = { kunde_id: f.kunde_id, vorgangs_id: f.vorgangs_id, freigabe_id: f.freigabe_id };\n\t\tif (f.status === 'fehler') {\n\t\t\t// Versand fehlgeschlagen: nach kurzer Wartezeit erneut zur Freigabe (SW Nachfassen prüft vorher das Postfach).\n\t\t\tconst seit = jetztMs - ms(f.updatedAt);\n\t\t\tif (!Number.isFinite(seit) || seit < NACH_FEHLER_WARTEN_MINUTEN * 60000 || seit > NACH_FEHLER_HOECHSTALTER_STUNDEN * 3600000) continue;\n\t\t\tconst cf = configs[f.kunde_id];\n\t\t\tif (!cf) {\n\t\t\t\tuebersprungen.push({ ...ref, grund: cf === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\t\tcontinue;\n\t\t\t}\n\t\t\taufgaben.push({ aktion: 'freigabe_nach_fehler', ...ref, version: null, erinnerungen_gesendet: null });\n\t\t\tcontinue;\n\t\t}\n\t\tconst c = configs[f.kunde_id];\n\t\tif (!c) {\n\t\t\tuebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\tcontinue;\n\t\t}\n\t\tif (f.entwurf_id && jetztMs - ms(f.createdAt) >= VERSAND_PRUEFEN_AB_MINUTEN * 60000) {\n\t\t\tpruefungen.push({ aktion: 'versand_pruefen', ...ref, version: null, erinnerungen_gesendet: null });\n\t\t}\n\t\tconst abgelaufen = ms(f.ablauf) <= jetztMs;\n\t\tlet erinnern = false;\n\t\tif (!abgelaufen && !f.erinnert_am && Number(c.freigabe_erinnerung_stunden) > 0) {\n\t\t\tconst basis = f.erneuert_am || f.createdAt;\n\t\t\tif (Number.isFinite(ms(basis))) erinnern = ms(fristen.berechneFrist(new Date(basis).toISOString(), c.freigabe_erinnerung_stunden, c)) <= jetztMs;\n\t\t}\n\t\tif (!abgelaufen && !erinnern) continue;\n\t\tif (!geschaeftszeit(f.kunde_id, c)) {\n\t\t\tuebersprungen.push({ ...ref, grund: 'ausserhalb_geschaeftszeit' });\n\t\t\tcontinue;\n\t\t}\n\t\taufgaben.push({ aktion: abgelaufen ? 'freigabe_erneuern' : 'freigabe_erinnerung', ...ref, version: null, erinnerungen_gesendet: null });\n\t}\n\n\taufgaben.sort((a, b) => PRIORITAET[a.aktion] - PRIORITAET[b.aktion]);\n\treturn {\n\t\taufgaben: aufgaben.slice(0, max),\n\t\tpruefungen: pruefungen.slice(0, MAX_PRUEFUNGEN),\n\t\tuebersprungen,\n\t\tverschoben: Math.max(0, aufgaben.length - max) + Math.max(0, pruefungen.length - MAX_PRUEFUNGEN),\n\t};\n}\n\n// ---------------------------------------------------------------- Lauf-Lock (Tabelle epa_system_status)\n\nfunction lockHolen(laufId, jetztEcht) {\n\tconst t = ms(jetztEcht);\n\treturn {\n\t\tlock_bis: new Date(t + LOCK_MINUTEN * 60000).toISOString(),\n\t\tlock_durch: String(laufId),\n\t\tletzter_start: new Date(t).toISOString(),\n\t};\n}\n\nfunction lockFreigeben(jetztEcht, ergebnis) {\n\treturn {\n\t\tlock_bis: EPOCHE,\n\t\tlock_durch: '',\n\t\tletzter_lauf: new Date(ms(jetztEcht)).toISOString(),\n\t\tletztes_ergebnis: JSON.stringify(ergebnis || {}),\n\t};\n}\n\n/** Alle auszuführenden Aufrufe eines Laufs in fester Reihenfolge: erst Versandprüfungen, dann Aufgaben. */\nfunction ausfuehrungen(plan) {\n\treturn [...((plan && plan.pruefungen) || []), ...((plan && plan.aufgaben) || [])];\n}\n\n/** Zusammenfassung eines Laufs, nur Zähler und IDs (keine personenbezogenen Daten). ergebnisse wie ausfuehrungen(plan). */\nfunction laufAuswerten(plan, ergebnisse) {\n\tconst zaehler = {};\n\tconst fehler = [];\n\tausfuehrungen(plan).forEach((a, i) => {\n\t\tconst r = (ergebnisse || [])[i] || {};\n\t\tconst ergebnis = r.error ? 'fehler' : String(r.ergebnis || 'unbekannt');\n\t\tconst k = `${a.aktion}:${ergebnis}`;\n\t\tzaehler[k] = (zaehler[k] || 0) + 1;\n\t\tif (r.error) fehler.push({ aktion: a.aktion, vorgangs_id: a.vorgangs_id, freigabe_id: a.freigabe_id || null });\n\t});\n\treturn {\n\t\taufgaben: (plan.aufgaben || []).length,\n\t\tpruefungen: (plan.pruefungen || []).length,\n\t\tergebnisse: zaehler,\n\t\tfehler,\n\t\tuebersprungen: (plan.uebersprungen || []).length,\n\t\tverschoben: plan.verschoben || 0,\n\t};\n}\n\n// ---------------------------------------------------------------- Eskalation (Fall 2)\n\n/**\n * Seit wann wartet der Vorgang? Erste versendete Rückfrage der aktuellen Runde, sonst die jüngste versendete\n * Nachricht. Liefert ganze Tage oder null, wenn kein Versand bekannt ist.\n */\nfunction tageOhneReaktion(vorgang, gesendete, jetzt) {\n\tconst liste = (gesendete || []).filter((f) => f && f.status === 'gesendet' && Number.isFinite(ms(f.gesendet_am)));\n\tconst runde = Number(vorgang.rundenzaehler || 0);\n\tconst dieseRunde = liste.filter((f) => f.art === 'rueckfrage' && Number(f.runde) === runde);\n\tlet start = NaN;\n\tif (dieseRunde.length) start = Math.min(...dieseRunde.map((f) => ms(f.gesendet_am)));\n\telse if (liste.length) start = Math.max(...liste.map((f) => ms(f.gesendet_am)));\n\tif (!Number.isFinite(start)) return null;\n\treturn Math.max(0, Math.floor((ms(jetzt) - start) / 86400000));\n}\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction wertAus(daten, feld) {\n\tconst d = daten && daten[feld];\n\tif (d === null || d === undefined) return '';\n\treturn typeof d === 'object' ? String(d.wert ?? '') : String(d);\n}\n\n/** Teams-Nachricht an die Mitarbeiter (Masterprompt Fall 2) mit Kontaktdaten aus dem Vorgang. */\nfunction meldungKeineReaktion({ vorgang, tage, erinnerungen, fehlende, daten, telefonFeld = 'Telefon' }) {\n\tconst name = vorgang.absender_name ? `${vorgang.absender_name} ` : '';\n\tconst seit = tage === null || tage === undefined ? 'seit längerer Zeit' : tage === 1 ? 'seit 1 Tag' : `seit ${tage} Tagen`;\n\tconst tel = wertAus(daten, telefonFeld);\n\tconst offen = (fehlende || []).map((f) => esc(f.anzeigename || f.feldname)).join(', ');\n\treturn `<b>Kunde reagiert nicht – bitte telefonisch kontaktieren</b><br>Vorgang: <b>${esc(vorgang.vorgangs_id)}</b><br>` +\n\t\t`Kunde ${esc(name)}(${esc(vorgang.absender_adresse)}) reagiert ${esc(seit)} nicht auf Nachfragen (${Number(erinnerungen || 0)} Erinnerung(en) gesendet).<br>` +\n\t\t`Betreff: ${esc(vorgang.betreff)}${tel ? `<br>Telefon: ${esc(tel)}` : ''}${offen ? `<br>Noch offen: ${offen}` : ''}` +\n\t\t'<br>Es gehen keine automatischen Nachfragen mehr raus. Der Vorgang steht auf \"Eskaliert / Manuell\".';\n}\n\n// ---------------------------------------------------------------- Freigabe erinnern / erneuern\n\n/**\n * Prüft, ob die Aufgabe für diese Freigabe noch gilt, und liefert die zu schreibenden Daten.\n * aktion: freigabe_erinnerung (neue Links zusätzlich, alte bleiben gültig)\n *         freigabe_erneuern   (neue Ablaufzeit, alle bisherigen Links werden ungültig)\n */\nfunction freigabeAuffrischen({ aktion, freigabe, config, jetzt, vorgang }) {\n\tconst t = ms(jetzt);\n\tif (aktion === 'freigabe_nach_fehler') {\n\t\t// Versand nach Freigabe fehlgeschlagen: wieder öffnen, neue Ablaufzeit, alle alten Links gesperrt.\n\t\tif (!freigabe || freigabe.status !== 'fehler') return { ok: false, grund: 'kein_versandfehler' };\n\t\tif (vorgang && !NACH_FEHLER_STATUS.includes(vorgang.status)) return { ok: false, grund: 'status_geaendert' };\n\t\tif (vorgang && vorgang.freigabe_id_aktuell && vorgang.freigabe_id_aktuell !== freigabe.freigabe_id) return { ok: false, grund: 'veraltet' };\n\t\tconst ablauf = new Date(t + Number(config.freigabe_ablauf_stunden) * 3600000).toISOString();\n\t\treturn {\n\t\t\tok: true, alteLinksSperren: true, ablauf,\n\t\t\tdaten: { status: 'offen', ablauf, erneuert_am: new Date(t).toISOString(), erinnert_am: null, entscheider: null, entscheidung: null, bearbeitet: false, grund: null },\n\t\t};\n\t}\n\tif (!freigabe || freigabe.status !== 'offen') return { ok: false, grund: 'nicht_mehr_offen' };\n\tconst abgelaufen = ms(freigabe.ablauf) <= t;\n\tif (aktion === 'freigabe_erneuern') {\n\t\tif (!abgelaufen) return { ok: false, grund: 'nicht_abgelaufen' };\n\t\tconst ablauf = new Date(t + Number(config.freigabe_ablauf_stunden) * 3600000).toISOString();\n\t\treturn { ok: true, alteLinksSperren: true, ablauf, daten: { ablauf, erneuert_am: new Date(t).toISOString(), erinnert_am: null } };\n\t}\n\tif (aktion === 'freigabe_erinnerung') {\n\t\tif (abgelaufen) return { ok: false, grund: 'abgelaufen' };\n\t\tif (freigabe.erinnert_am) return { ok: false, grund: 'schon_erinnert' };\n\t\treturn { ok: true, alteLinksSperren: false, ablauf: new Date(ms(freigabe.ablauf)).toISOString(), daten: { erinnert_am: new Date(t).toISOString() } };\n\t}\n\treturn { ok: false, grund: 'unbekannte_aktion' };\n}\n\n// ---------------------------------------------------------------- Direkt in Outlook gesendet\n\n/**\n * Ergebnis der Postfach-Aktion versand_pruefen auswerten: Liegt der Entwurf dieser Freigabe in \"Gesendete Elemente\",\n * hat ihn jemand direkt im Postfach gesendet. Dann wird die Freigabe wie nach einem Versand vermerkt.\n * @param {object} p\n * @param {object} p.freigabe  Zeile aus epa_freigaben\n * @param {object} p.pruefung  Antwort von EPA-00 { gesendet, internet_message_id, gesendet_am } bzw. { error }\n */\nfunction manuellGesendet({ freigabe, pruefung }) {\n\tif (!freigabe || freigabe.status !== 'offen') return { ok: false, grund: 'nicht_mehr_offen' };\n\tconst r = pruefung || {};\n\tif (r.error || r.ok === false) return { ok: false, grund: 'pruefung_fehlgeschlagen' };\n\tif (r.gesendet !== true) return { ok: false, grund: 'nicht_gesendet' };\n\tconst am = Number.isFinite(ms(r.gesendet_am)) ? new Date(ms(r.gesendet_am)).toISOString() : null;\n\treturn {\n\t\tok: true,\n\t\tdaten: {\n\t\t\tstatus: 'gesendet', gesendet_am: am || new Date().toISOString(), gesendet_message_id: r.internet_message_id || null,\n\t\t\tentscheider: 'Outlook (direkt gesendet)', entscheidung: 'manuell_gesendet', bearbeitet: false,\n\t\t},\n\t};\n}\n\n/** Meldung an den Kanal: Nachricht wurde an der Freigabe vorbei direkt im Postfach gesendet. */\nfunction meldungManuellGesendet({ vorgang, freigabe, gesendetText, fristText }) {\n\tconst was = freigabe && freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';\n\treturn `<b>📤 ${was} direkt in Outlook gesendet</b><br>Vorgang: <b>${esc(vorgang.vorgangs_id)}</b><br>` +\n\t\t`Betreff: ${esc(freigabe && freigabe.betreff)}<br>` +\n\t\t`Der Entwurf wurde nicht über den Freigabe-Link, sondern direkt im Postfach gesendet${gesendetText ? ` (${esc(gesendetText)})` : ''}. ` +\n\t\t`Der Vorgang wartet jetzt auf die Antwort des Kunden${fristText ? ` (Frist: ${esc(fristText)})` : ''}. Die Freigabe-Links gelten nicht mehr.` +\n\t\t'<br>Hinweis: Den tatsächlich gesendeten Text hat der Agent nicht geprüft.';\n}\n\nmodule.exports = {\n\tVERSAND_PRUEFEN_AB_MINUTEN, MAX_PRUEFUNGEN, ausfuehrungen, manuellGesendet, meldungManuellGesendet,\n\tLOCK_SCHLUESSEL, LOCK_MINUTEN, MAX_AUFGABEN, EPOCHE, PRIORITAET, NACH_FEHLER_WARTEN_MINUTEN, NACH_FEHLER_HOECHSTALTER_STUNDEN,\n\tplanen, lockHolen, lockFreigeben, laufAuswerten, tageOhneReaktion, meldungKeineReaktion, freigabeAuffrischen,\n};\nreturn module.exports;\n})();\n// ===== Ende src/nachfassen.js =====\n\n// ----- Node-Logik -----\nconst r = nachfassen.manuellGesendet({ freigabe: $('Freigabe lesen (Versand)').first().json, pruefung: $input.first().json });\nreturn [{ json: r.ok ? { weiter: true, daten: r.daten } : { weiter: false, grund: r.grund } }];\n"
+      },
+      "id": "82aa59f3-11d0-4744-abbd-00f200585dea",
+      "name": "Versand auswerten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c846106c-f835-479c-ab14-bc74199e9fbc",
+              "leftValue": "={{ $json.weiter }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "416bd6d7-0e9e-497f-a092-8ad95762fb99",
+      "name": "Direkt gesendet?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1760,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: $input.first().json.daten }];\n"
+      },
+      "id": "8c43b8c3-05fd-4499-afa5-1d23bd8980b9",
+      "name": "Gesendet-Daten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigaben"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "freigabe_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Bei Aufruf').first().json.freigabe_id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "offen"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "5e297931-a34e-47c3-ac10-04df32630595",
+      "name": "Freigabe als gesendet vermerken",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2200,
+        480
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8b79b0bf-e5a7-4806-a864-0334a7a26cc3",
+              "leftValue": "={{ $('Freigabe als gesendet vermerken').first().json.id }}",
+              "operator": {
+                "type": "number",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "bf4f455d-2e18-47d8-a761-2a32821f15de",
+      "name": "Vermerkt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2420,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: { ablauf: new Date().toISOString() } }];\n"
+      },
+      "id": "5914d9ec-9db8-407f-a450-9eda5499f728",
+      "name": "Sperrdaten (Versand)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_freigabe_tokens"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "freigabe_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Bei Aufruf').first().json.freigabe_id }}"
+            },
+            {
+              "keyName": "verbraucht_am",
+              "condition": "isEmpty"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "eed61632-e86e-48da-a724-a1283b4a4dcc",
+      "name": "Links sperren (Versand)",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2860,
+        400
+      ],
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Status setzen",
+          "cachedResultName": "EPA SW Status setzen"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $('Bei Aufruf').first().json.kunde_id }}",
+            "vorgangs_id": "={{ $('Bei Aufruf').first().json.vorgangs_id }}",
+            "neuer_status": "Warten auf Kunde",
+            "ausloeser": "Mitarbeiter:Outlook (direkt gesendet)",
+            "details": "={{ { freigabe_id: $('Bei Aufruf').first().json.freigabe_id, art: $('Freigabe lesen (Versand)').first().json.art, runde: $('Freigabe lesen (Versand)').first().json.runde, manuell_gesendet: true } }}",
+            "referenz": "={{ $('Bei Aufruf').first().json.freigabe_id }}",
+            "erwartete_version": "={{ null }}",
+            "nur_wenn_erlaubt": "={{ false }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "neuer_status",
+              "displayName": "neuer_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "ausloeser",
+              "displayName": "ausloeser",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "details",
+              "displayName": "details",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object",
+              "removed": false
+            },
+            {
+              "id": "referenz",
+              "displayName": "referenz",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "erwartete_version",
+              "displayName": "erwartete_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "nur_wenn_erlaubt",
+              "displayName": "nur_wenn_erlaubt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "84b7a783-7ef4-4118-af15-f2f08d26fad4",
+      "name": "Status: Warten auf Kunde (Outlook)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3080,
+        400
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/fristen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fristen = (() => {\nconst module = { exports: {} };\n// Fristberechnung mit Zeitzone, Geschäftszeiten und Feiertagen (Masterprompt 3 und Phase C4/E).\n// Nutzt Luxon. In n8n ist Luxon als globales `DateTime` verfügbar, lokal (Tests) über require.\n\nfunction luxon() {\n\t// eslint-disable-next-line no-undef\n\tif (typeof DateTime !== 'undefined' && DateTime && typeof DateTime.fromISO === 'function') return DateTime;\n\treturn require('luxon').DateTime;\n}\n\nconst BUNDESLAENDER = ['BW', 'BY', 'BE', 'BB', 'HB', 'HH', 'HE', 'MV', 'NI', 'NW', 'RP', 'SL', 'SN', 'ST', 'SH', 'TH'];\n\nfunction ostersonntag(jahr) {\n\t// Anonymer gregorianischer Algorithmus (Meeus/Jones/Butcher)\n\tconst a = jahr % 19;\n\tconst b = Math.floor(jahr / 100);\n\tconst c = jahr % 100;\n\tconst d = Math.floor(b / 4);\n\tconst e = b % 4;\n\tconst f = Math.floor((b + 8) / 25);\n\tconst g = Math.floor((b - f + 1) / 3);\n\tconst h = (19 * a + b - d - g + 15) % 30;\n\tconst i = Math.floor(c / 4);\n\tconst k = c % 4;\n\tconst l = (32 + 2 * e + 2 * i - h - k) % 7;\n\tconst m = Math.floor((a + 11 * h + 22 * l) / 451);\n\tconst monat = Math.floor((h + l - 7 * m + 114) / 31);\n\tconst tag = ((h + l - 7 * m + 114) % 31) + 1;\n\treturn { monat, tag };\n}\n\nfunction iso(jahr, monat, tag) {\n\treturn `${jahr}-${String(monat).padStart(2, '0')}-${String(tag).padStart(2, '0')}`;\n}\n\n/**\n * Gesetzliche Feiertage für ein Jahr und Bundesland als Map ISO-Datum -> Name.\n * Nicht enthalten: rein kommunale bzw. teilregionale Feiertage (z. B. Augsburger Friedensfest,\n * Mariä Himmelfahrt in Teilen Bayerns) und einmalige Sonderfeiertage. Diese über\n * `zusaetzliche` (Config) ergänzen.\n */\nfunction feiertage(jahr, region, zusaetzliche = []) {\n\tconst DT = luxon();\n\tconst r = String(region || '').toUpperCase();\n\tif (r && !BUNDESLAENDER.includes(r)) throw new Error(`Unbekannte Feiertagsregion \"${region}\"`);\n\tconst o = ostersonntag(jahr);\n\tconst ostern = DT.fromObject({ year: jahr, month: o.monat, day: o.tag }, { zone: 'UTC' });\n\tconst rel = (tage) => ostern.plus({ days: tage }).toISODate();\n\tconst liste = {\n\t\t[iso(jahr, 1, 1)]: 'Neujahr',\n\t\t[rel(-2)]: 'Karfreitag',\n\t\t[rel(1)]: 'Ostermontag',\n\t\t[iso(jahr, 5, 1)]: 'Tag der Arbeit',\n\t\t[rel(39)]: 'Christi Himmelfahrt',\n\t\t[rel(50)]: 'Pfingstmontag',\n\t\t[iso(jahr, 10, 3)]: 'Tag der Deutschen Einheit',\n\t\t[iso(jahr, 12, 25)]: '1. Weihnachtstag',\n\t\t[iso(jahr, 12, 26)]: '2. Weihnachtstag',\n\t};\n\tconst regional = (laender, datum, name) => {\n\t\tif (laender.includes(r)) liste[datum] = name;\n\t};\n\tregional(['BW', 'BY', 'ST'], iso(jahr, 1, 6), 'Heilige Drei Könige');\n\tif (jahr >= 2019) regional(['BE'], iso(jahr, 3, 8), 'Internationaler Frauentag');\n\tif (jahr >= 2023) regional(['MV'], iso(jahr, 3, 8), 'Internationaler Frauentag');\n\tregional(['BW', 'BY', 'HE', 'NW', 'RP', 'SL'], rel(60), 'Fronleichnam');\n\tregional(['SL'], iso(jahr, 8, 15), 'Mariä Himmelfahrt');\n\tif (jahr >= 2019) regional(['TH'], iso(jahr, 9, 20), 'Weltkindertag');\n\tconst reformation = jahr >= 2018 ? ['BB', 'MV', 'SN', 'ST', 'TH', 'HB', 'HH', 'NI', 'SH'] : ['BB', 'MV', 'SN', 'ST', 'TH'];\n\tregional(reformation, iso(jahr, 10, 31), 'Reformationstag');\n\tregional(['BW', 'BY', 'NW', 'RP', 'SL'], iso(jahr, 11, 1), 'Allerheiligen');\n\tif (r === 'SN') {\n\t\t// Mittwoch vor dem 23. November\n\t\tlet d = DT.fromObject({ year: jahr, month: 11, day: 22 }, { zone: 'UTC' });\n\t\twhile (d.weekday !== 3) d = d.minus({ days: 1 });\n\t\tliste[d.toISODate()] = 'Buß- und Bettag';\n\t}\n\tfor (const z of zusaetzliche || []) {\n\t\tif (typeof z === 'string' && z.startsWith(`${jahr}-`)) liste[z] = 'Zusätzlicher Feiertag (Config)';\n\t\telse if (z && typeof z.datum === 'string' && z.datum.startsWith(`${jahr}-`)) liste[z.datum] = z.name || 'Zusätzlicher Feiertag (Config)';\n\t}\n\treturn liste;\n}\n\nfunction parseUhrzeit(s) {\n\tconst m = /^([01]\\d|2[0-3]):([0-5]\\d)$/.exec(String(s || ''));\n\tif (!m) throw new Error(`Ungültige Uhrzeit \"${s}\" (erwartet HH:MM)`);\n\treturn { hour: Number(m[1]), minute: Number(m[2]) };\n}\n\n/**\n * Normalisiert die Zeit-Config.\n * cfg: { zeitzone, frist_nur_geschaeftszeit, geschaeftszeiten: {tage:[1..7], von:'08:00', bis:'17:00'},\n *        feiertage_region, zusaetzliche_feiertage }\n */\nfunction zeitConfig(cfg) {\n\tconst c = cfg || {};\n\tconst g = c.geschaeftszeiten || {};\n\tconst tage = Array.isArray(g.tage) && g.tage.length ? g.tage.map(Number) : [1, 2, 3, 4, 5];\n\tif (tage.some((t) => !Number.isInteger(t) || t < 1 || t > 7)) throw new Error('geschaeftszeiten.tage muss Werte 1 (Mo) bis 7 (So) enthalten');\n\tconst von = parseUhrzeit(g.von || '08:00');\n\tconst bis = parseUhrzeit(g.bis || '17:00');\n\tif (bis.hour * 60 + bis.minute <= von.hour * 60 + von.minute) throw new Error('geschaeftszeiten.bis muss nach geschaeftszeiten.von liegen');\n\treturn {\n\t\tzeitzone: c.zeitzone || 'Europe/Berlin',\n\t\tnurGeschaeftszeit: c.frist_nur_geschaeftszeit === true,\n\t\ttage,\n\t\tvon,\n\t\tbis,\n\t\tregion: c.feiertage_region || null,\n\t\tzusaetzliche: c.zusaetzliche_feiertage || [],\n\t};\n}\n\nfunction zuDateTime(wert, zone) {\n\tconst DT = luxon();\n\tlet d;\n\tif (wert && typeof wert === 'object' && typeof wert.setZone === 'function') d = wert;\n\telse if (wert instanceof Date) d = DT.fromJSDate(wert);\n\telse d = DT.fromISO(String(wert), { setZone: true });\n\tif (!d.isValid) throw new Error(`Ungültiger Zeitpunkt \"${wert}\"`);\n\td = d.setZone(zone);\n\tif (!d.isValid) throw new Error(`Ungültige Zeitzone \"${zone}\"`);\n\treturn d;\n}\n\nfunction istArbeitstag(d, z, cache) {\n\tif (!z.tage.includes(d.weekday)) return false;\n\tif (!z.region && !z.zusaetzliche.length) return true;\n\tif (!cache[d.year]) cache[d.year] = feiertage(d.year, z.region, z.zusaetzliche);\n\treturn !cache[d.year][d.toISODate()];\n}\n\nfunction istGeschaeftszeit(zeitpunkt, cfg) {\n\tconst z = zeitConfig(cfg);\n\tconst d = zuDateTime(zeitpunkt, z.zeitzone);\n\tif (!istArbeitstag(d, z, {})) return false;\n\tconst start = d.set({ ...z.von, second: 0, millisecond: 0 });\n\tconst ende = d.set({ ...z.bis, second: 0, millisecond: 0 });\n\treturn d >= start && d < ende;\n}\n\n/**\n * Berechnet eine Frist ab `start` um `stunden`.\n * Ohne Geschäftszeit-Modus: absolute Stunden. Mit: nur Minuten innerhalb der Geschäftszeiten zählen.\n * @returns {string} ISO-Zeitstempel in der konfigurierten Zeitzone\n */\nfunction berechneFrist(start, stunden, cfg) {\n\tconst z = zeitConfig(cfg);\n\tconst h = Number(stunden);\n\tif (!Number.isFinite(h) || h < 0) throw new Error(`Ungültige Fristdauer \"${stunden}\"`);\n\tlet t = zuDateTime(start, z.zeitzone);\n\tif (!z.nurGeschaeftszeit) return t.plus({ minutes: Math.round(h * 60) }).toISO();\n\n\tlet rest = Math.round(h * 60);\n\tconst cache = {};\n\tfor (let schutz = 0; schutz < 3700; schutz++) {\n\t\tconst tagStart = t.set({ ...z.von, second: 0, millisecond: 0 });\n\t\tconst tagEnde = t.set({ ...z.bis, second: 0, millisecond: 0 });\n\t\tif (!istArbeitstag(t, z, cache) || t >= tagEnde) {\n\t\t\tt = t.plus({ days: 1 }).set({ ...z.von, second: 0, millisecond: 0 });\n\t\t\tcontinue;\n\t\t}\n\t\tif (t < tagStart) t = tagStart;\n\t\tconst verfuegbar = tagEnde.diff(t, 'minutes').minutes;\n\t\tif (rest <= verfuegbar) return t.plus({ minutes: rest }).toISO();\n\t\trest -= verfuegbar;\n\t\tt = t.plus({ days: 1 }).set({ ...z.von, second: 0, millisecond: 0 });\n\t}\n\tthrow new Error('Frist konnte nicht berechnet werden (keine Arbeitstage gefunden)');\n}\n\n/** true, wenn die Frist zum Zeitpunkt `jetzt` überschritten ist. */\nfunction istUeberfaellig(frist, jetzt) {\n\tif (!frist) return false;\n\tconst DT = luxon();\n\tconst f = DT.fromISO(String(frist), { setZone: true });\n\tconst n = jetzt ? DT.fromISO(String(jetzt), { setZone: true }) : DT.now();\n\tif (!f.isValid || !n.isValid) throw new Error('Ungültiger Zeitpunkt für Fristvergleich');\n\treturn f.toMillis() < n.toMillis();\n}\n\nmodule.exports = {\n\tBUNDESLAENDER,\n\tostersonntag,\n\tfeiertage,\n\tzeitConfig,\n\tistGeschaeftszeit,\n\tberechneFrist,\n\tistUeberfaellig,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fristen.js =====\n\n// ----- Node-Logik -----\nconst config = $('Config laden').first().json.config;\nconst f = $('Freigabe lesen (Versand)').first().json;\nconst v = $('Vorgang lesen').first().json.vorgang;\nconst g = $('Versand auswerten').first().json.daten;\n// Wie nach einer Freigabe über den Link (EPA-07); Frist ab dem tatsächlichen Versand.\nconst daten = f.art === 'erinnerung'\n\t? { antwort_frist: fristen.berechneFrist(g.gesendet_am, config.erinnerung_intervall_stunden, config), erinnerungen_gesendet: Number(v.erinnerungen_gesendet || 0) + 1 }\n\t: { rundenzaehler: Number(f.runde), antwort_frist: fristen.berechneFrist(g.gesendet_am, config.frist_stunden, config), erinnerungen_gesendet: 0 };\nif (g.gesendet_message_id) daten.neue_message_ids = [g.gesendet_message_id];\nreturn [{ json: { daten, version: $input.first().json.version } }];\n"
+      },
+      "id": "01bdd301-cba5-4fed-a04e-6aa6349972e5",
+      "name": "Frist berechnen (Versand)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3300,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Vorgang verwalten",
+          "cachedResultName": "EPA SW Vorgang verwalten"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "aktion": "aktualisieren",
+            "kunde_id": "={{ $('Bei Aufruf').first().json.kunde_id }}",
+            "vorgangs_id": "={{ $('Bei Aufruf').first().json.vorgangs_id }}",
+            "daten": "={{ $json.daten }}",
+            "erwartete_version": "={{ $json.version }}",
+            "referenz": "={{ $('Bei Aufruf').first().json.freigabe_id }}",
+            "lock_sekunden": "={{ null }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "aktion",
+              "displayName": "aktion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "daten",
+              "displayName": "daten",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object",
+              "removed": false
+            },
+            {
+              "id": "erwartete_version",
+              "displayName": "erwartete_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "referenz",
+              "displayName": "referenz",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "lock_sekunden",
+              "displayName": "lock_sekunden",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "5291db2b-1c99-497b-a713-d83a31e842c2",
+      "name": "Vorgang nach Versand aktualisieren",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3520,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/nachfassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst nachfassen = (() => {\nconst module = { exports: {} };\n// Phase E (Masterprompt Workflow 4, Bauplan 2.2/6): Nachfassen beim Kunden, Eskalation, Erinnerung an Freigeber\n// und Erneuerung abgelaufener Freigabe-Links. Reine Planungslogik: EPA-04 liest Vorgänge, offene Freigaben und\n// Configs, dieses Modul entscheidet, was zu tun ist. Ausgeführt wird jede Aufgabe einzeln in \"EPA SW Nachfassen\".\n// Es wird nie automatisch an Kunden gesendet: Eine Erinnerung an den Kunden ist immer ein Entwurf mit Freigabe.\n\nconst LOCK_SCHLUESSEL = 'epa04_lauf';\nconst LOCK_MINUTEN = 55;\nconst MAX_AUFGABEN = 50;\nconst EPOCHE = '1970-01-01T00:00:00.000Z';\nconst WARTEN = 'Warten auf Kunde';\n// Versand nach Freigabe fehlgeschlagen (Freigabe-Status \"fehler\"): Erneut zur Freigabe frühestens nach dieser\n// Wartezeit und nur, solange der Fehler nicht älter ist als das Höchstalter (alte Fehler nicht wiederbeleben).\nconst NACH_FEHLER_WARTEN_MINUTEN = 15;\nconst NACH_FEHLER_HOECHSTALTER_STUNDEN = 72;\n// Nur in diesen Vorgangsstatus ist die fehlgeschlagene Nachricht noch aktuell.\nconst NACH_FEHLER_STATUS = Object.freeze(['Eskaliert / Manuell', 'Freigabe ausstehend']);\n// Offene Freigaben: Wurde der Entwurf inzwischen direkt in Outlook gesendet (an der Freigabe vorbei)? Geprüft wird\n// jede offene Freigabe ab diesem Alter in jedem Lauf, unabhängig von Geschäftszeiten (es geht nichts an Kunden).\nconst VERSAND_PRUEFEN_AB_MINUTEN = 5;\nconst MAX_PRUEFUNGEN = 50;\n\n// Reihenfolge, falls mehr Aufgaben anfallen als ein Lauf abarbeitet (Rest folgt im nächsten Lauf).\nconst PRIORITAET = Object.freeze({ eskalation: 1, erinnerung: 2, freigabe_nach_fehler: 3, freigabe_erneuern: 3, freigabe_erinnerung: 4 });\n\nfunction ms(t) {\n\tif (t === null || t === undefined || t === '') return NaN;\n\tconst x = new Date(t).getTime();\n\treturn Number.isFinite(x) ? x : NaN;\n}\n\n/**\n * Plant die Aufgaben eines Laufs.\n * @param {object} p\n * @param {object[]} p.vorgaenge  Zeilen aus epa_vorgaenge (Status \"Warten auf Kunde\")\n * @param {object[]} p.freigaben  Zeilen aus epa_freigaben (Status \"offen\" oder \"fehler\")\n * @param {object} p.configs      kunde_id -> geprüfte Config; null = Kunde inaktiv; fehlt = Config ungültig\n * @param {string} p.jetzt        ISO-Zeitpunkt\n * @param {object} p.fristen      Modul src/fristen.js (im Code-Node eingebettet)\n * @returns {{ aufgaben: object[], pruefungen: object[], uebersprungen: object[], verschoben: number }}\n *   pruefungen: Versandprüfungen offener Freigaben (aktion versand_pruefen); EPA-04 führt sie vor den Aufgaben aus.\n */\nfunction planen({ vorgaenge, freigaben, configs, jetzt, fristen, max = MAX_AUFGABEN }) {\n\tconst jetztMs = ms(jetzt);\n\tif (!Number.isFinite(jetztMs)) throw new Error(`Ungültiger Zeitpunkt \"${jetzt}\"`);\n\tconst aufgaben = [];\n\tconst pruefungen = [];\n\tconst uebersprungen = [];\n\tconst imDienst = {};\n\tconst geschaeftszeit = (kunde, c) => {\n\t\tif (!(kunde in imDienst)) imDienst[kunde] = fristen.istGeschaeftszeit(jetzt, c);\n\t\treturn imDienst[kunde];\n\t};\n\n\tfor (const v of vorgaenge || []) {\n\t\tif (!v || v.status !== WARTEN) continue;\n\t\tconst frist = ms(v.antwort_frist);\n\t\tif (!Number.isFinite(frist) || frist >= jetztMs) continue;\n\t\tconst ref = { kunde_id: v.kunde_id, vorgangs_id: v.vorgangs_id };\n\t\tconst c = configs[v.kunde_id];\n\t\tif (!c) {\n\t\t\tuebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\tcontinue;\n\t\t}\n\t\tif (!geschaeftszeit(v.kunde_id, c)) {\n\t\t\tuebersprungen.push({ ...ref, grund: 'ausserhalb_geschaeftszeit' });\n\t\t\tcontinue;\n\t\t}\n\t\tconst gesendet = Number(v.erinnerungen_gesendet || 0);\n\t\tconst erlaubt = Number(c.anzahl_erinnerungen || 0);\n\t\taufgaben.push({\n\t\t\taktion: gesendet < erlaubt ? 'erinnerung' : 'eskalation',\n\t\t\t...ref,\n\t\t\tfreigabe_id: '',\n\t\t\tversion: v.version ?? null,\n\t\t\terinnerungen_gesendet: gesendet,\n\t\t});\n\t}\n\n\tfor (const f of freigaben || []) {\n\t\tif (!f || (f.status !== 'offen' && f.status !== 'fehler')) continue;\n\t\tconst ref = { kunde_id: f.kunde_id, vorgangs_id: f.vorgangs_id, freigabe_id: f.freigabe_id };\n\t\tif (f.status === 'fehler') {\n\t\t\t// Versand fehlgeschlagen: nach kurzer Wartezeit erneut zur Freigabe (SW Nachfassen prüft vorher das Postfach).\n\t\t\tconst seit = jetztMs - ms(f.updatedAt);\n\t\t\tif (!Number.isFinite(seit) || seit < NACH_FEHLER_WARTEN_MINUTEN * 60000 || seit > NACH_FEHLER_HOECHSTALTER_STUNDEN * 3600000) continue;\n\t\t\tconst cf = configs[f.kunde_id];\n\t\t\tif (!cf) {\n\t\t\t\tuebersprungen.push({ ...ref, grund: cf === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\t\tcontinue;\n\t\t\t}\n\t\t\taufgaben.push({ aktion: 'freigabe_nach_fehler', ...ref, version: null, erinnerungen_gesendet: null });\n\t\t\tcontinue;\n\t\t}\n\t\tconst c = configs[f.kunde_id];\n\t\tif (!c) {\n\t\t\tuebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });\n\t\t\tcontinue;\n\t\t}\n\t\tif (f.entwurf_id && jetztMs - ms(f.createdAt) >= VERSAND_PRUEFEN_AB_MINUTEN * 60000) {\n\t\t\tpruefungen.push({ aktion: 'versand_pruefen', ...ref, version: null, erinnerungen_gesendet: null });\n\t\t}\n\t\tconst abgelaufen = ms(f.ablauf) <= jetztMs;\n\t\tlet erinnern = false;\n\t\tif (!abgelaufen && !f.erinnert_am && Number(c.freigabe_erinnerung_stunden) > 0) {\n\t\t\tconst basis = f.erneuert_am || f.createdAt;\n\t\t\tif (Number.isFinite(ms(basis))) erinnern = ms(fristen.berechneFrist(new Date(basis).toISOString(), c.freigabe_erinnerung_stunden, c)) <= jetztMs;\n\t\t}\n\t\tif (!abgelaufen && !erinnern) continue;\n\t\tif (!geschaeftszeit(f.kunde_id, c)) {\n\t\t\tuebersprungen.push({ ...ref, grund: 'ausserhalb_geschaeftszeit' });\n\t\t\tcontinue;\n\t\t}\n\t\taufgaben.push({ aktion: abgelaufen ? 'freigabe_erneuern' : 'freigabe_erinnerung', ...ref, version: null, erinnerungen_gesendet: null });\n\t}\n\n\taufgaben.sort((a, b) => PRIORITAET[a.aktion] - PRIORITAET[b.aktion]);\n\treturn {\n\t\taufgaben: aufgaben.slice(0, max),\n\t\tpruefungen: pruefungen.slice(0, MAX_PRUEFUNGEN),\n\t\tuebersprungen,\n\t\tverschoben: Math.max(0, aufgaben.length - max) + Math.max(0, pruefungen.length - MAX_PRUEFUNGEN),\n\t};\n}\n\n// ---------------------------------------------------------------- Lauf-Lock (Tabelle epa_system_status)\n\nfunction lockHolen(laufId, jetztEcht) {\n\tconst t = ms(jetztEcht);\n\treturn {\n\t\tlock_bis: new Date(t + LOCK_MINUTEN * 60000).toISOString(),\n\t\tlock_durch: String(laufId),\n\t\tletzter_start: new Date(t).toISOString(),\n\t};\n}\n\nfunction lockFreigeben(jetztEcht, ergebnis) {\n\treturn {\n\t\tlock_bis: EPOCHE,\n\t\tlock_durch: '',\n\t\tletzter_lauf: new Date(ms(jetztEcht)).toISOString(),\n\t\tletztes_ergebnis: JSON.stringify(ergebnis || {}),\n\t};\n}\n\n/** Alle auszuführenden Aufrufe eines Laufs in fester Reihenfolge: erst Versandprüfungen, dann Aufgaben. */\nfunction ausfuehrungen(plan) {\n\treturn [...((plan && plan.pruefungen) || []), ...((plan && plan.aufgaben) || [])];\n}\n\n/** Zusammenfassung eines Laufs, nur Zähler und IDs (keine personenbezogenen Daten). ergebnisse wie ausfuehrungen(plan). */\nfunction laufAuswerten(plan, ergebnisse) {\n\tconst zaehler = {};\n\tconst fehler = [];\n\tausfuehrungen(plan).forEach((a, i) => {\n\t\tconst r = (ergebnisse || [])[i] || {};\n\t\tconst ergebnis = r.error ? 'fehler' : String(r.ergebnis || 'unbekannt');\n\t\tconst k = `${a.aktion}:${ergebnis}`;\n\t\tzaehler[k] = (zaehler[k] || 0) + 1;\n\t\tif (r.error) fehler.push({ aktion: a.aktion, vorgangs_id: a.vorgangs_id, freigabe_id: a.freigabe_id || null });\n\t});\n\treturn {\n\t\taufgaben: (plan.aufgaben || []).length,\n\t\tpruefungen: (plan.pruefungen || []).length,\n\t\tergebnisse: zaehler,\n\t\tfehler,\n\t\tuebersprungen: (plan.uebersprungen || []).length,\n\t\tverschoben: plan.verschoben || 0,\n\t};\n}\n\n// ---------------------------------------------------------------- Eskalation (Fall 2)\n\n/**\n * Seit wann wartet der Vorgang? Erste versendete Rückfrage der aktuellen Runde, sonst die jüngste versendete\n * Nachricht. Liefert ganze Tage oder null, wenn kein Versand bekannt ist.\n */\nfunction tageOhneReaktion(vorgang, gesendete, jetzt) {\n\tconst liste = (gesendete || []).filter((f) => f && f.status === 'gesendet' && Number.isFinite(ms(f.gesendet_am)));\n\tconst runde = Number(vorgang.rundenzaehler || 0);\n\tconst dieseRunde = liste.filter((f) => f.art === 'rueckfrage' && Number(f.runde) === runde);\n\tlet start = NaN;\n\tif (dieseRunde.length) start = Math.min(...dieseRunde.map((f) => ms(f.gesendet_am)));\n\telse if (liste.length) start = Math.max(...liste.map((f) => ms(f.gesendet_am)));\n\tif (!Number.isFinite(start)) return null;\n\treturn Math.max(0, Math.floor((ms(jetzt) - start) / 86400000));\n}\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction wertAus(daten, feld) {\n\tconst d = daten && daten[feld];\n\tif (d === null || d === undefined) return '';\n\treturn typeof d === 'object' ? String(d.wert ?? '') : String(d);\n}\n\n/** Teams-Nachricht an die Mitarbeiter (Masterprompt Fall 2) mit Kontaktdaten aus dem Vorgang. */\nfunction meldungKeineReaktion({ vorgang, tage, erinnerungen, fehlende, daten, telefonFeld = 'Telefon' }) {\n\tconst name = vorgang.absender_name ? `${vorgang.absender_name} ` : '';\n\tconst seit = tage === null || tage === undefined ? 'seit längerer Zeit' : tage === 1 ? 'seit 1 Tag' : `seit ${tage} Tagen`;\n\tconst tel = wertAus(daten, telefonFeld);\n\tconst offen = (fehlende || []).map((f) => esc(f.anzeigename || f.feldname)).join(', ');\n\treturn `<b>Kunde reagiert nicht – bitte telefonisch kontaktieren</b><br>Vorgang: <b>${esc(vorgang.vorgangs_id)}</b><br>` +\n\t\t`Kunde ${esc(name)}(${esc(vorgang.absender_adresse)}) reagiert ${esc(seit)} nicht auf Nachfragen (${Number(erinnerungen || 0)} Erinnerung(en) gesendet).<br>` +\n\t\t`Betreff: ${esc(vorgang.betreff)}${tel ? `<br>Telefon: ${esc(tel)}` : ''}${offen ? `<br>Noch offen: ${offen}` : ''}` +\n\t\t'<br>Es gehen keine automatischen Nachfragen mehr raus. Der Vorgang steht auf \"Eskaliert / Manuell\".';\n}\n\n// ---------------------------------------------------------------- Freigabe erinnern / erneuern\n\n/**\n * Prüft, ob die Aufgabe für diese Freigabe noch gilt, und liefert die zu schreibenden Daten.\n * aktion: freigabe_erinnerung (neue Links zusätzlich, alte bleiben gültig)\n *         freigabe_erneuern   (neue Ablaufzeit, alle bisherigen Links werden ungültig)\n */\nfunction freigabeAuffrischen({ aktion, freigabe, config, jetzt, vorgang }) {\n\tconst t = ms(jetzt);\n\tif (aktion === 'freigabe_nach_fehler') {\n\t\t// Versand nach Freigabe fehlgeschlagen: wieder öffnen, neue Ablaufzeit, alle alten Links gesperrt.\n\t\tif (!freigabe || freigabe.status !== 'fehler') return { ok: false, grund: 'kein_versandfehler' };\n\t\tif (vorgang && !NACH_FEHLER_STATUS.includes(vorgang.status)) return { ok: false, grund: 'status_geaendert' };\n\t\tif (vorgang && vorgang.freigabe_id_aktuell && vorgang.freigabe_id_aktuell !== freigabe.freigabe_id) return { ok: false, grund: 'veraltet' };\n\t\tconst ablauf = new Date(t + Number(config.freigabe_ablauf_stunden) * 3600000).toISOString();\n\t\treturn {\n\t\t\tok: true, alteLinksSperren: true, ablauf,\n\t\t\tdaten: { status: 'offen', ablauf, erneuert_am: new Date(t).toISOString(), erinnert_am: null, entscheider: null, entscheidung: null, bearbeitet: false, grund: null },\n\t\t};\n\t}\n\tif (!freigabe || freigabe.status !== 'offen') return { ok: false, grund: 'nicht_mehr_offen' };\n\tconst abgelaufen = ms(freigabe.ablauf) <= t;\n\tif (aktion === 'freigabe_erneuern') {\n\t\tif (!abgelaufen) return { ok: false, grund: 'nicht_abgelaufen' };\n\t\tconst ablauf = new Date(t + Number(config.freigabe_ablauf_stunden) * 3600000).toISOString();\n\t\treturn { ok: true, alteLinksSperren: true, ablauf, daten: { ablauf, erneuert_am: new Date(t).toISOString(), erinnert_am: null } };\n\t}\n\tif (aktion === 'freigabe_erinnerung') {\n\t\tif (abgelaufen) return { ok: false, grund: 'abgelaufen' };\n\t\tif (freigabe.erinnert_am) return { ok: false, grund: 'schon_erinnert' };\n\t\treturn { ok: true, alteLinksSperren: false, ablauf: new Date(ms(freigabe.ablauf)).toISOString(), daten: { erinnert_am: new Date(t).toISOString() } };\n\t}\n\treturn { ok: false, grund: 'unbekannte_aktion' };\n}\n\n// ---------------------------------------------------------------- Direkt in Outlook gesendet\n\n/**\n * Ergebnis der Postfach-Aktion versand_pruefen auswerten: Liegt der Entwurf dieser Freigabe in \"Gesendete Elemente\",\n * hat ihn jemand direkt im Postfach gesendet. Dann wird die Freigabe wie nach einem Versand vermerkt.\n * @param {object} p\n * @param {object} p.freigabe  Zeile aus epa_freigaben\n * @param {object} p.pruefung  Antwort von EPA-00 { gesendet, internet_message_id, gesendet_am } bzw. { error }\n */\nfunction manuellGesendet({ freigabe, pruefung }) {\n\tif (!freigabe || freigabe.status !== 'offen') return { ok: false, grund: 'nicht_mehr_offen' };\n\tconst r = pruefung || {};\n\tif (r.error || r.ok === false) return { ok: false, grund: 'pruefung_fehlgeschlagen' };\n\tif (r.gesendet !== true) return { ok: false, grund: 'nicht_gesendet' };\n\tconst am = Number.isFinite(ms(r.gesendet_am)) ? new Date(ms(r.gesendet_am)).toISOString() : null;\n\treturn {\n\t\tok: true,\n\t\tdaten: {\n\t\t\tstatus: 'gesendet', gesendet_am: am || new Date().toISOString(), gesendet_message_id: r.internet_message_id || null,\n\t\t\tentscheider: 'Outlook (direkt gesendet)', entscheidung: 'manuell_gesendet', bearbeitet: false,\n\t\t},\n\t};\n}\n\n/** Meldung an den Kanal: Nachricht wurde an der Freigabe vorbei direkt im Postfach gesendet. */\nfunction meldungManuellGesendet({ vorgang, freigabe, gesendetText, fristText }) {\n\tconst was = freigabe && freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';\n\treturn `<b>📤 ${was} direkt in Outlook gesendet</b><br>Vorgang: <b>${esc(vorgang.vorgangs_id)}</b><br>` +\n\t\t`Betreff: ${esc(freigabe && freigabe.betreff)}<br>` +\n\t\t`Der Entwurf wurde nicht über den Freigabe-Link, sondern direkt im Postfach gesendet${gesendetText ? ` (${esc(gesendetText)})` : ''}. ` +\n\t\t`Der Vorgang wartet jetzt auf die Antwort des Kunden${fristText ? ` (Frist: ${esc(fristText)})` : ''}. Die Freigabe-Links gelten nicht mehr.` +\n\t\t'<br>Hinweis: Den tatsächlich gesendeten Text hat der Agent nicht geprüft.';\n}\n\nmodule.exports = {\n\tVERSAND_PRUEFEN_AB_MINUTEN, MAX_PRUEFUNGEN, ausfuehrungen, manuellGesendet, meldungManuellGesendet,\n\tLOCK_SCHLUESSEL, LOCK_MINUTEN, MAX_AUFGABEN, EPOCHE, PRIORITAET, NACH_FEHLER_WARTEN_MINUTEN, NACH_FEHLER_HOECHSTALTER_STUNDEN,\n\tplanen, lockHolen, lockFreigeben, laufAuswerten, tageOhneReaktion, meldungKeineReaktion, freigabeAuffrischen,\n};\nreturn module.exports;\n})();\n// ===== Ende src/nachfassen.js =====\n\n// ----- Node-Logik -----\nconst config = $('Config laden').first().json.config;\nconst f = $('Freigabe lesen (Versand)').first().json;\nconst g = $('Versand auswerten').first().json.daten;\nconst frist = $('Frist berechnen (Versand)').first().json.daten.antwort_frist;\nconst fmt = (t) => DateTime.fromISO(t).setZone(config.zeitzone).toFormat('dd.LL.yyyy, HH:mm');\nreturn [{ json: { nachricht_html: nachfassen.meldungManuellGesendet({ vorgang: $('Vorgang lesen').first().json.vorgang, freigabe: f, gesendetText: 'am ' + fmt(g.gesendet_am), fristText: fmt(frist) }) } }];\n"
+      },
+      "id": "f9a82edf-52dd-4e09-aed0-336f49c17e27",
+      "name": "Meldung: direkt gesendet",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3740,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Benachrichtigen",
+          "cachedResultName": "EPA SW Benachrichtigen"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $('Bei Aufruf').first().json.kunde_id }}",
+            "vorgangs_id": "={{ $('Bei Aufruf').first().json.vorgangs_id }}",
+            "team_id": "={{ $('Config laden').first().json.config.benachrichtigung.team_id }}",
+            "channel_id": "={{ $('Config laden').first().json.config.benachrichtigung.channel_id }}",
+            "kanal": "={{ $('Config laden').first().json.config.benachrichtigung.kanal }}",
+            "chat_id": "={{ $('Config laden').first().json.config.benachrichtigung.chat_id || '' }}",
+            "telegram_workflow_id": "={{ $('Config laden').first().json.config.benachrichtigung.telegram_workflow_id || '' }}",
+            "nachricht_html": "={{ $json.nachricht_html }}",
+            "anlass": "manuell_gesendet"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "team_id",
+              "displayName": "team_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "channel_id",
+              "displayName": "channel_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "kanal",
+              "displayName": "kanal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "telegram_workflow_id",
+              "displayName": "telegram_workflow_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "nachricht_html",
+              "displayName": "nachricht_html",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "anlass",
+              "displayName": "anlass",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "c30c390d-9c25-45be-a6b6-71f254b1b9e6",
+      "name": "Kanal informieren (Versand)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3960,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: { ergebnis: 'manuell_gesendet' } }];\n"
+      },
+      "id": "682f4a96-bddb-490d-aafd-dd54eb5bb980",
+      "name": "Ergebnis: direkt gesendet",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4180,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst a = $('Versand auswerten').isExecuted ? $('Versand auswerten').first().json : { grund: 'nicht_mehr_offen' };\nconst grund = $('Vermerkt?').isExecuted && a.weiter ? 'inzwischen_entschieden' : a.grund;\nreturn [{ json: { ergebnis: grund === 'nicht_gesendet' ? 'nicht_gesendet' : 'entfaellt_' + grund } }];\n"
+      },
+      "id": "147d4726-c847-4bca-a9fd-9cc124ca14ac",
+      "name": "Ergebnis: Versandprüfung",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        680
+      ]
     }
   ],
   "connections": {
@@ -1681,7 +2516,200 @@
         ],
         [
           {
+            "node": "Freigabe lesen (Versand)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Unbekannte Aktion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigabe lesen (Versand)": {
+      "main": [
+        [
+          {
+            "node": "Freigabe offen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigabe offen?": {
+      "main": [
+        [
+          {
+            "node": "Gesendete Elemente prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ergebnis: Versandprüfung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gesendete Elemente prüfen": {
+      "main": [
+        [
+          {
+            "node": "Versand auswerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Versand auswerten": {
+      "main": [
+        [
+          {
+            "node": "Direkt gesendet?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Direkt gesendet?": {
+      "main": [
+        [
+          {
+            "node": "Gesendet-Daten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ergebnis: Versandprüfung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gesendet-Daten": {
+      "main": [
+        [
+          {
+            "node": "Freigabe als gesendet vermerken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigabe als gesendet vermerken": {
+      "main": [
+        [
+          {
+            "node": "Vermerkt?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vermerkt?": {
+      "main": [
+        [
+          {
+            "node": "Sperrdaten (Versand)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ergebnis: Versandprüfung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sperrdaten (Versand)": {
+      "main": [
+        [
+          {
+            "node": "Links sperren (Versand)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Links sperren (Versand)": {
+      "main": [
+        [
+          {
+            "node": "Status: Warten auf Kunde (Outlook)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status: Warten auf Kunde (Outlook)": {
+      "main": [
+        [
+          {
+            "node": "Frist berechnen (Versand)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Frist berechnen (Versand)": {
+      "main": [
+        [
+          {
+            "node": "Vorgang nach Versand aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorgang nach Versand aktualisieren": {
+      "main": [
+        [
+          {
+            "node": "Meldung: direkt gesendet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meldung: direkt gesendet": {
+      "main": [
+        [
+          {
+            "node": "Kanal informieren (Versand)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kanal informieren (Versand)": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis: direkt gesendet",
             "type": "main",
             "index": 0
           }

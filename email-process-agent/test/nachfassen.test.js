@@ -198,3 +198,38 @@ test('Nachricht an Freigeber nach Versandfehler: Hinweis und Grund, escaped', ()
 	assert.match(html, /NICHT gesendet/);
 	assert.match(html, /bisherigen Links gelten nicht mehr/);
 });
+
+test('Versandprüfung: jede offene Freigabe mit Entwurf ab 5 Minuten, vor den Aufgaben, unabhängig von Geschäftszeit', () => {
+	const alt = fg({ entwurf_id: 'E1', createdAt: '2026-10-14T07:50:00.000Z' });
+	const frisch = fg({ freigabe_id: 'F-2', entwurf_id: 'E2', createdAt: '2026-10-14T07:58:00.000Z' });
+	const ohneEntwurf = fg({ freigabe_id: 'F-3', entwurf_id: null });
+	const r = plan({ freigaben: [alt, frisch, ohneEntwurf, fg({ freigabe_id: 'F-4', status: 'fehler', entwurf_id: 'E4' })] });
+	assert.deepEqual(r.pruefungen.map((a) => [a.aktion, a.freigabe_id]), [['versand_pruefen', 'F-1']]);
+	assert.equal(r.aufgaben.length, 0);
+	assert.equal(plan({ jetzt: NACHTS, freigaben: [alt] }).pruefungen.length, 1);
+	assert.equal(plan({ configs: { k1: null }, freigaben: [alt] }).pruefungen.length, 0);
+	// Fällige Erinnerung: Prüfung läuft vorher (ausfuehrungen), die Erinnerung entfällt dann in SW Nachfassen
+	const beide = plan({ jetzt: '2026-10-14T11:31:00.000Z', freigaben: [fg({ entwurf_id: 'E1' })] });
+	assert.deepEqual(n.ausfuehrungen(beide).map((a) => a.aktion), ['versand_pruefen', 'freigabe_erinnerung']);
+	const z = n.laufAuswerten(beide, [{ ergebnis: 'manuell_gesendet' }, { ergebnis: 'entfaellt_nicht_mehr_offen' }]);
+	assert.deepEqual(z.ergebnisse, { 'versand_pruefen:manuell_gesendet': 1, 'freigabe_erinnerung:entfaellt_nicht_mehr_offen': 1 });
+	assert.equal(z.pruefungen, 1);
+});
+
+test('Direkt in Outlook gesendet: nur offene Freigabe, nur bei Treffer, Daten wie nach Versand', () => {
+	const f = fg({ entwurf_id: 'E1' });
+	assert.deepEqual(n.manuellGesendet({ freigabe: f, pruefung: { ok: true, gesendet: false } }), { ok: false, grund: 'nicht_gesendet' });
+	assert.equal(n.manuellGesendet({ freigabe: f, pruefung: { ok: false, gesendet: false, status: 403 } }).grund, 'pruefung_fehlgeschlagen');
+	assert.equal(n.manuellGesendet({ freigabe: f, pruefung: { error: { message: 'x' } } }).grund, 'pruefung_fehlgeschlagen');
+	assert.equal(n.manuellGesendet({ freigabe: { ...f, status: 'gesendet' }, pruefung: { ok: true, gesendet: true } }).grund, 'nicht_mehr_offen');
+	const r = n.manuellGesendet({ freigabe: f, pruefung: { ok: true, gesendet: true, internet_message_id: '<m@x>', gesendet_am: '2026-10-17T09:31:57Z' } });
+	assert.equal(r.ok, true);
+	assert.deepEqual(r.daten, { status: 'gesendet', gesendet_am: '2026-10-17T09:31:57.000Z', gesendet_message_id: '<m@x>', entscheider: 'Outlook (direkt gesendet)', entscheidung: 'manuell_gesendet', bearbeitet: false });
+	// Status-Matrix: Freigabe ausstehend -> Warten auf Kunde mit diesem Auslöser erlaubt
+	assert.equal(pruefeUebergang('Freigabe ausstehend', 'Warten auf Kunde', 'Mitarbeiter:Outlook (direkt gesendet)').erlaubt, true);
+	const html = n.meldungManuellGesendet({ vorgang: { vorgangs_id: 'V-1' }, freigabe: { art: 'rueckfrage', betreff: 'RE: <Test>' }, gesendetText: 'am 17.10.2026, 11:31', fristText: '20.10.2026, 11:31' });
+	assert.match(html, /^<b>📤 Rückfrage direkt in Outlook gesendet<\/b>/);
+	assert.match(html, /RE: &lt;Test&gt;/);
+	assert.match(html, /Frist: 20\.10\.2026, 11:31/);
+	assert.match(html, /nicht geprüft/);
+});

@@ -15,6 +15,10 @@ const NACH_FEHLER_WARTEN_MINUTEN = 15;
 const NACH_FEHLER_HOECHSTALTER_STUNDEN = 72;
 // Nur in diesen Vorgangsstatus ist die fehlgeschlagene Nachricht noch aktuell.
 const NACH_FEHLER_STATUS = Object.freeze(['Eskaliert / Manuell', 'Freigabe ausstehend']);
+// Offene Freigaben: Wurde der Entwurf inzwischen direkt in Outlook gesendet (an der Freigabe vorbei)? Geprüft wird
+// jede offene Freigabe ab diesem Alter in jedem Lauf, unabhängig von Geschäftszeiten (es geht nichts an Kunden).
+const VERSAND_PRUEFEN_AB_MINUTEN = 5;
+const MAX_PRUEFUNGEN = 50;
 
 // Reihenfolge, falls mehr Aufgaben anfallen als ein Lauf abarbeitet (Rest folgt im nächsten Lauf).
 const PRIORITAET = Object.freeze({ eskalation: 1, erinnerung: 2, freigabe_nach_fehler: 3, freigabe_erneuern: 3, freigabe_erinnerung: 4 });
@@ -33,12 +37,14 @@ function ms(t) {
  * @param {object} p.configs      kunde_id -> geprüfte Config; null = Kunde inaktiv; fehlt = Config ungültig
  * @param {string} p.jetzt        ISO-Zeitpunkt
  * @param {object} p.fristen      Modul src/fristen.js (im Code-Node eingebettet)
- * @returns {{ aufgaben: object[], uebersprungen: object[], verschoben: number }}
+ * @returns {{ aufgaben: object[], pruefungen: object[], uebersprungen: object[], verschoben: number }}
+ *   pruefungen: Versandprüfungen offener Freigaben (aktion versand_pruefen); EPA-04 führt sie vor den Aufgaben aus.
  */
 function planen({ vorgaenge, freigaben, configs, jetzt, fristen, max = MAX_AUFGABEN }) {
 	const jetztMs = ms(jetzt);
 	if (!Number.isFinite(jetztMs)) throw new Error(`Ungültiger Zeitpunkt "${jetzt}"`);
 	const aufgaben = [];
+	const pruefungen = [];
 	const uebersprungen = [];
 	const imDienst = {};
 	const geschaeftszeit = (kunde, c) => {
@@ -91,6 +97,9 @@ function planen({ vorgaenge, freigaben, configs, jetzt, fristen, max = MAX_AUFGA
 			uebersprungen.push({ ...ref, grund: c === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });
 			continue;
 		}
+		if (f.entwurf_id && jetztMs - ms(f.createdAt) >= VERSAND_PRUEFEN_AB_MINUTEN * 60000) {
+			pruefungen.push({ aktion: 'versand_pruefen', ...ref, version: null, erinnerungen_gesendet: null });
+		}
 		const abgelaufen = ms(f.ablauf) <= jetztMs;
 		let erinnern = false;
 		if (!abgelaufen && !f.erinnert_am && Number(c.freigabe_erinnerung_stunden) > 0) {
@@ -106,7 +115,12 @@ function planen({ vorgaenge, freigaben, configs, jetzt, fristen, max = MAX_AUFGA
 	}
 
 	aufgaben.sort((a, b) => PRIORITAET[a.aktion] - PRIORITAET[b.aktion]);
-	return { aufgaben: aufgaben.slice(0, max), uebersprungen, verschoben: Math.max(0, aufgaben.length - max) };
+	return {
+		aufgaben: aufgaben.slice(0, max),
+		pruefungen: pruefungen.slice(0, MAX_PRUEFUNGEN),
+		uebersprungen,
+		verschoben: Math.max(0, aufgaben.length - max) + Math.max(0, pruefungen.length - MAX_PRUEFUNGEN),
+	};
 }
 
 // ---------------------------------------------------------------- Lauf-Lock (Tabelle epa_system_status)
@@ -129,11 +143,16 @@ function lockFreigeben(jetztEcht, ergebnis) {
 	};
 }
 
-/** Zusammenfassung eines Laufs, nur Zähler und IDs (keine personenbezogenen Daten). */
+/** Alle auszuführenden Aufrufe eines Laufs in fester Reihenfolge: erst Versandprüfungen, dann Aufgaben. */
+function ausfuehrungen(plan) {
+	return [...((plan && plan.pruefungen) || []), ...((plan && plan.aufgaben) || [])];
+}
+
+/** Zusammenfassung eines Laufs, nur Zähler und IDs (keine personenbezogenen Daten). ergebnisse wie ausfuehrungen(plan). */
 function laufAuswerten(plan, ergebnisse) {
 	const zaehler = {};
 	const fehler = [];
-	(plan.aufgaben || []).forEach((a, i) => {
+	ausfuehrungen(plan).forEach((a, i) => {
 		const r = (ergebnisse || [])[i] || {};
 		const ergebnis = r.error ? 'fehler' : String(r.ergebnis || 'unbekannt');
 		const k = `${a.aktion}:${ergebnis}`;
@@ -142,6 +161,7 @@ function laufAuswerten(plan, ergebnisse) {
 	});
 	return {
 		aufgaben: (plan.aufgaben || []).length,
+		pruefungen: (plan.pruefungen || []).length,
 		ergebnisse: zaehler,
 		fehler,
 		uebersprungen: (plan.uebersprungen || []).length,
@@ -223,7 +243,42 @@ function freigabeAuffrischen({ aktion, freigabe, config, jetzt, vorgang }) {
 	return { ok: false, grund: 'unbekannte_aktion' };
 }
 
+// ---------------------------------------------------------------- Direkt in Outlook gesendet
+
+/**
+ * Ergebnis der Postfach-Aktion versand_pruefen auswerten: Liegt der Entwurf dieser Freigabe in "Gesendete Elemente",
+ * hat ihn jemand direkt im Postfach gesendet. Dann wird die Freigabe wie nach einem Versand vermerkt.
+ * @param {object} p
+ * @param {object} p.freigabe  Zeile aus epa_freigaben
+ * @param {object} p.pruefung  Antwort von EPA-00 { gesendet, internet_message_id, gesendet_am } bzw. { error }
+ */
+function manuellGesendet({ freigabe, pruefung }) {
+	if (!freigabe || freigabe.status !== 'offen') return { ok: false, grund: 'nicht_mehr_offen' };
+	const r = pruefung || {};
+	if (r.error || r.ok === false) return { ok: false, grund: 'pruefung_fehlgeschlagen' };
+	if (r.gesendet !== true) return { ok: false, grund: 'nicht_gesendet' };
+	const am = Number.isFinite(ms(r.gesendet_am)) ? new Date(ms(r.gesendet_am)).toISOString() : null;
+	return {
+		ok: true,
+		daten: {
+			status: 'gesendet', gesendet_am: am || new Date().toISOString(), gesendet_message_id: r.internet_message_id || null,
+			entscheider: 'Outlook (direkt gesendet)', entscheidung: 'manuell_gesendet', bearbeitet: false,
+		},
+	};
+}
+
+/** Meldung an den Kanal: Nachricht wurde an der Freigabe vorbei direkt im Postfach gesendet. */
+function meldungManuellGesendet({ vorgang, freigabe, gesendetText, fristText }) {
+	const was = freigabe && freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';
+	return `<b>📤 ${was} direkt in Outlook gesendet</b><br>Vorgang: <b>${esc(vorgang.vorgangs_id)}</b><br>` +
+		`Betreff: ${esc(freigabe && freigabe.betreff)}<br>` +
+		`Der Entwurf wurde nicht über den Freigabe-Link, sondern direkt im Postfach gesendet${gesendetText ? ` (${esc(gesendetText)})` : ''}. ` +
+		`Der Vorgang wartet jetzt auf die Antwort des Kunden${fristText ? ` (Frist: ${esc(fristText)})` : ''}. Die Freigabe-Links gelten nicht mehr.` +
+		'<br>Hinweis: Den tatsächlich gesendeten Text hat der Agent nicht geprüft.';
+}
+
 module.exports = {
+	VERSAND_PRUEFEN_AB_MINUTEN, MAX_PRUEFUNGEN, ausfuehrungen, manuellGesendet, meldungManuellGesendet,
 	LOCK_SCHLUESSEL, LOCK_MINUTEN, MAX_AUFGABEN, EPOCHE, PRIORITAET, NACH_FEHLER_WARTEN_MINUTEN, NACH_FEHLER_HOECHSTALTER_STUNDEN,
 	planen, lockHolen, lockFreigeben, laufAuswerten, tageOhneReaktion, meldungKeineReaktion, freigabeAuffrischen,
 };

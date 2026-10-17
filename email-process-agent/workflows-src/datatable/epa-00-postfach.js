@@ -10,7 +10,7 @@ const MAIL_FELDER = [
 const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
 // Eigene Mail-Eigenschaft (Extended Property, PS_PUBLIC_STRINGS) zur Wiedererkennung gesendeter Rückfragen.
 const PROP_FREIGABE = 'String {00020329-0000-0000-C000-000000000046} Name EPA-Freigabe-ID';
-const AKTIONEN = ['eingang', 'entwurf_anlegen', 'entwurf_aktualisieren', 'entwurf_senden', 'verbindung_pruefen', 'entwurf_loeschen', 'kategorien_setzen', 'zustelltest_senden'];
+const AKTIONEN = ['eingang', 'entwurf_anlegen', 'entwurf_aktualisieren', 'entwurf_senden', 'verbindung_pruefen', 'entwurf_loeschen', 'kategorien_setzen', 'zustelltest_senden', 'versand_pruefen'];
 const E = "$('Bei Einzelaufruf').first().json";
 const P = `{{ encodeURIComponent(${E}.postfach) }}`;
 
@@ -44,7 +44,7 @@ module.exports = function () {
 		'**Zweck:** Holt neue Mails aus dem Posteingang (Polling, Bauplan 5.1), lädt Header und Anhänge über Microsoft Graph, liest PDF-Text und bereitet Bilder für die KI auf und übergibt alles an "EPA-01 Eingang verarbeiten". Aussortierte Mails (Newsletter, Auto-Replies, Blockliste) werden danach in den Archivordner verschoben, nie gelöscht.',
 		'**Trigger:** Microsoft Outlook Trigger (jede Minute, nur Posteingang). Jede Mail wird als eigene Ausführung dieses Workflows verarbeitet (Aufruf von sich selbst), damit ein Fehler nur diese eine Mail betrifft.',
 		'**Einrichten:** 1) Workflow duplizieren und umbenennen (z. B. "EPA-00 Postfach anfragen@kunde.de"). 2) Im Node "Postfach festlegen" die Adresse eintragen (muss in epa_config_allgemein.postfach stehen). 3) Outlook-Credential (Microsoft Outlook OAuth2, bei Shared Mailbox mit "Use Shared Mailbox") im Trigger und in allen Graph-Nodes zuweisen. 4) Archivordner (Config: archivordner) als Ordner auf oberster Ebene im Postfach anlegen. 5) Veröffentlichen.',
-		'**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread, Betreff mit Vorgangs-ID, Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). kategorien_setzen: Outlook-Kategorie (z. B. "AI Geprüft") an den Kundenmails eines Vorgangs setzen oder entfernen; legt die Kategorie mit Farbe an, wenn die Berechtigung reicht. Fehler hier stören die Verarbeitung nie. zustelltest_senden (EPA-11): Kontrollmail mit Zustelltest-Betreff an das Prüfpostfach. Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.',
+		'**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread, Betreff mit Vorgangs-ID, Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). kategorien_setzen: Outlook-Kategorie (z. B. "AI Geprüft") an den Kundenmails eines Vorgangs setzen oder entfernen; legt die Kategorie mit Farbe an, wenn die Berechtigung reicht. Fehler hier stören die Verarbeitung nie. zustelltest_senden (EPA-11): Kontrollmail mit Zustelltest-Betreff an das Prüfpostfach. versand_pruefen (EPA-04): Liegt der Entwurf einer offenen Freigabe schon in "Gesendete Elemente" (direkt in Outlook gesendet)? Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.',
 		'**Hinweis:** Der Trigger liefert nur die Message-ID; Header (In-Reply-To, References, Auto-Submitted, Authentication-Results) holt "Mail laden", weil der Trigger sie nicht ausgibt.',
 	].join('\n'), { breite: 900, hoehe: 380 });
 
@@ -304,6 +304,22 @@ if (status !== 202) { try { const b = JSON.parse(r.body || '{}'); meldung = Stri
 return [{ json: { gesendet: status === 202, status, meldung } }];
 `);
 
+	// ---------------------------------------------------------------- Aktion: Versand prüfen (EPA-04)
+	// Wurde der Entwurf einer offenen Freigabe direkt in Outlook gesendet? Erkennung über die Freigabe-Kennung, die der
+	// Entwurf beim Anlegen bekommt und die Outlook beim Senden in "Gesendete Elemente" mitnimmt. Nur lesen, nie senden.
+	const versandSuchen = graph(wf, 'Gesendete Elemente durchsuchen', [440, 2200], 'GET', `=${GRAPH}/users/${P}/mailFolders/sentitems/messages`,
+		{ query: { $filter: `=singleValueExtendedProperties/Any(ep: ep/id eq '${PROP_FREIGABE}' and ep/value eq '{{ ${E}.freigabe_id }}')`, $select: 'id,internetMessageId,sentDateTime' }, node: { retryOnFail: false } },
+		{ response: { response: { fullResponse: true, neverError: true, responseFormat: 'json' } } });
+	const versandMelden = wf.code('Versandprüfung melden', [660, 2200], [], `
+const e = $('Bei Einzelaufruf').first().json;
+if (!/^F-[0-9a-f-]{8,}$/i.test(String(e.freigabe_id || ''))) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] versand_pruefen braucht eine Freigabe-ID');
+const r = $input.first().json || {};
+const status = Number(r.statusCode) || null;
+if (status !== 200) return [{ json: { ok: false, gesendet: false, status, meldung: String((r.body && r.body.error && (r.body.error.code || r.body.error.message)) || '').slice(0, 120) } }];
+const t = (r.body && r.body.value) || [];
+return [{ json: { ok: true, gesendet: t.length > 0, internet_message_id: t.length ? t[0].internetMessageId || null : null, gesendet_am: t.length ? t[0].sentDateTime || null : null } }];
+`);
+
 	// ---------------------------------------------------------------- Aktion: ersetzten Entwurf löschen (Löschjob, M6)
 	// Nur löschen, was nachweislich ein Entwurf mit genau dieser Freigabe-Kennung ist. DELETE verschiebt in "Gelöschte Elemente".
 	const entwurfLesen = graph(wf, 'Entwurf zum Löschen abrufen', [440, 1600], 'GET', `=${GRAPH}/users/${P}/messages/{{ encodeURIComponent(${E}.entwurf_id) }}`,
@@ -399,6 +415,8 @@ return [{ json: { geaendert: r.filter((s) => s === 200).length, fehler: r.filter
 	wf.kette(posteingang, verbindung);
 	wf.verbinde(aktion, testPruefen, 7);
 	wf.kette(testPruefen, testSenden, testMelden);
+	wf.verbinde(aktion, versandSuchen, 8);
+	wf.kette(versandSuchen, versandMelden);
 	wf.kette(entwurfLesen, loeschPruefung, loeschenFrage);
 	wf.verbinde(loeschenFrage, entwurfWeg, 0);
 	wf.verbinde(loeschenFrage, geloescht, 1);
