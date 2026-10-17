@@ -278,3 +278,10 @@ Der Kunde `epa-ki-test` ist deaktiviert. Aktiv ist damit nur noch `epa-m365`.
 - Ergebnis: V-2026-0132, V-2026-0134 und V-2026-0141 stehen auf „Eskaliert / Manuell“.
 
 **Abhilfe für den Tenant (zu verifizieren):** eigene Domain mit SPF, DKIM und DMARC einrichten.
+
+## Übersichtsseite und Tagesübersicht (17.10.2026)
+- Neue Data Table `epa_uebersicht_zugaenge` (eKUcr6JEdepIICff): kunde_id, schluessel_hash, erstellt_am, ablauf, gesperrt_am.
+- `EPA-12 Übersicht-Seite` (66Xw54V0q9cxDl78), Webhook GET `/webhook/epa-uebersicht?k=…`, veröffentlicht.
+- `EPA-13 Tagesübersicht` (6CGAOQFceb6H5SvO), täglich 08:05 an Geschäftstagen, veröffentlicht. Erster manueller Lauf: Zusammenfassung für epa-m365 im Kanal „Anfragen“ (3 Klärung, 7 bereit, 3 wartet auf Kunde).
+- Test: falscher Schlüssel → 404 „Link ungültig“; Link aus der Tagesübersicht → Seite mit genau den 13 offenen Vorgängen von epa-m365. Darstellung im Browser (n8n-Sandbox) noch von Tim zu prüfen.
+- Unzustellbar-Test V-2026-0141: Freigabe „unzustellbar“, Telegram-Alarm gesendet. Zustelltest 16:27 fehlgeschlagen (Mail nicht in Gmail angekommen), daher noch keine erneute Freigabe.
