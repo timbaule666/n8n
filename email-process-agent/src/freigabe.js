@@ -46,7 +46,7 @@ function freigabePruefen({ token, freigabe, freigeberErlaubt, jetzt }) {
 	if (!freigabe || freigabe.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Die Freigabe existiert nicht mehr.');
 	if (freigabe.status !== 'offen') {
 		const wer = freigabe.entscheider ? ` von ${freigabe.entscheider}` : '';
-		const was = { in_versand: 'wird gerade versendet', gesendet: 'wurde bereits freigegeben und gesendet', abgelehnt: 'wurde bereits abgelehnt', abgelaufen: 'ist abgelaufen', ersetzt: 'wurde durch eine neuere Freigabe ersetzt', fehler: 'ist beim Versand fehlgeschlagen' }[freigabe.status] || `hat den Status "${freigabe.status}"`;
+		const was = { in_versand: 'wird gerade versendet', gesendet: 'wurde bereits freigegeben und gesendet', abgelehnt: 'wurde bereits abgelehnt', abgelaufen: 'ist abgelaufen', ersetzt: 'wurde durch eine neuere Freigabe ersetzt', fehler: 'ist beim Versand fehlgeschlagen', unzustellbar: 'wurde gesendet, kam beim Kunden aber nicht an', nicht_zugestellt: 'wurde gesendet, kam beim Kunden aber nicht an' }[freigabe.status] || `hat den Status "${freigabe.status}"`;
 		// Betreff nennen, damit klar ist, um welche Anfrage es geht (mehrere Links in einem Chat).
 		const betrifft = freigabe.betreff ? ` Betrifft: ${String(freigabe.betreff).slice(0, 150)}` : '';
 		return nein(freigabe.status === 'abgelaufen' ? 410 : 409, freigabe.status === 'abgelaufen' ? 'FREIGABE_ABGELAUFEN' : 'DUPLIKAT', `Diese ${freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage'} ${was}${freigabe.status === 'gesendet' || freigabe.status === 'abgelehnt' ? wer : ''}.${betrifft}`);
@@ -124,6 +124,7 @@ const ANLASS = Object.freeze({
 	freigabe_erinnerung: 'Erinnerung: Diese Freigabe ist noch offen. Hier ist ein neuer persönlicher Link.',
 	freigabe_erneuern: 'Der bisherige Link ist abgelaufen und gilt nicht mehr. Hier ist ein neuer persönlicher Link.',
 	freigabe_nach_fehler: 'Diese Nachricht wurde wegen eines Fehlers NICHT gesendet. Das Postfach ist wieder erreichbar, bitte erneut freigeben. Die bisherigen Links gelten nicht mehr.',
+	freigabe_nach_unzustellbar: 'Der Zustelltest war wieder erfolgreich, der Versand funktioniert. Bitte prüfen und erneut freigeben; gesendet wird eine neue Mail mit demselben Text.',
 });
 
 /**
@@ -137,6 +138,9 @@ function nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText
 	let hinweis = ANLASS[anlass] ? `<i>${esc(ANLASS[anlass])}</i><br>` : '';
 	if (anlass === 'freigabe_nach_fehler') {
 		hinweis = `<b>🔁 Erneut zur Freigabe: Versand war fehlgeschlagen</b><br>${freigabe.grund ? `Grund: ${esc(freigabe.grund)}<br>` : ''}${hinweis}<br>`;
+	} else if (anlass === 'freigabe_nach_unzustellbar') {
+		// freigabe.grund trägt hier den Grund der vorigen (nicht zugestellten) Freigabe.
+		hinweis = `<b>🔁 Erneut zur Freigabe: Die Nachricht kam beim Kunden nicht an</b><br>${freigabe.grund ? `${esc(freigabe.grund)}<br>` : ''}${hinweis}<br>`;
 	}
 	const link = `<a href="${esc(url)}">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Persönlicher Link, einmal verwendbar, gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;
 	if (kontext && typeof kontext === 'string' && kontext.trim()) {

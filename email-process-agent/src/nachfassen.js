@@ -15,13 +15,18 @@ const NACH_FEHLER_WARTEN_MINUTEN = 15;
 const NACH_FEHLER_HOECHSTALTER_STUNDEN = 72;
 // Nur in diesen Vorgangsstatus ist die fehlgeschlagene Nachricht noch aktuell.
 const NACH_FEHLER_STATUS = Object.freeze(['Eskaliert / Manuell', 'Freigabe ausstehend']);
+// Nachricht kam beim Kunden nicht an (Freigabe-Status "unzustellbar", src/unzustellbar.js): Erneut zur Freigabe,
+// sobald der Zustelltest (EPA-11) des Kunden nach der Unzustellbarkeitsmeldung erfolgreich war. Nach dieser Zeit
+// lohnt der neue Versuch nicht mehr (Vorgang bleibt "Eskaliert / Manuell").
+const NACH_UNZUSTELLBAR_HOECHSTALTER_TAGE = 7;
+const ZUSTELLTEST_PRAEFIX = 'zustelltest:';
 // Offene Freigaben: Wurde der Entwurf inzwischen direkt in Outlook gesendet (an der Freigabe vorbei)? Geprüft wird
 // jede offene Freigabe ab diesem Alter in jedem Lauf, unabhängig von Geschäftszeiten (es geht nichts an Kunden).
 const VERSAND_PRUEFEN_AB_MINUTEN = 5;
 const MAX_PRUEFUNGEN = 50;
 
 // Reihenfolge, falls mehr Aufgaben anfallen als ein Lauf abarbeitet (Rest folgt im nächsten Lauf).
-const PRIORITAET = Object.freeze({ eskalation: 1, erinnerung: 2, freigabe_nach_fehler: 3, freigabe_erneuern: 3, freigabe_erinnerung: 4 });
+const PRIORITAET = Object.freeze({ eskalation: 1, erinnerung: 2, freigabe_nach_fehler: 3, freigabe_nach_unzustellbar: 3, freigabe_erneuern: 3, freigabe_erinnerung: 4 });
 
 function ms(t) {
 	if (t === null || t === undefined || t === '') return NaN;
@@ -33,14 +38,15 @@ function ms(t) {
  * Plant die Aufgaben eines Laufs.
  * @param {object} p
  * @param {object[]} p.vorgaenge  Zeilen aus epa_vorgaenge (Status "Warten auf Kunde")
- * @param {object[]} p.freigaben  Zeilen aus epa_freigaben (Status "offen" oder "fehler")
+ * @param {object[]} p.freigaben  Zeilen aus epa_freigaben (Status "offen", "fehler" oder "unzustellbar")
  * @param {object} p.configs      kunde_id -> geprüfte Config; null = Kunde inaktiv; fehlt = Config ungültig
  * @param {string} p.jetzt        ISO-Zeitpunkt
  * @param {object} p.fristen      Modul src/fristen.js (im Code-Node eingebettet)
+ * @param {object} [p.zustelltests] kunde_id -> { ok, am } (letzter Zustelltest, siehe zustelltestsAus)
  * @returns {{ aufgaben: object[], pruefungen: object[], uebersprungen: object[], verschoben: number }}
  *   pruefungen: Versandprüfungen offener Freigaben (aktion versand_pruefen); EPA-04 führt sie vor den Aufgaben aus.
  */
-function planen({ vorgaenge, freigaben, configs, jetzt, fristen, max = MAX_AUFGABEN }) {
+function planen({ vorgaenge, freigaben, configs, jetzt, fristen, zustelltests = {}, max = MAX_AUFGABEN }) {
 	const jetztMs = ms(jetzt);
 	if (!Number.isFinite(jetztMs)) throw new Error(`Ungültiger Zeitpunkt "${jetzt}"`);
 	const aufgaben = [];
@@ -78,8 +84,25 @@ function planen({ vorgaenge, freigaben, configs, jetzt, fristen, max = MAX_AUFGA
 	}
 
 	for (const f of freigaben || []) {
-		if (!f || (f.status !== 'offen' && f.status !== 'fehler')) continue;
+		if (!f || !['offen', 'fehler', 'unzustellbar'].includes(f.status)) continue;
 		const ref = { kunde_id: f.kunde_id, vorgangs_id: f.vorgangs_id, freigabe_id: f.freigabe_id };
+		if (f.status === 'unzustellbar') {
+			// Erst wenn ein Zustelltest NACH der Unzustellbarkeitsmeldung angekommen ist, geht der Versand wieder.
+			const seit = ms(f.updatedAt);
+			if (!Number.isFinite(seit) || jetztMs - seit > NACH_UNZUSTELLBAR_HOECHSTALTER_TAGE * 86400000) continue;
+			const cu = configs[f.kunde_id];
+			if (!cu) {
+				uebersprungen.push({ ...ref, grund: cu === null ? 'kunde_inaktiv' : 'keine_gueltige_config' });
+				continue;
+			}
+			const zt = zustelltests[f.kunde_id];
+			if (!zt || zt.ok !== true || !(ms(zt.am) > seit)) {
+				uebersprungen.push({ ...ref, grund: 'zustellung_noch_gestoert' });
+				continue;
+			}
+			aufgaben.push({ aktion: 'freigabe_nach_unzustellbar', ...ref, version: null, erinnerungen_gesendet: null });
+			continue;
+		}
 		if (f.status === 'fehler') {
 			// Versand fehlgeschlagen: nach kurzer Wartezeit erneut zur Freigabe (SW Nachfassen prüft vorher das Postfach).
 			const seit = jetztMs - ms(f.updatedAt);
@@ -243,6 +266,31 @@ function freigabeAuffrischen({ aktion, freigabe, config, jetzt, vorgang }) {
 	return { ok: false, grund: 'unbekannte_aktion' };
 }
 
+// ---------------------------------------------------------------- Nach Unzustellbarkeit erneut zur Freigabe
+
+/** Letzte Zustelltests je Kunde aus epa_system_status (Zeilen "zustelltest:<kunde_id>", geschrieben von EPA-11). */
+function zustelltestsAus(zeilen) {
+	const r = {};
+	for (const z of zeilen || []) {
+		if (!z || typeof z.schluessel !== 'string' || !z.schluessel.startsWith(ZUSTELLTEST_PRAEFIX)) continue;
+		let e = {};
+		try { e = JSON.parse(z.letztes_ergebnis || '{}') || {}; } catch (err) { e = {}; }
+		r[z.schluessel.slice(ZUSTELLTEST_PRAEFIX.length)] = { ok: e.ok === true, am: z.letzter_lauf || null };
+	}
+	return r;
+}
+
+/**
+ * Darf die nicht zugestellte Nachricht jetzt erneut zur Freigabe? Nur solange niemand den Vorgang weitergeführt hat.
+ * verwerfen: true = nie mehr automatisch (Freigabe auf "nicht_zugestellt" setzen, damit EPA-04 sie nicht weiter plant).
+ */
+function nachUnzustellbar({ freigabe, vorgang }) {
+	if (!freigabe || freigabe.status !== 'unzustellbar') return { ok: false, grund: 'nicht_mehr_unzustellbar', verwerfen: false };
+	if (!vorgang || vorgang.status !== 'Eskaliert / Manuell') return { ok: false, grund: 'status_geaendert', verwerfen: true };
+	if (vorgang.freigabe_id_aktuell !== freigabe.freigabe_id) return { ok: false, grund: 'veraltet', verwerfen: true };
+	return { ok: true };
+}
+
 // ---------------------------------------------------------------- Direkt in Outlook gesendet
 
 /**
@@ -279,6 +327,7 @@ function meldungManuellGesendet({ vorgang, freigabe, gesendetText, fristText }) 
 
 module.exports = {
 	VERSAND_PRUEFEN_AB_MINUTEN, MAX_PRUEFUNGEN, ausfuehrungen, manuellGesendet, meldungManuellGesendet,
-	LOCK_SCHLUESSEL, LOCK_MINUTEN, MAX_AUFGABEN, EPOCHE, PRIORITAET, NACH_FEHLER_WARTEN_MINUTEN, NACH_FEHLER_HOECHSTALTER_STUNDEN,
+	LOCK_SCHLUESSEL, LOCK_MINUTEN, MAX_AUFGABEN, EPOCHE, PRIORITAET, NACH_FEHLER_WARTEN_MINUTEN, NACH_UNZUSTELLBAR_HOECHSTALTER_TAGE, NACH_FEHLER_HOECHSTALTER_STUNDEN,
 	planen, lockHolen, lockFreigeben, laufAuswerten, tageOhneReaktion, meldungKeineReaktion, freigabeAuffrischen,
+	zustelltestsAus, nachUnzustellbar,
 };

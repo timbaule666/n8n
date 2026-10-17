@@ -31,7 +31,7 @@ module.exports = function () {
 		'**Zweck:** Verarbeitet eine eingegangene Mail: Config laden (B1), normalisieren, Schleifenschutz/Auto-Replies (A1), Dedupe (A2), Vorgangszuordnung nach Punkteliste (A3), Klassifizierung per KI (A4), Extraktion per KI (B2), deterministische Pflichtfeld-Prüfung (B3), Speichern mit Versionsprüfung (B4), Statusweiche und Mitarbeiter-Meldung (B5).',
 		'**Trigger:** Aufruf durch den Postfach-Workflow (EPA-00) mit der Graph-Message. Enthält selbst keine Microsoft-Zugänge, daher ohne Postfach testbar.',
 		'**Eingaben:** postfach, mail (Graph-Message inkl. internetMessageHeaders, webLink), anhaenge (Liste mit name, contentType, size, isInline, text, status, hinweis, bild_data_url), aufrufer_execution_id (damit EPA-05 den Eingang bei einem Fehler wieder freigeben kann).',
-		'**Ausgabe:** { ergebnis, vorgangs_id, archivieren, archivordner }. ergebnis: duplikat | ignoriert_<grund> | unzustellbar (NDR zu einem Vorgang: Eskaliert / Manuell, Warnung im Kanal) | antwort_<bereit|luecken|keine_daten|gemeldet|extraktion_fehlgeschlagen> | zuordnung_unklar | klassifizierung_unklar | ignoriert | bereit | luecken | extraktion_fehlgeschlagen.',
+		'**Ausgabe:** { ergebnis, vorgangs_id, archivieren, archivordner }. ergebnis: duplikat | ignoriert_<grund> | unzustellbar (NDR zu einem Vorgang: Eskaliert / Manuell, Freigabe "unzustellbar" bzw. "nicht_zugestellt", Warnung im Kanal und an den Betreiber) | antwort_<bereit|luecken|keine_daten|gemeldet|extraktion_fehlgeschlagen> | zuordnung_unklar | klassifizierung_unklar | ignoriert | bereit | luecken | extraktion_fehlgeschlagen.',
 		'**Weiterleitung:** Eindeutig zugeordnete Antworten verarbeitet EPA-03 (Phase D). Bei "luecken" bereitet EPA-02 die Rückfrage zur Freigabe vor.',
 	].join('\n'), { breite: 900, hoehe: 400 });
 
@@ -158,13 +158,39 @@ return [{ json: { ergebnis: 'ignoriert_' + $('Mail normalisieren').first().json.
 		['erwartete_version', 'number', '={{ null }}'],
 		['nur_wenn_erlaubt', 'boolean', '={{ true }}'],
 	]);
-	const uMeldung = wf.code('Meldung: nicht zugestellt', [2420, -300], ['unzustellbar'], `
-const n = $('Mail normalisieren').first().json;
-const s = $input.first().json;
-const v = $('Vorgang zur Unzustellbarkeit lesen').first().json.vorgang;
-return [{ json: { nachricht_html: unzustellbar.meldung({ ...n.ndr, betreff: v.betreff, eskaliert: s.ok === true }) } }];
+	// Gesendete Freigabe des Vorgangs vermerken: "unzustellbar" (kommt nach erfolgreichem Zustelltest über EPA-04
+	// erneut zur Freigabe) oder "nicht_zugestellt" (Adresse abgelehnt bzw. schon der zweite Fehlversuch).
+	const uFgLesen = wf.tabelle('Freigabe zur Unzustellbarkeit lesen', [2420, -300], 'get', 'epa_freigaben', {
+		bedingungen: [
+			['freigabe_id', 'eq', "={{ $('Vorgang zur Unzustellbarkeit lesen').first().json.vorgang.freigabe_id_aktuell || '__keine__' }}"],
+			['kunde_id', 'eq', `={{ ${C}.kunde_id }}`],
+		],
+	}, { alwaysOutputData: true, onError: 'continueRegularOutput' });
+	const uFgAuswerten = wf.code('Unzustellbarkeit auswerten', [2640, -300], ['unzustellbar'], `
+const f = $input.first().json;
+const r = unzustellbar.freigabeVermerk({ freigabe: f && f.id !== undefined ? f : null, grund: $('Mail normalisieren').first().json.ndr.grund });
+return [{ json: { ...r, freigabe_id: r.ok ? f.freigabe_id : null } }];
 `);
-	const uInfo = wf.aufruf('Kanal warnen (unzustellbar)', [2640, -300], 'EPA SW Benachrichtigen', [
+	const uFgBetroffen = wf.node('Freigabe betroffen?', 'n8n-nodes-base.if', [2860, -300], {
+		conditions: bedingungen([bedingung('={{ $json.ok }}', { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: {},
+	});
+	const uFgDaten = wf.code('Vermerk-Daten', [3080, -380], [], `
+return [{ json: $input.first().json.daten }];
+`);
+	// Bedingt auf status = gesendet: doppelte Meldungen ändern nichts.
+	const uFgSchreiben = wf.tabelle('Freigabe als nicht zugestellt vermerken', [3300, -380], 'update', 'epa_freigaben', {
+		bedingungen: [['freigabe_id', 'eq', "={{ $('Unzustellbarkeit auswerten').first().json.freigabe_id }}"], ['status', 'eq', 'gesendet']],
+	}, { alwaysOutputData: true, onError: 'continueRegularOutput' });
+	const uMeldung = wf.code('Meldung: nicht zugestellt', [3520, -300], ['unzustellbar'], `
+const n = $('Mail normalisieren').first().json;
+const s = $('Status: Eskaliert (unzustellbar)').first().json;
+const v = $('Vorgang zur Unzustellbarkeit lesen').first().json.vorgang;
+const a = $('Unzustellbarkeit auswerten').first().json;
+const vermerkt = $('Freigabe als nicht zugestellt vermerken').isExecuted && $('Freigabe als nicht zugestellt vermerken').first().json.id !== undefined;
+return [{ json: { nachricht_html: unzustellbar.meldung({ ...n.ndr, betreff: v.betreff, eskaliert: s.ok === true, erneut: vermerkt ? a.erneut : undefined }) } }];
+`, { executeOnce: true });
+	const uInfo = wf.aufruf('Kanal warnen (unzustellbar)', [3740, -300], 'EPA SW Benachrichtigen', [
 		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
 		['vorgangs_id', 'string', `={{ ${NDR}.vorgangs_id }}`],
 		['team_id', 'string', `={{ ${C}.benachrichtigung.team_id }}`],
@@ -175,9 +201,28 @@ return [{ json: { nachricht_html: unzustellbar.meldung({ ...n.ndr, betreff: v.be
 		['nachricht_html', 'string', '={{ $json.nachricht_html }}'],
 		['anlass', 'string', 'nicht_zugestellt'],
 	], { onError: 'continueRegularOutput' });
-	const uErg = wf.code('Ergebnis: unzustellbar', [2860, -300], [], `
-return [{ json: { ergebnis: 'unzustellbar', vorgangs_id: $('Mail normalisieren').first().json.ndr.vorgangs_id } }];
+	// Störung zusätzlich an den Betreiber (wie EPA-05): Zeile "alarmierung" in epa_system_status. Nur wenn dort
+	// Telegram eingetragen ist; ohne Eintrag bleibt es bei der Warnung im Kanal des Kunden. Kein Abbruch bei Fehlern.
+	const uZiel = wf.tabelle('Alarmziel lesen (unzustellbar)', [3960, -300], 'get', 'epa_system_status', {
+		bedingungen: [['schluessel', 'eq', 'alarmierung']],
+	}, { alwaysOutputData: true, onError: 'continueRegularOutput', executeOnce: true });
+	const uAlarm = wf.code('Betreiber-Alarm vorbereiten', [4180, -300], ['telegram'], `
+const z = $input.all().map((i) => i.json).find((r) => r && r.schluessel === 'alarmierung') || {};
+const ok = z.alarm_kanal === 'telegram_test' && telegram.istChatId(z.telegram_chat_id) && /^[A-Za-z0-9]{8,32}$/.test(String(z.telegram_workflow_id || ''));
+return [{ json: { senden: ok, chat_id: ok ? String(z.telegram_chat_id).trim() : '', telegram_workflow_id: ok ? z.telegram_workflow_id : '', nachricht_html: $('Meldung: nicht zugestellt').first().json.nachricht_html } }];
 `);
+	const uAlarmFrage = wf.node('Telegram-Alarm?', 'n8n-nodes-base.if', [4400, -300], {
+		conditions: bedingungen([bedingung('={{ $json.senden }}', { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: {},
+	});
+	const uTelegram = wf.aufrufDynamisch('Betreiber per Telegram alarmieren', [4620, -380], '={{ $json.telegram_workflow_id }}', [
+		['chat_id', 'string', '={{ $json.chat_id }}'],
+		['nachricht_html', 'string', '={{ $json.nachricht_html }}'],
+	], { onError: 'continueRegularOutput' });
+	const uErg = wf.code('Ergebnis: unzustellbar', [4840, -300], [], `
+const a = $('Unzustellbarkeit auswerten').first().json;
+return [{ json: { ergebnis: 'unzustellbar', vorgangs_id: $('Mail normalisieren').first().json.ndr.vorgangs_id, erneut_zur_freigabe: a.ok ? a.erneut : false } }];
+`, { executeOnce: true });
 	const uErgNein = wf.code('Ergebnis: Unzustellbar ohne Vorgang', [2200, -160], [], `
 return [{ json: { ergebnis: 'ignoriert_' + $('Mail normalisieren').first().json.vor.ergebnis, vorgangs_id: null } }];
 `);
@@ -496,7 +541,14 @@ return [{ json: {
 	wf.kette(uLesen, uBekannt);
 	wf.verbinde(uBekannt, uStatus, 0);
 	wf.verbinde(uBekannt, uErgNein, 1);
-	wf.kette(uStatus, uMeldung, uInfo, uErg, abschluss);
+	wf.kette(uStatus, uFgLesen, uFgAuswerten, uFgBetroffen);
+	wf.verbinde(uFgBetroffen, uFgDaten, 0);
+	wf.verbinde(uFgBetroffen, uMeldung, 1);
+	wf.kette(uFgDaten, uFgSchreiben, uMeldung);
+	wf.kette(uMeldung, uInfo, uZiel, uAlarm, uAlarmFrage);
+	wf.verbinde(uAlarmFrage, uTelegram, 0);
+	wf.verbinde(uAlarmFrage, uErg, 1);
+	wf.kette(uTelegram, uErg, abschluss);
 	wf.kette(uErgNein, abschluss);
 	wf.kette(dupAudit, dupErgebnis, abschluss);
 	wf.kette(ignAudit, ignErgebnis, abschluss);

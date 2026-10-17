@@ -24,6 +24,7 @@ module.exports = function () {
 		'**freigabe_erneuern:** Freigabe ist abgelaufen: neue Ablaufzeit, alle alten Links gesperrt (410), neue Links an alle Freigeber. Es wird nie automatisch gesendet.',
 		'**versand_pruefen:** Offene Freigabe: Liegt der Entwurf schon in "Gesendete Elemente" (jemand hat ihn direkt in Outlook gesendet)? Dann Freigabe "gesendet" (entscheidung manuell_gesendet), Links gesperrt, Status "Warten auf Kunde" mit Antwortfrist, Meldung im Kanal. Sonst nichts.',
 		'**freigabe_nach_fehler:** Versand nach Freigabe ist fehlgeschlagen (z. B. Postfach gesperrt). Ist das Postfach wieder erreichbar (verbindung_pruefen), wird die Freigabe wieder geöffnet und kommt mit neuem Link und Fehlergrund erneut zur Freigabe; alte Links bleiben gesperrt.',
+		'**freigabe_nach_unzustellbar:** Die gesendete Nachricht kam beim Kunden nicht an (Freigabe "unzustellbar") und der Zustelltest danach war erfolgreich. Steht der Vorgang noch auf "Eskaliert / Manuell" mit dieser Freigabe, wird sie "ersetzt" und EPA-02 (art = erneut) legt einen neuen Entwurf mit demselben Text und eine neue Freigabe an. Sonst "nicht_zugestellt" (kein neuer Versuch).',
 		'**Trigger:** Aufruf durch EPA-04 (einzeln je Aufgabe). **Eingaben:** aktion, kunde_id, vorgangs_id, freigabe_id, jetzt, referenz. **Ausgabe:** { ergebnis }',
 	].join('\n'), { breite: 900, hoehe: 360 });
 
@@ -54,6 +55,8 @@ module.exports = function () {
 			values: [
 				['erinnerung', 'equals', 'erinnerung'],
 				['eskalation', 'equals', 'eskalation'],
+				// vor "freigabe_": die erste passende Regel gewinnt
+				['unzustellbar', 'equals', 'freigabe_nach_unzustellbar'],
 				['freigabe', 'startsWith', 'freigabe_'],
 				['versand', 'equals', 'versand_pruefen'],
 			].map(([key, operation, wert]) => ({
@@ -362,12 +365,59 @@ const grund = $('Vermerkt?').isExecuted && a.weiter ? 'inzwischen_entschieden' :
 return [{ json: { ergebnis: grund === 'nicht_gesendet' ? 'nicht_gesendet' : 'entfaellt_' + grund } }];
 `);
 
+	// ---------------------------------------------------------------- Nach Unzustellbarkeit erneut zur Freigabe
+	const uzLesen = wf.tabelle('Freigabe lesen (unzustellbar)', [880, 900], 'get', 'epa_freigaben', {
+		bedingungen: [['freigabe_id', 'eq', `={{ ${E}.freigabe_id || '__keine__' }}`], ['kunde_id', 'eq', `={{ ${E}.kunde_id }}`]],
+	}, { alwaysOutputData: true });
+	const uzPruefen = wf.code('Erneut prüfen', [1100, 900], ['nachfassen'], `
+const f = $input.first().json;
+const r = nachfassen.nachUnzustellbar({ freigabe: f && f.id !== undefined ? f : null, vorgang: $('Vorgang lesen').first().json.vorgang });
+return [{ json: { ...r, neuer_status: r.ok ? 'ersetzt' : r.verwerfen ? 'nicht_zugestellt' : '' } }];
+`);
+	const uzAendern = wf.node('Freigabe umstellen?', 'n8n-nodes-base.if', [1320, 900], {
+		conditions: bedingungen([bedingung('={{ $json.neuer_status }}', { type: 'string', operation: 'notEmpty', singleValue: true })]),
+		options: {},
+	});
+	const uzDaten = wf.code('Umstell-Daten', [1540, 820], [], `
+return [{ json: { status: $input.first().json.neuer_status } }];
+`);
+	// Bedingt auf status = unzustellbar: läuft parallel schon ein anderer Versuch, passiert nichts.
+	const uzSchreiben = wf.tabelle('Freigabe umstellen', [1760, 820], 'update', 'epa_freigaben', {
+		bedingungen: [['freigabe_id', 'eq', `={{ ${E}.freigabe_id }}`], ['status', 'eq', 'unzustellbar']],
+	}, { alwaysOutputData: true });
+	const uzWeiter = wf.node('Erneut anfordern?', 'n8n-nodes-base.if', [1980, 820], {
+		conditions: bedingungen([bedingung("={{ $('Erneut prüfen').first().json.ok === true && $json.id !== undefined }}", { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: {},
+	});
+	const uzErneut = wf.aufruf('Erneut zur Freigabe anfordern', [2200, 740], 'EPA-02 Rückfrage anfordern', [
+		['kunde_id', 'string', `={{ ${E}.kunde_id }}`],
+		['vorgangs_id', 'string', `={{ ${E}.vorgangs_id }}`],
+		['art', 'string', 'erneut'],
+		['referenz', 'string', `={{ ${E}.referenz || '' }}`],
+	]);
+	const uzErg = wf.code('Ergebnis: erneut zur Freigabe', [2420, 740], [], `
+const r = $input.first().json;
+return [{ json: { ergebnis: 'erneut_' + (r.ergebnis || 'unbekannt'), freigabe_id: r.freigabe_id || null, zugestellt: r.zugestellt ?? null } }];
+`);
+	const uzErgNein = wf.code('Ergebnis: erneut entfällt', [2200, 960], [], `
+const p = $('Erneut prüfen').first().json;
+return [{ json: { ergebnis: 'entfaellt_' + (p.ok ? 'parallel_bearbeitet' : p.grund) } }];
+`);
+
 	wf.kette(trigger, config, vorgang, weiche);
 	wf.verbinde(weiche, erinnerung, 0);
 	wf.verbinde(weiche, eskPruefen, 1);
-	wf.verbinde(weiche, fgLesen, 2);
-	wf.verbinde(weiche, vLesen, 3);
-	wf.verbinde(weiche, unbekannt, 4);
+	wf.verbinde(weiche, uzLesen, 2);
+	wf.verbinde(weiche, fgLesen, 3);
+	wf.verbinde(weiche, vLesen, 4);
+	wf.verbinde(weiche, unbekannt, 5);
+	wf.kette(uzLesen, uzPruefen, uzAendern);
+	wf.verbinde(uzAendern, uzDaten, 0);
+	wf.verbinde(uzAendern, uzErgNein, 1);
+	wf.kette(uzDaten, uzSchreiben, uzWeiter);
+	wf.verbinde(uzWeiter, uzErneut, 0);
+	wf.verbinde(uzWeiter, uzErgNein, 1);
+	wf.kette(uzErneut, uzErg);
 	wf.kette(vLesen, vNoetig);
 	wf.verbinde(vNoetig, vPostfach, 0);
 	wf.verbinde(vNoetig, vErgNein, 1);

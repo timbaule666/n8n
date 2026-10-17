@@ -68,6 +68,9 @@ const UEBERGAENGE = [
 	// Versand nach Freigabe fehlgeschlagen (z. B. Postfach gesperrt): EPA-05 sichert den Vorgang als eskaliert,
 	// die Freigabe bleibt offen. Gibt der Mitarbeiter danach erneut frei, wartet der Vorgang wieder auf den Kunden.
 	[S.ESKALIERT, S.WARTEN, MA],
+	// Nachricht kam beim Kunden nicht an (Unzustellbarkeitsmeldung): Nach erfolgreichem Zustelltest legt EPA-04
+	// eine neue Freigabe mit demselben Text an.
+	[S.ESKALIERT, S.FREIGABE, ['Cronjob']],
 	[S.ESKALIERT, S.ABGESCHLOSSEN, MA],
 ];
 

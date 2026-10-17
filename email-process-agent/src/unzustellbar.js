@@ -8,6 +8,17 @@ const BETREFF = /^\s*(undeliverable|unzustellbar|nicht zustellbar|delivery statu
 const TEXT = /(delivery has failed|wasn't delivered|could not be delivered|konnte nicht zugestellt werden|unzustellbar|delivery to the following recipient)/i;
 const VORGANGS_ID = /V-\d{4}-\d{4,}/;
 const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+// Empfängeradresse abgelehnt (5.1.x, "user unknown" usw.): Ein neuer Versuch an dieselbe Adresse scheitert wieder.
+const ADRESSFEHLER = /\b5\.1\.\d{1,3}\b|user unknown|recipient (address )?rejected|address couldn't be found|wasn't found at|does(n't| not) exist|no such user/i;
+
+// Freigabe-Status nach einer Unzustellbarkeitsmeldung:
+// unzustellbar     = wartet auf Behebung; nach erfolgreichem Zustelltest kommt die Nachricht erneut zur Freigabe (EPA-04)
+// nicht_zugestellt = kein automatischer neuer Versuch (Adresse abgelehnt oder schon der zweite Fehlversuch)
+const STATUS_WARTET = 'unzustellbar';
+const STATUS_ENDGUELTIG = 'nicht_zugestellt';
+// Markiert die Freigabe, die nach einer Unzustellbarkeit neu angelegt wurde (Spalte grund). Kommt auch sie nicht
+// an, gibt es keinen weiteren automatischen Versuch.
+const ERNEUT_GRUND = 'Erneut nach Unzustellbarkeit';
 
 /**
  * @param {object} mail normalisierte Mail (absender_adresse, betreff, text)
@@ -34,17 +45,47 @@ function esc(s) {
 	return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
-/** Warnung an den Kanal des Kunden. */
-function meldung({ vorgangs_id, empfaenger, grund, betreff, eskaliert }) {
+function istAdressfehler(grund) {
+	return ADRESSFEHLER.test(String(grund || ''));
+}
+
+/**
+ * Was wird aus der gesendeten Freigabe, zu der die Unzustellbarkeitsmeldung gehört?
+ * @param {object} p
+ * @param {object|null} p.freigabe aktuelle Freigabe des Vorgangs (epa_freigaben)
+ * @param {string} p.grund Grund laut Mailserver (aus erkennen)
+ * @returns {{ ok: false, grund: string } | { ok: true, erneut: boolean, daten: object }}
+ */
+function freigabeVermerk({ freigabe, grund }) {
+	if (!freigabe || freigabe.status !== 'gesendet') return { ok: false, grund: 'keine_gesendete_freigabe' };
+	const erneut = !istAdressfehler(grund) && freigabe.grund !== ERNEUT_GRUND;
+	return {
+		ok: true,
+		erneut,
+		daten: { status: erneut ? STATUS_WARTET : STATUS_ENDGUELTIG, grund: `Nicht zugestellt: ${String(grund || '').replace(/\s+/g, ' ').trim()}`.slice(0, 250) },
+	};
+}
+
+/**
+ * Warnung an den Kanal des Kunden (und als Störung an den Betreiber).
+ * erneut: true = kommt nach erfolgreichem Zustelltest erneut zur Freigabe, false = kein neuer Versuch,
+ * undefined = keine gesendete Freigabe gefunden.
+ */
+function meldung({ vorgangs_id, empfaenger, grund, betreff, eskaliert, erneut }) {
+	const weiter = erneut === true
+		? 'Der Kunde hat die Nachricht nicht bekommen. Sobald der Zustelltest (EPA-11, täglich 07:40 oder manuell) wieder klappt, kommt sie automatisch mit neuem Link erneut zur Freigabe. Wer nicht warten will: telefonisch klären.'
+		: erneut === false
+			? 'Der Kunde hat die Nachricht nicht bekommen. Kein automatischer neuer Versuch (Empfängeradresse abgelehnt oder schon der zweite Fehlversuch). Bitte telefonisch klären oder die Adresse prüfen.'
+			: 'Der Kunde hat die Rückfrage nicht bekommen. Bitte telefonisch klären oder die Adresse prüfen.';
 	return [
 		`<b>📭 Nachricht nicht zugestellt</b>`,
 		`Vorgang: <b>${esc(vorgangs_id)}</b>`,
 		betreff ? `Betreff: ${esc(betreff)}` : null,
 		empfaenger ? `Empfänger: ${esc(empfaenger)}` : null,
 		`Grund laut Mailserver: ${esc(grund)}`,
-		'Der Kunde hat die Rückfrage nicht bekommen. Bitte telefonisch klären oder die Adresse prüfen.',
+		weiter,
 		eskaliert ? 'Der Vorgang steht auf „Eskaliert / Manuell“; es gehen keine Erinnerungen raus.' : 'Der Vorgang wurde nicht umgestellt (Status erlaubt keinen Wechsel); bitte manuell prüfen.',
 	].filter(Boolean).join('<br>');
 }
 
-module.exports = { erkennen, meldung };
+module.exports = { STATUS_WARTET, STATUS_ENDGUELTIG, ERNEUT_GRUND, erkennen, istAdressfehler, freigabeVermerk, meldung };

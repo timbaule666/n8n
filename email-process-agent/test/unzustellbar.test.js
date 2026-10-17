@@ -34,3 +34,25 @@ test('Meldung: escaped, mit Grund und Status-Hinweis', () => {
 	assert.match(html, /Eskaliert \/ Manuell/);
 	assert.match(u.meldung({ vorgangs_id: 'V-1', grund: 'x', eskaliert: false }), /nicht umgestellt/);
 });
+
+test('Freigabe-Vermerk: erneuter Versuch nur bei gesendeter Freigabe, nicht bei Adressfehler oder zweitem Fehlversuch', () => {
+	const g = { freigabe_id: 'F-1', status: 'gesendet', grund: null };
+	const r = u.freigabeVermerk({ freigabe: g, grund: "550 5.7.708 Service unavailable. Access denied, traffic not accepted from this IP." });
+	assert.equal(r.ok, true);
+	assert.equal(r.erneut, true);
+	assert.equal(r.daten.status, u.STATUS_WARTET);
+	assert.match(r.daten.grund, /^Nicht zugestellt: 550 5\.7\.708/);
+	const adresse = u.freigabeVermerk({ freigabe: g, grund: '550 5.1.1 RESOLVER.ADR.RecipNotFound; not found' });
+	assert.deepEqual([adresse.erneut, adresse.daten.status], [false, u.STATUS_ENDGUELTIG]);
+	const zweiter = u.freigabeVermerk({ freigabe: { ...g, grund: u.ERNEUT_GRUND }, grund: '550 5.7.708 Access denied' });
+	assert.deepEqual([zweiter.erneut, zweiter.daten.status], [false, u.STATUS_ENDGUELTIG]);
+	assert.equal(u.freigabeVermerk({ freigabe: { ...g, status: 'offen' }, grund: 'x' }).ok, false);
+	assert.equal(u.freigabeVermerk({ freigabe: null, grund: 'x' }).ok, false);
+});
+
+test('Meldung sagt, ob die Nachricht erneut zur Freigabe kommt', () => {
+	const basis = { vorgangs_id: 'V-2026-0001', grund: '550 5.7.708', eskaliert: true };
+	assert.match(u.meldung({ ...basis, erneut: true }), /Zustelltest .* erneut zur Freigabe/);
+	assert.match(u.meldung({ ...basis, erneut: false }), /Kein automatischer neuer Versuch/);
+	assert.match(u.meldung(basis), /Bitte telefonisch klären oder die Adresse prüfen/);
+});

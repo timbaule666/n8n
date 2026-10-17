@@ -233,3 +233,47 @@ test('Direkt in Outlook gesendet: nur offene Freigabe, nur bei Treffer, Daten wi
 	assert.match(html, /Frist: 20\.10\.2026, 11:31/);
 	assert.match(html, /nicht geprüft/);
 });
+
+test('Unzustellbar: erneut zur Freigabe erst nach erfolgreichem Zustelltest nach der Meldung, max. 7 Tage', () => {
+	const u = fg({ status: 'unzustellbar', updatedAt: '2026-10-13T08:00:00.000Z' });
+	const nachher = { k1: { ok: true, am: '2026-10-14T05:40:00.000Z' } };
+	assert.deepEqual(plan({ freigaben: [u], zustelltests: nachher }).aufgaben.map((a) => [a.aktion, a.freigabe_id]), [['freigabe_nach_unzustellbar', 'F-1']]);
+	// Nachts ebenfalls (geht nur an die Freigeber)
+	assert.equal(plan({ freigaben: [u], zustelltests: nachher, jetzt: NACHTS }).aufgaben.length, 1);
+	for (const zt of [{}, { k1: { ok: false, am: '2026-10-14T05:40:00.000Z' } }, { k1: { ok: true, am: '2026-10-12T05:40:00.000Z' } }]) {
+		const r = plan({ freigaben: [u], zustelltests: zt });
+		assert.equal(r.aufgaben.length, 0);
+		assert.deepEqual(r.uebersprungen.map((x) => x.grund), ['zustellung_noch_gestoert']);
+	}
+	const alt = fg({ status: 'unzustellbar', updatedAt: '2026-10-06T08:00:00.000Z' });
+	assert.equal(plan({ freigaben: [alt], zustelltests: nachher }).aufgaben.length, 0);
+	assert.equal(plan({ freigaben: [fg({ status: 'nicht_zugestellt', updatedAt: '2026-10-13T08:00:00.000Z' })], zustelltests: nachher }).aufgaben.length, 0);
+});
+
+test('Zustelltest-Stände aus epa_system_status', () => {
+	const r = n.zustelltestsAus([
+		{ schluessel: 'zustelltest:k1', letzter_lauf: '2026-10-14T05:50:00.000Z', letztes_ergebnis: '{"ok":true,"art":"ok"}' },
+		{ schluessel: 'zustelltest:k2', letzter_lauf: '2026-10-14T05:50:00.000Z', letztes_ergebnis: 'kaputt' },
+		{ schluessel: 'alarmierung', letztes_ergebnis: '{"ok":true}' },
+	]);
+	assert.deepEqual(r, { k1: { ok: true, am: '2026-10-14T05:50:00.000Z' }, k2: { ok: false, am: '2026-10-14T05:50:00.000Z' } });
+});
+
+test('Nach Unzustellbarkeit: nur solange der Vorgang eskaliert ist und die Freigabe aktuell', () => {
+	const f = { freigabe_id: 'F-1', status: 'unzustellbar' };
+	const v = { status: 'Eskaliert / Manuell', freigabe_id_aktuell: 'F-1' };
+	assert.deepEqual(n.nachUnzustellbar({ freigabe: f, vorgang: v }), { ok: true });
+	assert.deepEqual(n.nachUnzustellbar({ freigabe: f, vorgang: { ...v, status: 'In Prüfung' } }), { ok: false, grund: 'status_geaendert', verwerfen: true });
+	assert.deepEqual(n.nachUnzustellbar({ freigabe: f, vorgang: { ...v, freigabe_id_aktuell: 'F-2' } }), { ok: false, grund: 'veraltet', verwerfen: true });
+	assert.equal(n.nachUnzustellbar({ freigabe: { ...f, status: 'ersetzt' }, vorgang: v }).verwerfen, false);
+	// Statusübergang für die neue Freigabe
+	assert.equal(pruefeUebergang('Eskaliert / Manuell', 'Freigabe ausstehend', 'Cronjob').erlaubt, true);
+	assert.equal(pruefeUebergang('Eskaliert / Manuell', 'Freigabe ausstehend', 'KI').erlaubt, false);
+});
+
+test('Nachricht an Freigeber nach Unzustellbarkeit: Hinweis und Grund der vorigen Freigabe, escaped', () => {
+	const html = freigabe.nachrichtFreigeber({ vorgang: { vorgangs_id: 'V-1' }, freigabe: { empfaenger: 'k@x.de', betreff: 'B', grund: 'Nicht zugestellt: 550 <5.7.708>' }, fehlende: [{ anzeigename: 'Telefon' }], link: 'https://x/y', ablaufText: '01.01.2027, 10:00', art: 'rueckfrage', anlass: 'freigabe_nach_unzustellbar' });
+	assert.match(html, /🔁 Erneut zur Freigabe: Die Nachricht kam beim Kunden nicht an/);
+	assert.match(html, /550 &lt;5\.7\.708&gt;/);
+	assert.match(html, /Zustelltest war wieder erfolgreich/);
+});

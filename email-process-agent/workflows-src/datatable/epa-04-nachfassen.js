@@ -16,6 +16,7 @@ module.exports = function () {
 		'**Fall 1:** "Warten auf Kunde", Frist abgelaufen, Erinnerungen < anzahl_erinnerungen → Erinnerungsentwurf mit Freigabe (EPA-02). Nach dem Versand: Frist = erinnerung_intervall_stunden, Zähler +1, Status wieder "Warten auf Kunde".',
 		'**Fall 2:** Alle Erinnerungen gesendet und Frist wieder abgelaufen → "Eskaliert / Manuell" und Teams-Nachricht: bitte telefonisch kontaktieren.',
 		'**Direkt in Outlook gesendet:** Jede offene Freigabe wird in jedem Lauf zuerst geprüft (versand_pruefen): Liegt ihr Entwurf schon in "Gesendete Elemente", vermerkt SW Nachfassen den Versand und der Vorgang wartet auf den Kunden.',
+		'**Nicht zugestellt:** Freigaben mit Status "unzustellbar" (Unzustellbarkeitsmeldung, EPA-01) kommen erneut zur Freigabe, sobald der Zustelltest des Kunden (EPA-11, Zeile "zustelltest:<kunde_id>") NACH der Meldung erfolgreich war; höchstens 7 Tage lang. Ausführung: SW Nachfassen → EPA-02 (art = erneut).',
 		'**Freigeber:** Nach freigabe_erinnerung_stunden Erinnerung mit neuem Link, nach freigabe_ablauf_stunden neue Links (alte ungültig). Nie automatischer Versand.',
 		'**Geschäftszeiten:** Aufgaben eines Kunden laufen nur innerhalb seiner Geschäftszeiten (inkl. Feiertage); außerhalb wird nichts verloren, der nächste Lauf holt es nach.',
 		'**Lauf-Lock:** Zeile "' + LOCK_SCHLUESSEL + '" in epa_system_status, atomar übernommen (bedingtes Update auf lock_bis < jetzt). Überlappende Läufe brechen sofort ab. Max. 50 Aufgaben je Lauf, der Rest folgt im nächsten Lauf.',
@@ -77,9 +78,9 @@ return [{ json: rest }];
 		bedingungen: [['status', 'eq', 'Warten auf Kunde'], ['antwort_frist', 'lt', `={{ ${L}.jetzt }}`]],
 		alle: true,
 	}, { alwaysOutputData: true, executeOnce: true });
-	// Offene Freigaben und solche mit Versandfehler (kommen nach Behebung erneut zur Freigabe)
+	// Offene Freigaben und solche mit Versandfehler bzw. ohne Zustellung (kommen nach Behebung erneut zur Freigabe)
 	const freigaben = wf.tabelle('Offene Freigaben lesen', [1320, -100], 'get', 'epa_freigaben', {
-		bedingungen: [['status', 'eq', 'offen'], ['status', 'eq', 'fehler']],
+		bedingungen: [['status', 'eq', 'offen'], ['status', 'eq', 'fehler'], ['status', 'eq', 'unzustellbar']],
 		match: 'anyCondition',
 		alle: true,
 	}, { alwaysOutputData: true, executeOnce: true });
@@ -89,6 +90,9 @@ return [{ json: rest }];
 		alle: true,
 	}, { alwaysOutputData: true, executeOnce: true });
 
+	// Letzte Zustelltests je Kunde (EPA-11): Voraussetzung für "erneut zur Freigabe" nach Unzustellbarkeit.
+	// Kleine Tabelle: ganz lesen, gefiltert wird im Code (Präfix "zustelltest:").
+	const zustelltests = wf.tabelle('Zustelltests lesen', [1870, -260], 'get', 'epa_system_status', { alle: true }, { alwaysOutputData: true, executeOnce: true });
 	const planen = wf.code('Aufgaben planen', [1980, -100], ['configValidator', 'fristen', 'nachfassen'], `
 const l = $('Lauf vorbereiten').first().json;
 const zeilen = (n) => $(n).all().map((i) => i.json).filter((z) => z && z.id !== undefined);
@@ -101,7 +105,8 @@ for (const a of zeilen('Configs lesen')) {
 	if (r.gueltig) configs[a.kunde_id] = r.config;
 	else ungueltig.push(a.kunde_id);
 }
-const plan = nachfassen.planen({ vorgaenge: zeilen('Überfällige Vorgänge lesen'), freigaben: zeilen('Offene Freigaben lesen'), configs, jetzt: l.jetzt, fristen });
+const zustelltests = nachfassen.zustelltestsAus(zeilen('Zustelltests lesen'));
+const plan = nachfassen.planen({ vorgaenge: zeilen('Überfällige Vorgänge lesen'), freigaben: zeilen('Offene Freigaben lesen'), configs, jetzt: l.jetzt, fristen, zustelltests });
 return [{ json: { ...plan, ungueltige_configs: ungueltig } }];
 `);
 	const vorhanden = wf.node('Aufgaben vorhanden?', 'n8n-nodes-base.if', [2200, -100], {
@@ -152,7 +157,7 @@ return [{ json: { ergebnis: 'lauf_beendet', ...z } }];
 	wf.verbinde(anlegen, neueZeile, 0);
 	wf.verbinde(anlegen, ergUebersprungen, 1);
 	wf.kette(neueZeile, zeileSpeichern, ergUebersprungen);
-	wf.kette(vorgaenge, freigaben, configs, felder, planen, vorhanden);
+	wf.kette(vorgaenge, freigaben, configs, felder, zustelltests, planen, vorhanden);
 	wf.verbinde(vorhanden, aufteilen, 0);
 	wf.verbinde(vorhanden, abschliessen, 1);
 	wf.kette(aufteilen, ausfuehren, abschliessen, lockFrei, ergebnis);

@@ -17,8 +17,9 @@ module.exports = function () {
 		'**Ablauf:** Bausteine der fehlenden Felder aus der Config (C1) → KI formuliert nur Anrede/Einleitung/Schluss, Code prüft, sonst Standardvorlage (C2) → Antwortentwurf im Thread im Kundenpostfach (über den Postfach-Workflow aus postfach_workflow_id) → Freigabe mit einmaligem Token je Freigeber (nur SHA-256-Hash gespeichert) → Status "Freigabe ausstehend" → persönlicher Link per Teams-1:1-Chat (C3).',
 		'**Max. Runden:** Ist max_runden erreicht, wird nicht mehr gefragt: Status "Eskaliert / Manuell" und Meldung im Kanal.',
 		'**Erinnerung (art = erinnerung, M5):** Aufruf durch EPA-04, wenn der Kunde die Frist verpasst hat (Status "Warten auf Kunde"). Text aus fester Vorlage ohne KI, gleiche Bausteine, gleicher Freigabeweg. Rundenzähler bleibt, nach dem Versand zählt EPA-07 die Erinnerung.',
-		'**Trigger:** Aufruf durch EPA-01/EPA-03 (Lücken) bzw. EPA-04 über EPA SW Nachfassen (Erinnerung).',
-		'**Eingaben:** kunde_id, vorgangs_id, art (rueckfrage | erinnerung), referenz, kontext_html (optional: Übersicht zur Mail; dann ist die Freigabe-Nachricht die einzige Meldung). **Ausgabe:** { ergebnis, freigabe_id, zugestellt }',
+		'**Erneut (art = erneut):** Aufruf durch EPA-04, wenn die vorige Nachricht beim Kunden nicht ankam (Freigabe "unzustellbar") und der Zustelltest danach wieder geklappt hat. Status "Eskaliert / Manuell" → "Freigabe ausstehend". Neuer Entwurf mit dem Text der vorigen Freigabe (keine KI), neue Freigabe mit Hinweis "🔁 Erneut zur Freigabe". Kommt auch diese nicht an, gibt es keinen weiteren automatischen Versuch.',
+		'**Trigger:** Aufruf durch EPA-01/EPA-03 (Lücken) bzw. EPA-04 über EPA SW Nachfassen (Erinnerung, Erneut).',
+		'**Eingaben:** kunde_id, vorgangs_id, art (rueckfrage | erinnerung | erneut), referenz, kontext_html (optional: Übersicht zur Mail; dann ist die Freigabe-Nachricht die einzige Meldung). **Ausgabe:** { ergebnis, freigabe_id, zugestellt }',
 		'**Hinweis Sicherheit:** Der Klartext-Link steht nur in den Ausführungsdaten dieses Laufs. Ausführungsdaten-Aufbewahrung in n8n begrenzen.',
 	].join('\n'), { breite: 900, hoehe: 400 });
 
@@ -43,32 +44,48 @@ module.exports = function () {
 		['lock_sekunden', 'number', '={{ null }}'],
 	]);
 
-	const vorbereiten = wf.code('Rückfrage vorbereiten', [660, 0], ['fehlerklassen', 'entwurf'], `
+	// Nur für art = erneut: die vorige (nicht zugestellte) Freigabe liefert Text, Art und fehlende Felder.
+	const vorige = wf.tabelle('Vorige Freigabe lesen', [550, 160], 'get', 'epa_freigaben', {
+		bedingungen: [
+			['freigabe_id', 'eq', "={{ $('Bei Aufruf').first().json.art === 'erneut' ? ($json.vorgang.freigabe_id_aktuell || '__keine__') : '__keine__' }}"],
+			['kunde_id', 'eq', "={{ $('Bei Aufruf').first().json.kunde_id }}"],
+		],
+	}, { alwaysOutputData: true });
+	const vorbereiten = wf.code('Rückfrage vorbereiten', [660, 0], ['fehlerklassen', 'entwurf', 'unzustellbar'], `
 const e = $('Bei Aufruf').first().json;
 const config = $('Config laden').first().json.config;
-const v = $input.first().json.vorgang;
+const v = $('Vorgang lesen').first().json.vorgang;
 const fehler = (code, text) => fehlerklassen.epaFehler(code, v.vorgangs_id, text);
 const art = e.art || 'rueckfrage';
-if (!['rueckfrage', 'erinnerung'].includes(art)) throw fehler('UNGUELTIGES_FORMAT', \`Unbekannte Art "\${art}"\`);
-const statusSoll = art === 'erinnerung' ? 'Warten auf Kunde' : 'Lücken erkannt';
+if (!['rueckfrage', 'erinnerung', 'erneut'].includes(art)) throw fehler('UNGUELTIGES_FORMAT', \`Unbekannte Art "\${art}"\`);
+const statusSoll = art === 'erinnerung' ? 'Warten auf Kunde' : art === 'erneut' ? 'Eskaliert / Manuell' : 'Lücken erkannt';
 if (v.status !== statusSoll) throw fehler('UNZULAESSIGER_STATUSWECHSEL', \`\${art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage'} nur im Status "\${statusSoll}" (ist "\${v.status}")\`);
+// Erneut: Text, Art und Runde der vorigen Freigabe; sie muss die aktuelle des Vorgangs sein.
+const alt = art === 'erneut' ? $('Vorige Freigabe lesen').first().json : null;
+if (art === 'erneut' && (!alt || alt.id === undefined || alt.freigabe_id !== v.freigabe_id_aktuell || !alt.entwurf_text)) throw fehler('NICHT_GEFUNDEN', 'Vorige Freigabe zum erneuten Versand nicht gefunden');
 if (!config.postfach_workflow_id) throw fehler('KONFIGURATIONSFEHLER', 'postfach_workflow_id fehlt in der Config (ID der EPA-00-Kopie für dieses Postfach)');
 if (!config.freigeber.length) throw fehler('KONFIGURATIONSFEHLER', 'Keine Freigeber konfiguriert');
 const felder = config.vorgangstypen[v.vorgangstyp];
 if (!felder) throw fehler('KONFIGURATIONSFEHLER', \`Vorgangstyp "\${v.vorgangstyp}" fehlt in der Config\`);
-const fehlende = (v.fehlende_felder || []).filter((f) => f && f.feldname);
+let altFehlende = null;
+if (alt) { try { altFehlende = JSON.parse(alt.fehlende_felder || '[]'); } catch (err) { altFehlende = null; } }
+const fehlende = (altFehlende || v.fehlende_felder || []).filter((f) => f && f.feldname);
 if (!fehlende.length) throw fehler('UNGUELTIGES_FORMAT', 'Keine fehlenden Felder vermerkt');
 let bs;
 // Antwortsprache = Sprache der Kundenmail, wenn die Config dafür Übersetzungen hat (sonst Hauptsprache).
 const cfg = entwurf.sprachConfig(config, v.sprache);
 try { bs = entwurf.bausteine(fehlende, felder, cfg.textbausteine); } catch (err) { throw fehler('KONFIGURATIONSFEHLER', err.message); }
 // Erinnerung: gleiche Runde (die Rückfrage dieser Runde ist schon gesendet); der Rundenzähler steigt nicht.
-const runde = Number(v.rundenzaehler || 0) + (art === 'erinnerung' ? 0 : 1);
+// Erneut: dieselbe Runde und Art wie die nicht zugestellte Nachricht.
+const runde = art === 'erneut' ? Number(alt.runde || v.rundenzaehler || 0) : Number(v.rundenzaehler || 0) + (art === 'erinnerung' ? 0 : 1);
 const max = Number(config.max_runden);
 return [{ json: {
-	weg: art === 'erinnerung' ? 'vorlage' : runde > max ? 'eskalieren' : 'entwurf',
+	weg: art === 'erinnerung' ? 'vorlage' : art === 'erneut' ? 'erneut' : runde > max ? 'eskalieren' : 'entwurf',
 	art,
-	ausloeser: art === 'erinnerung' ? 'Cronjob' : 'System',
+	freigabe_art: art === 'erneut' ? (alt.art || 'rueckfrage') : art,
+	vorige: alt ? { freigabe_id: alt.freigabe_id, entwurf_text: alt.entwurf_text, abschluss: alt.abschluss, grund: alt.grund, fehlende_felder: alt.fehlende_felder } : null,
+	erneut_grund: unzustellbar.ERNEUT_GRUND,
+	ausloeser: art === 'rueckfrage' ? 'System' : 'Cronjob',
 	erinnerung_nr: Number(v.erinnerungen_gesendet || 0) + 1,
 	runde,
 	max_runden: max,
@@ -117,7 +134,7 @@ return [{ json: { ergebnis: 'eskaliert_max_runden', freigabe_id: null, zugestell
 
 	// ---------------------------------------------------------------- Entwurf (C2)
 	const vorlage = wf.node('Erinnerung (Vorlage)?', 'n8n-nodes-base.if', [1100, 120], {
-		conditions: bedingungen([bedingung('={{ $json.weg }}', { type: 'string', operation: 'equals' }, 'vorlage')]),
+		conditions: bedingungen([bedingung("={{ $json.weg === 'vorlage' || $json.weg === 'erneut' }}", { type: 'boolean', operation: 'true', singleValue: true })]),
 		options: {},
 	});
 	const llm = wf.aufruf('Entwurf formulieren', [1320, 280], 'EPA SW LLM aufrufen', [
@@ -137,11 +154,17 @@ const config = $('Config laden').first().json.config;
 const v = $('Vorgang lesen').first().json.vorgang;
 const r = $('Rückfrage vorbereiten').first().json;
 const erinnerung = r.art === 'erinnerung';
-const l = erinnerung ? {} : $input.first().json || {};
+const erneut = r.art === 'erneut';
+const l = erinnerung || erneut ? {} : $input.first().json || {};
 const huelle = l.ok === true ? l.ergebnis : null;
 const felder = config.vorgangstypen[v.vorgangstyp];
 const cfg = entwurf.sprachConfig(config, v.sprache);
-const e = erinnerung
+// Erneut: wortgleich der zuletzt freigegebene Text mit seinem Abschluss (Signatur, KI-Hinweis).
+const erneutBauen = () => {
+	const teile = entwurf.abschlussTeile(r.vorige.abschluss) || cfg;
+	return { text: r.vorige.entwurf_text, html: entwurf.zuHtml(r.vorige.entwurf_text, teile), abschluss: r.vorige.abschluss || entwurf.abschlussText(cfg), fallback: false, pruefung: [] };
+};
+const e = erneut ? erneutBauen() : erinnerung
 	? entwurf.erinnerungBauen({ config: cfg, felder, fehlende: r.fehlende, name: r.name })
 	: entwurf.entwurfBauen(huelle, { config: cfg, felder, fehlende: r.fehlende, name: r.name });
 const tokens = config.freigeber.map((f) => ({ freigeber: f, ...freigabe.tokenErzeugen(crypto) }));
@@ -150,7 +173,7 @@ return [{ json: {
 	freigabe_id: freigabe.freigabeIdErzeugen(crypto),
 	tokens,
 	ablauf: new Date(Date.now() + config.freigabe_ablauf_stunden * 3600000).toISOString(),
-	llm_status: erinnerung ? 'vorlage' : l.ok === true ? 'ok' : (l.code || (l.error ? 'technischer Fehler' : 'keine Antwort')),
+	llm_status: erneut ? 'erneut' : erinnerung ? 'vorlage' : l.ok === true ? 'ok' : (l.code || (l.error ? 'technischer Fehler' : 'keine Antwort')),
 } }];
 `);
 
@@ -173,10 +196,11 @@ const z = $('Entwurf zusammensetzen').first().json;
 const d = $input.first().json;
 if (!d.entwurf_id) throw new Error('[EPA:502:UPSTREAM_FEHLER:' + v.vorgangs_id + '] Postfach-Workflow hat keinen Entwurf geliefert');
 return [{ json: {
-	freigabe_id: z.freigabe_id, kunde_id: config.kunde_id, vorgangs_id: v.vorgangs_id, art: r.art, runde: r.runde, status: 'offen',
+	freigabe_id: z.freigabe_id, kunde_id: config.kunde_id, vorgangs_id: v.vorgangs_id, art: r.freigabe_art, runde: r.runde, status: 'offen',
 	empfaenger: d.empfaenger || v.absender_adresse, betreff: d.betreff, entwurf_id: d.entwurf_id, entwurf_text: z.text, abschluss: z.abschluss,
 	fehlende_felder: JSON.stringify(r.fehlende), fallback: z.fallback, ablauf: z.ablauf,
-	entscheider: null, entscheidung: null, bearbeitet: false, grund: null, gesendet_am: null, gesendet_message_id: null,
+	// Erneut: markiert den zweiten Versuch (kommt auch er nicht an, kein weiterer automatischer Versuch).
+	entscheider: null, entscheidung: null, bearbeitet: false, grund: r.art === 'erneut' ? r.erneut_grund : null, gesendet_am: null, gesendet_message_id: null,
 } }];
 `);
 	const freigabeSpeichern = wf.tabelle('Freigabe speichern', [2200, 120], 'insert', 'epa_freigaben');
@@ -201,7 +225,7 @@ return z.tokens.map((t) => ({ json: { freigabe_id: z.freigabe_id, kunde_id: conf
 		['vorgangs_id', 'string', `={{ ${V}.vorgangs_id }}`],
 		['neuer_status', 'string', 'Freigabe ausstehend'],
 		['ausloeser', 'string', `={{ ${R}.ausloeser }}`],
-		['details', 'object', `={{ { freigabe_id: ${Z}.freigabe_id, art: ${R}.art, erinnerung_nr: ${R}.art === 'erinnerung' ? ${R}.erinnerung_nr : null, runde: ${R}.runde, fallback: ${Z}.fallback, pruefung: ${Z}.pruefung, llm: ${Z}.llm_status, freigeber: ${C}.freigeber } }}`],
+		['details', 'object', `={{ { freigabe_id: ${Z}.freigabe_id, art: ${R}.art, vorige_freigabe_id: ${R}.vorige ? ${R}.vorige.freigabe_id : null, erinnerung_nr: ${R}.art === 'erinnerung' ? ${R}.erinnerung_nr : null, runde: ${R}.runde, fallback: ${Z}.fallback, pruefung: ${Z}.pruefung, llm: ${Z}.llm_status, freigeber: ${C}.freigeber } }}`],
 		['referenz', 'string', `={{ ${Z}.freigabe_id }}`],
 		['erwartete_version', 'number', "={{ $('Freigabe am Vorgang vermerken').first().json.vorgang.version }}"],
 		['nur_wenn_erlaubt', 'boolean', '={{ false }}'],
@@ -218,7 +242,7 @@ const basis = freigabe.basisUrl($execution.resumeUrl, config.freigabe_basis_url)
 const ablaufText = DateTime.fromISO(z.ablauf).setZone(config.zeitzone).toFormat('dd.LL.yyyy, HH:mm');
 return z.tokens.map((t) => ({ json: {
 	freigeber: t.freigeber,
-	nachricht_html: freigabe.nachrichtFreigeber({ vorgang: v, freigabe: fg, fehlende: r.fehlende.map((f) => ({ anzeigename: f.anzeigename || f.feldname })), link: freigabe.link(basis, t.token), ablaufText, art: r.art, kontext_html: r.art === 'rueckfrage' ? $('Bei Aufruf').first().json.kontext_html : null }),
+	nachricht_html: freigabe.nachrichtFreigeber({ vorgang: v, freigabe: r.art === 'erneut' ? { ...fg, grund: r.vorige.grund } : fg, fehlende: r.fehlende.map((f) => ({ anzeigename: f.anzeigename || f.feldname })), link: freigabe.link(basis, t.token), ablaufText, art: r.freigabe_art, anlass: r.art === 'erneut' ? 'freigabe_nach_unzustellbar' : undefined, kontext_html: r.art === 'rueckfrage' ? $('Bei Aufruf').first().json.kontext_html : null }),
 } }));
 `);
 	const senden = wf.aufruf('Freigeber benachrichtigen', [3520, 120], 'EPA SW Freigabe senden', [
@@ -234,7 +258,7 @@ return z.tokens.map((t) => ({ json: {
 const v = $('Vorgang lesen').first().json.vorgang;
 const z = $('Entwurf zusammensetzen').first().json;
 const zugestellt = $input.all().filter((i) => i.json && i.json.gesendet === true).length;
-const html = zugestellt ? null : '<b>Freigabe-Link konnte niemandem zugestellt werden</b><br>Vorgang: <b>' + entwurf.esc(v.vorgangs_id) + '</b><br>Die ' + ($('Rückfrage vorbereiten').first().json.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage') + ' liegt als Entwurf im Postfach und wartet auf Freigabe (' + entwurf.esc(z.freigabe_id) + '). Bitte Teams-Zugang prüfen; der Fehler steht im Fehlerlog.';
+const html = zugestellt ? null : '<b>Freigabe-Link konnte niemandem zugestellt werden</b><br>Vorgang: <b>' + entwurf.esc(v.vorgangs_id) + '</b><br>Die ' + ($('Rückfrage vorbereiten').first().json.freigabe_art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage') + ' liegt als Entwurf im Postfach und wartet auf Freigabe (' + entwurf.esc(z.freigabe_id) + '). Bitte Teams-Zugang prüfen; der Fehler steht im Fehlerlog.';
 return [{ json: { zugestellt, nachricht_html: html } }];
 `);
 	const niemand = wf.node('Niemand erreicht?', 'n8n-nodes-base.if', [3960, 120], {
@@ -257,7 +281,7 @@ const z = $('Entwurf zusammensetzen').first().json;
 return [{ json: { ergebnis: 'freigabe_angefordert', art: $('Rückfrage vorbereiten').first().json.art, freigabe_id: z.freigabe_id, zugestellt: $('Zustellung auswerten').first().json.zugestellt, fallback: z.fallback } }];
 `);
 
-	wf.kette(trigger, config, vorgang, vorbereiten, eskalieren);
+	wf.kette(trigger, config, vorgang, vorige, vorbereiten, eskalieren);
 	wf.verbinde(eskalieren, statusEsk, 0);
 	wf.verbinde(eskalieren, vorlage, 1);
 	wf.verbinde(vorlage, zusammensetzen, 0);
