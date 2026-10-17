@@ -2072,5 +2072,25 @@
   ],
   "soll": {},
   "notiz": "Retest H22: deutliche Storno-Meldung"
+ },
+ "P10": {
+  "art": "neu",
+  "betreff": "Transport Siegen – Marburg",
+  "text": "Guten Tag,\n\nwir müssten 3 Paletten (ca. 900 kg) von 57072 Siegen nach 35037 Marburg bringen.\nGeht das bei Ihnen?\n\nViele Grüße\nJonas Weber",
+  "absender_name": "Jonas Weber",
+  "erwartet": [
+   "luecken"
+  ],
+  "soll": {},
+  "notiz": "Probelauf 17.10.: Rückfrage (Datum, Telefon) muss nach Freigabe in Gmail ankommen"
+ },
+ "P10b": {
+  "art": "antwort",
+  "text": "Hallo,\n\nAbholung wäre am 26.11.2026, erreichbar bin ich unter 0271 5553010.\n\nGruß\nJonas Weber",
+  "erwartet": [
+   "antwort_bereit"
+  ],
+  "soll": {},
+  "notiz": "Probelauf 17.10.: Antwort auf P10"
  }
 }
