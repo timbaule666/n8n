@@ -209,3 +209,40 @@ Tim hat einen Microsoft-365-Business-Basic-Testzugang (Tenant `agentdemo666.onmi
   - Nicht mehr benutzt werden „Microsoft Teams account“ und, außerhalb der EPA-00-Vorlage, „Microsoft Outlook account“.
   - Die Vorlage bekommt ohnehin je Kunde ein eigenes Credential.
   - Die beiden alten Credentials können gelöscht werden, wenn das outlook.com-Konto nicht mehr gebraucht wird.
+
+## Aufräumen (Stand 2026-10-17)
+
+**Gelöschte Testdaten**
+- Gelöscht wurden alle Daten des alten Testkunden `epa-test`:
+  - 128 Vorgänge
+  - 44 Freigaben
+  - 58 Freigabe-Links
+  - 767 Audit-Einträge
+  - 157 Einträge in `epa_verarbeitete_mails`
+- Erhalten bleiben die Vorgänge V-2026-0129 und V-2026-0130 des Kunden `epa-m365`. Sie dienen noch für die Live-Tests von Erinnerung und Eskalation.
+
+**Fixes**
+
+| Fix | Commit |
+|---|---|
+| Anrede bei weitergeleiteten Mails neutral (Befund N08) | 0ac0317, eingespielt in EPA-02, EPA-07 und SW Nachfassen |
+| EPA-07 speichert erfolgreiche Ausführungen nicht mehr | in der Instanz umgestellt |
+| `tools/epa-t3-testmails.sdk.js` entspricht wieder der n8n-Fassung | 0ac0317 |
+
+**Archivierte Workflows** (in n8n wiederherstellbar)
+- EPA-T1 KI-Qualität prüfen
+- EPA-TEST Stufe 1 starten
+- EPA-00 Postfach timbaule666@outlook.com (Test)
+- alle temporären Hilfs-Workflows
+
+Der Kunde `epa-ki-test` ist deaktiviert. Aktiv ist damit nur noch `epa-m365`.
+
+**Bleiben bewusst**
+
+| Workflow | Grund |
+|---|---|
+| EPA-00 Vorlage | für neue Kunden |
+| EPA-08 Löschjob | Datenschutz, noch nicht scharf |
+| EPA-09, EPA-10, SW Regeln abgleichen | Regeln aus Google Sheets |
+| EPA-T2 Telegram | Störungsmeldungen |
+| EPA-T3 Testmails | für weitere Live-Tests; kann vor dem Produktivbetrieb weg |
