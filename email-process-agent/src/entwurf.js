@@ -38,17 +38,31 @@ function sprachConfig(config, erkannteSprache) {
 /**
  * Name für die Anrede: der erkannte Ansprechpartner (Feld mit Regel person), sonst leer (neutrale Anrede).
  * Bewusst nicht der Absendername: der gehört oft zu einem Sammelpostfach oder einem Weiterleitenden.
+ * Die Rückfrage geht immer an den Absender. Ist der Absender erkennbar eine andere Person als der Ansprechpartner
+ * (z. B. ein Kollege leitet die Anfrage weiter), wäre "Guten Tag <Ansprechpartner>" an ihn falsch: dann neutral.
+ * @param {string} [absenderName] Anzeigename des Absenders der Kundenmail
  */
-function ansprechpartner(extrahierteDaten, felder) {
+function ansprechpartner(extrahierteDaten, felder, absenderName) {
 	const d = extrahierteDaten && typeof extrahierteDaten === 'object' ? extrahierteDaten : {};
 	for (const f of felder || []) {
 		const r = f.validierungsregel || {};
 		if (f.typ !== 'text' || r.person !== true) continue;
 		const w = d[f.feldname] && d[f.feldname].wert;
 		const n = sichererName(w);
-		if (n) return n;
+		if (n) return andererAbsender(n, absenderName) ? '' : n;
 	}
 	return '';
+}
+
+/** Absender ist eine Person (mindestens Vor- und Nachname) ohne gemeinsamen Namensteil mit dem Ansprechpartner. */
+function andererAbsender(name, absenderName) {
+	const a = sichererName(absenderName);
+	if (!a) return false;
+	const teile = (s) => s.toLowerCase().split(/[\s.]+/).filter((t) => t.length > 1);
+	const at = teile(a);
+	if (at.length < 2) return false;
+	const nt = new Set(teile(name));
+	return !at.some((t) => nt.has(t));
 }
 
 /** Feste Bausteine der fehlenden Felder in Config-Reihenfolge. Fehlender Baustein = Konfigurationsfehler. */

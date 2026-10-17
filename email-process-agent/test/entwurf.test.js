@@ -107,6 +107,16 @@ test('Anrede: erkannter Ansprechpartner, sonst neutral (nicht der Absendername)'
 	assert.equal(e.ansprechpartner({ Ansprechpartner: { wert: null, roh: 'Dispo-Team' } }, FELDER), '');
 	assert.equal(e.ansprechpartner({}, FELDER), '');
 	assert.equal(e.ansprechpartner(null, FELDER), '');
+	// Weiterleitung (Befund N08): Rückfrage geht an den Weiterleitenden, also keine Anrede mit dem Namen der Kundin
+	const birgit = { Ansprechpartner: { wert: 'Birgit Lange' } };
+	assert.equal(e.ansprechpartner(birgit, FELDER, 'Tim Baule'), '');
+	assert.equal(e.ansprechpartner(birgit, FELDER, 'Birgit Lange'), 'Birgit Lange');
+	assert.equal(e.ansprechpartner(birgit, FELDER, 'Lange, Birgit'), 'Birgit Lange');
+	assert.equal(e.ansprechpartner(birgit, FELDER, 'B. Lange'), 'Birgit Lange');
+	// Sammelpostfach oder kein Personenname als Absender: Ansprechpartner bleibt
+	assert.equal(e.ansprechpartner(birgit, FELDER, 'Dispo-Team'), 'Birgit Lange');
+	assert.equal(e.ansprechpartner(birgit, FELDER, 'info@kunde.de'), 'Birgit Lange');
+	assert.equal(e.ansprechpartner(birgit, FELDER, ''), 'Birgit Lange');
 	assert.match(e.entwurfBauen(null, { config: CONFIG, felder: FELDER, fehlende: FEHLENDE, name: '' }).text, /^Guten Tag,/);
 });
 

@@ -73,8 +73,8 @@ return [{ json: {
 	runde,
 	max_runden: max,
 	fehlende,
-	name: entwurf.ansprechpartner(v.extrahierte_daten, felder),
-	kontext: { anrede_stil: config.anrede_stil, sprache: cfg.sprache, name: entwurf.ansprechpartner(v.extrahierte_daten, felder), betreff: v.betreff || '', luecken: bs.map((b) => b.anzeigename), runde },
+	name: entwurf.ansprechpartner(v.extrahierte_daten, felder, v.absender_name),
+	kontext: { anrede_stil: config.anrede_stil, sprache: cfg.sprache, name: entwurf.ansprechpartner(v.extrahierte_daten, felder, v.absender_name), betreff: v.betreff || '', luecken: bs.map((b) => b.anzeigename), runde },
 } }];
 `);
 	const eskalieren = wf.node('Max. Runden erreicht?', 'n8n-nodes-base.if', [880, 0], {

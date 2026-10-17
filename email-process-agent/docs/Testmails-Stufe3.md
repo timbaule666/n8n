@@ -488,7 +488,7 @@ T01 in Gmail **noch einmal neu senden**, mit gleichem Betreff und Text. Nicht �
 
 ## Automatischer Versand: EPA-T3
 
-Workflow **„EPA-T3 Testmails senden (Test) *“** in der Cloud, Quelle in `tools/epa-t3-testmails.sdk.js`.
+Workflow **„EPA-T3 Testmails senden (Test) *“** in der Cloud, Quelle in `tools/epa-t3-testmails.sdk.js` (Stand 17.10.: lädt die Vorlagen aus `config/testphase/testmails.json`, sendet nur an das Microsoft-365-Testpostfach).
 
 - **Was er tut:** Er schickt die Vorlagen über die Gmail-Verbindung „Gmail account“ an das Testpostfach. Der Empfänger ist fest eingestellt, deshalb kann nichts an Kunden gehen.
 - **Absendername:** Jede Vorlage hat ihren eigenen Absendernamen, z. B. „Sabine Kröger“. Die Adresse bleibt die Gmail-Adresse.
