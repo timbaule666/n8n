@@ -162,3 +162,20 @@ Tim hat einen Microsoft-365-Business-Basic-Testzugang (Tenant `agentdemo666.onmi
 | Verbindungstest | Meldung über SW Benachrichtigen in den Kanal „General“: gesendet |
 | EPA-T3 | Parameter `ziel` (`outlook` = Standard, `m365`); die Rückfragesuche in Gmail nutzt die jeweilige Absenderadresse |
 | Probelauf | Bestanden: Gmail-Anfrage „Wuppertal – Solingen“ → Meldung im Kanal → Freigabe-Link im 1:1-Teams-Chat des Disponenten → freigegeben → Rückfrage in Gmail angekommen → Kundenantwort → V-2026-0130 „Bereit zur Bearbeitung“. Vorher (V-2026-0129) war der Freigeber falsch eingetragen: „Chat öffnen“ lieferte 404, EPA-02 meldete das korrekt im Kanal. Der 1:1-Chat braucht zwei verschiedene Benutzer im Tenant |
+
+## Direkt in Outlook gesendete Entwürfe (Stand 2026-10-17)
+- **Anlass:** Tim hat den Entwurf zu V-2026-0129 direkt in Outlook gesendet. Die Freigabe blieb „offen“ und der Vorgang auf „Freigabe ausstehend“.
+- **Neu (Commit 35e6338):**
+  - EPA-00-Aktion `versand_pruefen`: Sucht in „Gesendete Elemente“ nach der Freigabe-Kennung. Live geprüft: Die Kennung bleibt auch beim Senden von Hand erhalten.
+  - EPA-04 prüft in jedem Lauf zuerst alle offenen Freigaben.
+  - SW Nachfassen vermerkt danach den Versand, sperrt die Links, setzt „Warten auf Kunde“ mit Frist und meldet es im Kanal.
+- **Eingespielt in:**
+  - die Vorlage (bleibt aus)
+  - beide Postfach-Kopien (Postfach und Credentials erhalten)
+  - SW Nachfassen
+  - EPA-04
+- **Live-Test:**
+  - Ergebnis des EPA-04-Laufs: `versand_pruefen:manuell_gesendet: 1`.
+  - V-2026-0129 steht jetzt auf „Warten auf Kunde“.
+  - Die Freigabe ist mit `entscheidung = manuell_gesendet`, Versandzeit 09:31:57 und Message-ID vermerkt.
+- **Nebenbefund:** EPA-04 meldet `ungueltige_configs: beispiel-transport` (Beispielkunde mit Platzhaltern, aktiv). Das ist bekannt und folgenlos, weil der Kunde keine Vorgänge hat.
