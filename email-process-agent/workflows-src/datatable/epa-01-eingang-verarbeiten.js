@@ -185,10 +185,11 @@ return [{ json: $input.first().json.daten }];
 	const uMeldung = wf.code('Meldung: nicht zugestellt', [3520, -300], ['unzustellbar'], `
 const n = $('Mail normalisieren').first().json;
 const s = $('Status: Eskaliert (unzustellbar)').first().json;
+// v ist der Stand vor dem Statuswechsel: war der Vorgang schon eskaliert, ist das kein Fehler.
 const v = $('Vorgang zur Unzustellbarkeit lesen').first().json.vorgang;
 const a = $('Unzustellbarkeit auswerten').first().json;
 const vermerkt = $('Freigabe als nicht zugestellt vermerken').isExecuted && $('Freigabe als nicht zugestellt vermerken').first().json.id !== undefined;
-return [{ json: { nachricht_html: unzustellbar.meldung({ ...n.ndr, betreff: v.betreff, eskaliert: s.ok === true, erneut: vermerkt ? a.erneut : undefined }) } }];
+return [{ json: { nachricht_html: unzustellbar.meldung({ ...n.ndr, betreff: v.betreff, eskaliert: s.ok === true || v.status === 'Eskaliert / Manuell', erneut: vermerkt ? a.erneut : undefined }) } }];
 `, { executeOnce: true });
 	const uInfo = wf.aufruf('Kanal warnen (unzustellbar)', [3740, -300], 'EPA SW Benachrichtigen', [
 		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
