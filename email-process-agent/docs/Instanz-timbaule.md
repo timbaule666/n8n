@@ -246,3 +246,13 @@ Der Kunde `epa-ki-test` ist deaktiviert. Aktiv ist damit nur noch `epa-m365`.
 | EPA-09, EPA-10, SW Regeln abgleichen | Regeln aus Google Sheets |
 | EPA-T2 Telegram | Störungsmeldungen |
 | EPA-T3 Testmails | für weitere Live-Tests; kann vor dem Produktivbetrieb weg |
+
+## Teams-Credential je Kunde (Stand 2026-10-17, Commit 90ead9b)
+- **Neu in der Postfach-Kopie:** Jede EPA-00-Kopie enthält jetzt neben dem Outlook-Credential auch das Teams-Credential des Kunden. Es steckt in 5 Nodes: „Teams prüfen“, „Kanalmeldung senden“, „Teams-Konto lesen“, „Chat öffnen“ und „Chat-Nachricht senden“. Dazu gibt es die neuen Aktionen `teams_kanal` und `teams_chat`.
+- **SW Benachrichtigen und SW Freigabe senden:** Beide lesen `postfach_workflow_id` aus `epa_config_allgemein` und senden über die Kopie. Sie brauchen kein Credential mehr.
+- **EPA-06:** Teams wird je Kunde über `verbindung_pruefen` geprüft. Das Teams des Betreibers prüft EPA-06 nur noch, wenn die Alarme per Teams gehen; hier gehen sie per Telegram.
+- **Kopie `NezOVz8ylWItOHcU`:** Teams-Nodes mit „Microsoft Teams account 2“. Die Vorlage hat keine Credentials, die werden je Kopie zugewiesen.
+- **Live-Test V-2026-0131 („Anfrage Sendung nach Bayern“):**
+  - Meldung im Kanal und Freigabe-Link im Chat des Disponenten kamen über die Kopie an, ohne neuen Eintrag im Fehlerlog.
+  - Nach der Freigabe ging die Rückfrage um 10:17 UTC raus (`status = gesendet`).
+- **Deploy-Hinweis:** Bei einem Node, der unter gleichem Namen den Typ wechselt, darf die alte `workflowId` nicht übernommen werden. Der erste Deploy-Lauf scheiterte daran, der zweite war korrekt.
