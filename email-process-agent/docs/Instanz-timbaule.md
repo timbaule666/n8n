@@ -148,3 +148,17 @@ Tims privates Microsoft-Konto hat keine Teams-Lizenz. Microsoft antwortet auf Gr
   - „Bisherige Informationen“ und „Nachgeforderte Informationen“
 
   Neue Spalten `erste_mail_am` und `erste_mail_link` in epa_vorgaenge. Gilt für Vorgänge ab 19:00; bei V-2026-0086 sind die Werte nachgetragen.
+
+## Zweiter Testkunde `epa-m365` mit Microsoft 365 und Teams (Stand 2026-10-17)
+
+Tim hat einen Microsoft-365-Business-Basic-Testzugang (Tenant `agentdemo666.onmicrosoft.com`) angelegt. Damit lässt sich Teams erstmals testen; das private outlook.com-Konto hat dafür keine Schnittstelle.
+
+| Was | Stand |
+|---|---|
+| Credentials | „Microsoft Outlook account 2“ (`ahmYUBFC0yGuvTLu`) und „Microsoft Teams account 2“ (`lSRi3VbAUwbPKsVl`), beide angemeldet als TimBaule@agentdemo666.onmicrosoft.com (Agent-Konto). Lesetest: Postfach, Team „agentdemo“ und Kanal „General“ erreichbar |
+| Postfach-Kopie | „EPA-00 Postfach timbaule@agentdemo666.onmicrosoft.com (Test)“, ID `NezOVz8ylWItOHcU`, aus der bestehenden Kopie erzeugt, 21 Outlook-Nodes auf das neue Credential umgestellt, veröffentlicht |
+| Teams-Credential | In SW Benachrichtigen, SW Freigabe senden (3 Nodes), EPA-05 und EPA-06 auf „Microsoft Teams account 2“ umgestellt und neu veröffentlicht. Die Alarm-Nodes in EPA-05/EPA-06 bleiben deaktiviert; Betreiberalarme gehen weiter per Telegram |
+| Config | `epa-m365` in `epa_config_allgemein` und 10 Pflichtfelder (wie `epa-test`), Kanal `teams` mit Team `agentdemo` / Kanal `General`, Freigeber `disponent@agentdemo666.onmicrosoft.com`, Signatur „Testsystem 2“, ohne Config-Sheet. „SW Config laden“ akzeptiert die Config |
+| Verbindungstest | Meldung über SW Benachrichtigen in den Kanal „General“: gesendet |
+| EPA-T3 | Parameter `ziel` (`outlook` = Standard, `m365`); die Rückfragesuche in Gmail nutzt die jeweilige Absenderadresse |
+| Offen | Benutzer `disponent@…` im Tenant anlegen (mit Lizenz). Der 1:1-Chat für Freigabe-Links braucht zwei verschiedene Benutzer; ohne ihn meldet EPA-02 den fehlgeschlagenen Versand im Kanal |
