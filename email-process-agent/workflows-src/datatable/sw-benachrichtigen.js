@@ -12,7 +12,8 @@ module.exports = function () {
 		'**Eingaben:** kunde_id, vorgangs_id, team_id, channel_id, kanal, chat_id, nachricht_html, anlass.',
 		'**Ausgabe:** { gesendet, fehler_id }',
 		'**Fehler:** Ein Versandfehler bricht die Verarbeitung NICHT ab. Er wird in epa_fehler_log eingetragen (alarmiert_am leer), der Watchdog (M6) meldet ihn an den Entwickler-Kanal.',
-		'**Einrichten:** Im Node "Teams-Nachricht senden" das Teams-Credential (OAuth2, delegiert) zuweisen. Der Testkanal ruft "EPA-T2 Telegram senden (Test)" auf (ID in benachrichtigung.telegram_workflow_id).',
+		'**Teams je Kunde:** Gesendet wird über die Postfach-Kopie des Kunden (Aktion teams_kanal, postfach_workflow_id aus epa_config_allgemein). Dort steckt das Teams-Credential aus dem Tenant des Kunden; dieser Workflow braucht keins.',
+		'**Einrichten:** nichts. Der Testkanal ruft "EPA-T2 Telegram senden (Test)" auf (ID in benachrichtigung.telegram_workflow_id).',
 	].join('\n'), { breite: 680, hoehe: 320 });
 
 	const trigger = wf.trigger('Bei Aufruf', [0, 0], [
@@ -50,17 +51,24 @@ return [{ json: { ...e, kanal, vorgangs_id: vid } }];
 		['chat_id', 'string', '={{ $json.chat_id }}'],
 		['nachricht_html', 'string', '={{ $json.nachricht_html }}'],
 	], { onError: 'continueRegularOutput', alwaysOutputData: true });
-	const senden = wf.node('Teams-Nachricht senden', 'n8n-nodes-base.microsoftTeams', [660, 80], {
-		resource: 'channelMessage',
-		operation: 'create',
-		teamId: { __rl: true, mode: 'id', value: '={{ $json.team_id }}' },
-		channelId: { __rl: true, mode: 'id', value: '={{ $json.channel_id }}' },
-		contentType: 'html',
-		message: '={{ $json.nachricht_html }}',
-		options: { includeLinkToWorkflow: false },
-	}, Workflow.retry({ onError: 'continueRegularOutput', alwaysOutputData: true }));
+	const kunde = wf.tabelle('Kunde lesen', [660, 80], 'get', 'epa_config_allgemein', {
+		bedingungen: [['kunde_id', 'eq', "={{ $json.kunde_id || '__kein_kunde__' }}"]],
+	}, { alwaysOutputData: true });
+	// Ohne Postfach-Kopie gibt es kein Teams-Credential des Kunden: bewusst ungültige ID, der Fehler wird protokolliert.
+	const senden = wf.aufrufDynamisch('Teams-Nachricht senden', [880, 80], "={{ /^[A-Za-z0-9]{8,32}$/.test(String($json.postfach_workflow_id || '')) ? $json.postfach_workflow_id : 'keineId0' }}", [
+		['aktion', 'string', 'teams_kanal'],
+		['postfach', 'string', '={{ $json.postfach }}'],
+		['graph_id', 'string', ''],
+		['internet_message_id', 'string', ''],
+		['entwurf_id', 'string', ''],
+		['freigabe_id', 'string', ''],
+		['vorgangs_id', 'string', "={{ $('Eingabe prüfen').first().json.vorgangs_id || '' }}"],
+		['html', 'string', "={{ $('Eingabe prüfen').first().json.nachricht_html }}"],
+		['team_id', 'string', "={{ $('Eingabe prüfen').first().json.team_id }}"],
+		['channel_id', 'string', "={{ $('Eingabe prüfen').first().json.channel_id }}"],
+	], { onError: 'continueRegularOutput', alwaysOutputData: true });
 
-	const pruefen = wf.code('Versand prüfen', [880, 0], ['fehlerklassen'], `
+	const pruefen = wf.code('Versand prüfen', [1100, 0], ['fehlerklassen'], `
 const e = $('Eingabe prüfen').first().json;
 const r = $input.first().json || {};
 if (!r.error && r.gesendet !== false) return [{ json: { gesendet: true } }];
@@ -95,9 +103,9 @@ return [{ json: { gesendet: v.gesendet, fehler_id: p && p.id !== undefined ? p.i
 
 	wf.kette(trigger, eingabe, welcherKanal);
 	wf.verbinde(welcherKanal, telegramSenden, 0);
-	wf.verbinde(welcherKanal, senden, 1);
+	wf.verbinde(welcherKanal, kunde, 1);
 	wf.kette(telegramSenden, pruefen);
-	wf.kette(senden, pruefen, fehlgeschlagen);
+	wf.kette(kunde, senden, pruefen, fehlgeschlagen);
 	wf.verbinde(fehlgeschlagen, fehlerZeile, 0);
 	wf.verbinde(fehlgeschlagen, melden, 1);
 	wf.kette(fehlerZeile, protokoll, melden);

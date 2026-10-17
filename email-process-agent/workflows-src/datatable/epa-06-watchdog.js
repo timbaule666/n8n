@@ -16,7 +16,7 @@ module.exports = function () {
 		'**Prüfungen:** 1) Heartbeat von EPA-04 (letzter Lauf älter als 3 h). 2) Hängende Vorgänge ("Neu", "In Prüfung", "Lücken erkannt" > 1 h; "Freigabe ausstehend" > 72 h; Arbeitslisten > 24 h werden gezählt). 3) Stille im Postfach (stille_alarm_stunden in der Config, in Geschäftsstunden). 4) Aktive Testaufrufe: Teams (Graph /me), OpenAI (/models), jedes Postfach (EPA-00-Kopie, Aktion verbindung_pruefen). 5) Fehler der letzten 24 h, die nicht nach Teams gemeldet werden konnten.',
 		'**Heartbeat:** Ohne Befund einmal täglich "Alles in Ordnung". Bleibt diese Meldung aus, ist der Watchdog selbst ausgefallen. Ergebnis zusätzlich in epa_system_status (Zeile "' + SCHLUESSEL + '").',
 		'**Trigger:** täglich 07:30 und 13:30 (Europe/Berlin), anpassbar im Node "Zweimal täglich". Zusätzlich Aufruf mit "jetzt" für Tests.',
-		'**Einrichten:** Im Node "Betriebskanal benachrichtigen" Team und Kanal eintragen (wie EPA-05). Credentials: Teams (Dienstkonto) in "Teams prüfen" und im Betriebskanal-Node, OpenAI in "KI prüfen".',
+		'**Einrichten:** Im Node "Betriebskanal benachrichtigen" Team und Kanal eintragen (wie EPA-05). Credentials: Teams des Betreibers in "Teams prüfen" (nur wenn Alarme per Teams gehen; Teams der Kunden prüft deren Postfach-Kopie) und im Betriebskanal-Node, OpenAI in "KI prüfen".',
 	].join('\n'), { breite: 960, hoehe: 400 });
 
 	const zeitplan = wf.node('Zweimal täglich', 'n8n-nodes-base.scheduleTrigger', [0, -100], {
@@ -134,9 +134,9 @@ const test = (name, art, extra = {}) => {
 // Alarmziel: Teams (Standard). Nur interne Tests: Zeile "alarmierung" mit alarm_kanal = telegram_test (über EPA-T2).
 const alarm = sys.find((z) => z.schluessel === 'alarmierung') || {};
 const alarmTest = alarm.alarm_kanal === 'telegram_test' && telegram.istChatId(alarm.telegram_chat_id) && /^[A-Za-z0-9]{8,32}$/.test(String(alarm.telegram_workflow_id || ''));
-// Teams nur prüfen, wenn es jemand nutzt (Alarmziel oder ein aktiver Kunde); im reinen Testbetrieb ohne Lizenz sonst täglich ein Fehlalarm.
-const teamsGenutzt = !alarmTest || Object.values(configs).some((c) => c.benachrichtigung && c.benachrichtigung.kanal === 'teams');
-const verbindungen = teamsGenutzt ? [test('Teams prüfen', 'teams')] : [];
+// Teams des Betreibers (Node "Teams prüfen") nur, wenn Alarme per Teams gehen. Teams der Kunden prüft die Postfach-Kopie
+// des Kunden mit dessen eigenem Credential (verbindung_pruefen, unten).
+const verbindungen = !alarmTest ? [test('Teams prüfen', 'teams')] : [];
 for (const it of $('KI prüfen').all()) {
 	const r = it.json || {};
 	const status = Number(r.statusCode) || null;
@@ -146,7 +146,12 @@ if ($('Postfach prüfen').isExecuted) {
 	const auftrag = $('Postfach-Prüfungen').all().map((i) => i.json);
 	$('Postfach prüfen').all().forEach((it, i) => {
 		const r = it.json || {};
-		verbindungen.push({ art: 'postfach', kunde_id: (auftrag[i] || {}).kunde_id, ok: r.ok === true, status: r.status || null, meldung: r.error ? String(r.error.message || r.error).slice(0, 160) : r.meldung || '' });
+		const kunde = (auftrag[i] || {}).kunde_id;
+		verbindungen.push({ art: 'postfach', kunde_id: kunde, ok: r.ok === true, status: r.status || null, meldung: r.error ? String(r.error.message || r.error).slice(0, 160) : r.meldung || '' });
+		const c = configs[kunde];
+		if (c && c.benachrichtigung && c.benachrichtigung.kanal === 'teams') {
+			verbindungen.push({ art: 'teams', kunde_id: kunde, ok: r.teams_ok === true, status: r.teams_status || null, meldung: r.error ? String(r.error.message || r.error).slice(0, 160) : r.teams_meldung || '' });
+		}
 	});
 }
 const ergebnis = watchdog.pruefen({ jetzt: l.jetzt, cron, vorgaenge: zeilen('Offene Vorgänge lesen'), configs, letzteMails, fehler: zeilen('Fehlerlog lesen'), verbindungen, fristen });

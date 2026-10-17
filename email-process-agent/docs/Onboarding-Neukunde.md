@@ -35,7 +35,7 @@ Stand 2026-10-14 (M7). Ein Workflow-Satz bedient alle Kunden. Pro Kunde kommen d
    - Zeile in `epa_config_allgemein` anlegen (über die Data-Table-Oberfläche oder per CSV-Import [zu verifizieren: CSV-Import in der Cloud-Oberfläche]).
    - Je Pflichtfeld eine Zeile in `epa_config_pflichtfelder` (gleiche `kunde_id`).
      Für Felder mit einem Personennamen (Ansprechpartner) in `validierungsregel` `"person": true` setzen: Die Anrede wird entfernt, und Team-, Abteilungs- oder Firmennamen gelten als fehlend. So löst eine Signatur wie „Ihr Dispositionsteam“ eine Rückfrage aus, statt als Ansprechpartner übernommen zu werden.
-2. **Postfach-Workflow:** `EPA-00 Postfach (Vorlage)` duplizieren und z. B. „EPA-00 Postfach anfragen@kunde.de“ nennen. Im Node „Postfach festlegen“ die Adresse eintragen. Das Outlook-Credential des Dienstkontos im Trigger und in allen Graph-Nodes zuweisen. Die ID der Kopie (aus der URL) in `postfach_workflow_id` eintragen.
+2. **Postfach-Workflow:** `EPA-00 Postfach (Vorlage)` duplizieren und z. B. „EPA-00 Postfach anfragen@kunde.de“ nennen. Im Node „Postfach festlegen“ die Adresse eintragen. Das Outlook-Credential des Dienstkontos im Trigger und in allen Outlook-Graph-Nodes zuweisen, das Teams-Credential desselben Kontos in den fünf Teams-Nodes („Teams prüfen“, „Kanalmeldung senden“, „Teams-Konto lesen“, „Chat öffnen“, „Chat-Nachricht senden“). Die ID der Kopie (aus der URL) in `postfach_workflow_id` eintragen.
 3. **Config prüfen:** `EPA SW Config laden` manuell mit `{"kunde_id": "<kürzel>"}` ausführen. Erwartet: `config` ohne Fehler. Fehlermeldungen nennen das Feld.
 4. **Testphase:** Mit dem Testpostfach bzw. einem Testabsender 5–10 typische Mails schicken: vollständig, mit Lücken, Antwort, Newsletter, Abwesenheitsnotiz. Freigaben über die Links testen.
 5. **Optional: Regeln im Google Sheet:** „EPA-10 Regel-Sheet anlegen“ ausführen und das Sheet für den Kunden freigeben (siehe `Regeln-Google-Sheets.md`).
@@ -44,7 +44,7 @@ Stand 2026-10-14 (M7). Ein Workflow-Satz bedient alle Kunden. Pro Kunde kommen d
 ## 4. Datentrennung zwischen Kunden
 - Jede Zeile in allen Tabellen trägt `kunde_id`. Die Sub-Workflows lesen und schreiben immer mit `kunde_id` im Filter (auch bei Vorgängen, Freigaben, Audit).
 - Die Config wird über das Postfach gefunden (eindeutig, sonst 409). Eine Mail aus Postfach A kann keinen Vorgang von Kunde B treffen.
-- Pro Kunde eigenes Outlook-Credential in der eigenen EPA-00-Kopie; Freigabe-Links sind an Personen aus der Config des jeweiligen Kunden gebunden.
+- Pro Kunde eigenes Outlook- und Teams-Credential in der eigenen EPA-00-Kopie (Tenant des Kunden); Freigabe-Links sind an Personen aus der Config des jeweiligen Kunden gebunden.
 - Grenze: Alle Kunden liegen in denselben Data Tables einer n8n-Instanz. Wer n8n-Zugriff hat, sieht alle Kunden. Für strenge Trennung eine eigene n8n-Instanz bzw. ein eigenes Projekt je Kunde verwenden (Workflows einfach erneut ausrollen).
 
 ## 5. Checkliste zum Abhaken
@@ -52,7 +52,7 @@ Stand 2026-10-14 (M7). Ein Workflow-Satz bedient alle Kunden. Pro Kunde kommen d
 - [ ] AVV und Datenschutzhinweise geklärt
 - [ ] Dienstkonten und Rechte eingerichtet (Archivordner nur, wenn der Kunde Verschieben ausdrücklich will)
 - [ ] Config ohne Platzhalter, `EPA SW Config laden` ohne Fehler
-- [ ] EPA-00-Kopie mit Credential, ID in `postfach_workflow_id`
+- [ ] EPA-00-Kopie mit Outlook- und Teams-Credential, ID in `postfach_workflow_id`
 - [ ] Freigeber haben einen Test-Link erhalten und geöffnet
 - [ ] Testmails durchgespielt (vollständig, Lücke, Antwort, Erinnerung, Spam)
 - [ ] `aktiv = true`, Postfach-Kopie veröffentlicht

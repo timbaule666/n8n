@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## EPA-00 Postfach (Vorlage, je Postfach eine Kopie)\n**Zweck:** Holt neue Mails aus dem Posteingang (Polling, Bauplan 5.1), lädt Header und Anhänge über Microsoft Graph, liest PDF-Text und bereitet Bilder für die KI auf und übergibt alles an \"EPA-01 Eingang verarbeiten\". Aussortierte Mails (Newsletter, Auto-Replies, Blockliste) werden danach in den Archivordner verschoben, nie gelöscht.\n**Trigger:** Microsoft Outlook Trigger (jede Minute, nur Posteingang). Jede Mail wird als eigene Ausführung dieses Workflows verarbeitet (Aufruf von sich selbst), damit ein Fehler nur diese eine Mail betrifft.\n**Einrichten:** 1) Workflow duplizieren und umbenennen (z. B. \"EPA-00 Postfach anfragen@kunde.de\"). 2) Im Node \"Postfach festlegen\" die Adresse eintragen (muss in epa_config_allgemein.postfach stehen). 3) Outlook-Credential (Microsoft Outlook OAuth2, bei Shared Mailbox mit \"Use Shared Mailbox\") im Trigger und in allen Graph-Nodes zuweisen. 4) Archivordner (Config: archivordner) als Ordner auf oberster Ebene im Postfach anlegen. 5) Veröffentlichen.\n**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread, Betreff mit Vorgangs-ID, Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). kategorien_setzen: Outlook-Kategorie (z. B. \"AI Geprüft\") an den Kundenmails eines Vorgangs setzen oder entfernen; legt die Kategorie mit Farbe an, wenn die Berechtigung reicht. Fehler hier stören die Verarbeitung nie. zustelltest_senden (EPA-11): Kontrollmail mit Zustelltest-Betreff an das Prüfpostfach. versand_pruefen (EPA-04): Liegt der Entwurf einer offenen Freigabe schon in \"Gesendete Elemente\" (direkt in Outlook gesendet)? Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.\n**Hinweis:** Der Trigger liefert nur die Message-ID; Header (In-Reply-To, References, Auto-Submitted, Authentication-Results) holt \"Mail laden\", weil der Trigger sie nicht ausgibt.",
+        "content": "## EPA-00 Postfach (Vorlage, je Postfach eine Kopie)\n**Zweck:** Holt neue Mails aus dem Posteingang (Polling, Bauplan 5.1), lädt Header und Anhänge über Microsoft Graph, liest PDF-Text und bereitet Bilder für die KI auf und übergibt alles an \"EPA-01 Eingang verarbeiten\". Aussortierte Mails (Newsletter, Auto-Replies, Blockliste) werden danach in den Archivordner verschoben, nie gelöscht.\n**Trigger:** Microsoft Outlook Trigger (jede Minute, nur Posteingang). Jede Mail wird als eigene Ausführung dieses Workflows verarbeitet (Aufruf von sich selbst), damit ein Fehler nur diese eine Mail betrifft.\n**Einrichten:** 1) Workflow duplizieren und umbenennen (z. B. \"EPA-00 Postfach anfragen@kunde.de\"). 2) Im Node \"Postfach festlegen\" die Adresse eintragen (muss in epa_config_allgemein.postfach stehen). 3) Outlook-Credential (Microsoft Outlook OAuth2, bei Shared Mailbox mit \"Use Shared Mailbox\") im Trigger und in allen Graph-Nodes zuweisen. 4) Archivordner (Config: archivordner) als Ordner auf oberster Ebene im Postfach anlegen. 5) Veröffentlichen.\n**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread, Betreff mit Vorgangs-ID, Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). kategorien_setzen: Outlook-Kategorie (z. B. \"AI Geprüft\") an den Kundenmails eines Vorgangs setzen oder entfernen; legt die Kategorie mit Farbe an, wenn die Berechtigung reicht. Fehler hier stören die Verarbeitung nie. zustelltest_senden (EPA-11): Kontrollmail mit Zustelltest-Betreff an das Prüfpostfach. versand_pruefen (EPA-04): Liegt der Entwurf einer offenen Freigabe schon in \"Gesendete Elemente\" (direkt in Outlook gesendet)? Teams des Kunden (eigenes Teams-Credential in dieser Kopie): teams_kanal (Meldung in den Kanal team_id/channel_id), teams_chat (Freigabe-Link im 1:1-Chat an empfaenger); verbindung_pruefen prüft Postfach und Teams. Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.\n**Hinweis:** Der Trigger liefert nur die Message-ID; Header (In-Reply-To, References, Auto-Submitted, Authentication-Results) holt \"Mail laden\", weil der Trigger sie nicht ausgibt.",
         "width": 900,
         "height": 380,
         "color": 7
@@ -176,6 +176,14 @@
             },
             {
               "name": "betreff",
+              "type": "string"
+            },
+            {
+              "name": "team_id",
+              "type": "string"
+            },
+            {
+              "name": "channel_id",
               "type": "string"
             }
           ]
@@ -410,6 +418,54 @@
               },
               "renameOutput": true,
               "outputKey": "versand_pruefen"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "9f4e1bdf-c0ad-46ee-ae41-9b6e4b4cf382",
+                    "leftValue": "={{ $json.aktion || 'eingang' }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "teams_kanal"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "teams_kanal"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "2992e780-fd60-4ccb-a142-51fb88061a6f",
+                    "leftValue": "={{ $json.aktion || 'eingang' }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "teams_chat"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "teams_chat"
             }
           ]
         },
@@ -1230,17 +1286,226 @@
     },
     {
       "parameters": {
+        "method": "GET",
+        "url": "https://graph.microsoft.com/v1.0/me?$select=id",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftTeamsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "id": "89859858-623f-4e46-aeeb-00f7669efcf3",
+      "name": "Teams prüfen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        1400
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "\n// ----- Node-Logik -----\nconst r = $input.first().json || {};\nconst status = Number(r.statusCode) || null;\nconst fehler = r.body && r.body.error ? String(r.body.error.code || r.body.error.message || '').slice(0, 120) : '';\nreturn [{ json: { ok: status === 200, status, meldung: status === 200 ? '' : fehler } }];\n"
+        "jsCode": "\n// ----- Node-Logik -----\nconst st = (r) => Number((r || {}).statusCode) || null;\nconst grund = (r) => (r && r.error) ? String(r.error.message || r.error).slice(0, 120) : (r && r.body && r.body.error ? String(r.body.error.code || r.body.error.message || '').slice(0, 120) : '');\nconst p = $('Posteingang prüfen').first().json || {};\nconst t = $input.first().json || {};\nconst status = st(p);\nconst tStatus = st(t);\nreturn [{ json: { ok: status === 200, status, meldung: status === 200 ? '' : grund(p), teams_ok: tStatus === 200 && !t.error, teams_status: tStatus, teams_meldung: tStatus === 200 ? '' : grund(t) } }];\n"
       },
       "id": "403021bd-879a-4dd9-aa01-d4f9cd417bcd",
       "name": "Verbindung melden",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        660,
+        880,
         1400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Bei Einzelaufruf').first().json;\nif (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(e.team_id || ''))) throw new Error('[EPA:424:KONFIGURATIONSFEHLER:' + (e.vorgangs_id || '-') + '] team_id muss eine GUID sein');\nif (!String(e.channel_id || '').trim()) throw new Error('[EPA:424:KONFIGURATIONSFEHLER:' + (e.vorgangs_id || '-') + '] channel_id fehlt');\nif (!String(e.html || '').trim()) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Nachricht fehlt');\nreturn [{ json: { team_id: e.team_id.trim(), channel_id: e.channel_id.trim(), html: e.html } }];\n"
+      },
+      "id": "a3eebf20-d2bc-441b-abc3-717a96444c69",
+      "name": "Kanalmeldung prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        2400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.microsoft.com/v1.0/teams/{{ encodeURIComponent($json.team_id) }}/channels/{{ encodeURIComponent($json.channel_id) }}/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftTeamsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 20000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ body: { contentType: 'html', content: $json.html } }) }}"
+      },
+      "id": "4fe38fa0-e436-480c-a866-830d5144c46a",
+      "name": "Kanalmeldung senden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        2400
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst r = $input.first().json || {};\nconst status = Number(r.statusCode) || null;\nconst ok = status === 201 && !r.error;\nconst meldung = ok ? '' : (r.error ? String(r.error.message || r.error) : String((r.body && r.body.error && (r.body.error.code + ': ' + r.body.error.message)) || 'HTTP ' + status)).slice(0, 200);\nreturn [{ json: { gesendet: ok, status, meldung } }];\n"
+      },
+      "id": "750aaf3e-51f7-4396-abdf-12e0b183931d",
+      "name": "Kanalmeldung melden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        2400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Bei Einzelaufruf').first().json;\nif (!/^[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}$/.test(String(e.empfaenger || ''))) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Freigeber ist keine gültige Adresse');\nif (!String(e.html || '').trim()) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Nachricht fehlt');\nreturn [{ json: { empfaenger: e.empfaenger.trim().toLowerCase(), html: e.html } }];\n"
+      },
+      "id": "7a899f09-e48b-4058-ab43-e9237794d6d8",
+      "name": "Chat-Empfänger prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        2600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.microsoft.com/v1.0/me?$select=id",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftTeamsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "id": "3890a444-23a5-4dd9-ac54-cdc1db162396",
+      "name": "Teams-Konto lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        2600
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/chats",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftTeamsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 20000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chatType: 'oneOnOne', members: [\n  { '@odata.type': '#microsoft.graph.aadUserConversationMember', roles: ['owner'], 'user@odata.bind': \"https://graph.microsoft.com/v1.0\" + \"/users('\" + (($json.body || {}).id || 'unbekannt') + \"')\" },\n  { '@odata.type': '#microsoft.graph.aadUserConversationMember', roles: ['owner'], 'user@odata.bind': \"https://graph.microsoft.com/v1.0\" + \"/users('\" + $('Chat-Empfänger prüfen').first().json.empfaenger.replace(/'/g, \"''\") + \"')\" }\n] }) }}"
+      },
+      "id": "802938c4-979a-4130-aece-23b6545d6f81",
+      "name": "Chat öffnen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        2600
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.microsoft.com/v1.0/chats/{{ encodeURIComponent(($json.body || {}).id || 'unbekannt') }}/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftTeamsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 20000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ body: { contentType: 'html', content: $('Chat-Empfänger prüfen').first().json.html } }) }}"
+      },
+      "id": "4df9a827-c99c-47b2-aea9-16f5a99988cb",
+      "name": "Chat-Nachricht senden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        2600
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst schritte = [['Teams-Konto lesen', 200], ['Chat öffnen', 201], ['Chat-Nachricht senden', 201]];\nfor (const [name, soll] of schritte) {\n\tconst r = $(name).first().json || {};\n\tconst status = Number(r.statusCode) || null;\n\t// Ein bestehender 1:1-Chat liefert 200 statt 201\n\tif (r.error || (status !== soll && !(name === 'Chat öffnen' && status === 200))) {\n\t\tconst grund = r.error ? String(r.error.message || r.error) : String((r.body && r.body.error && (r.body.error.code + ': ' + r.body.error.message)) || 'HTTP ' + status);\n\t\treturn [{ json: { gesendet: false, status, meldung: (name + ': ' + grund).slice(0, 200) } }];\n\t}\n}\nreturn [{ json: { gesendet: true, status: 201, meldung: '' } }];\n"
+      },
+      "id": "349dfa10-554a-42f8-a485-c97d0af808b3",
+      "name": "Chat melden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        2600
       ]
     },
     {
@@ -1818,6 +2083,20 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Kanalmeldung prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Chat-Empfänger prüfen",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -1942,7 +2221,84 @@
       "main": [
         [
           {
+            "node": "Teams prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teams prüfen": {
+      "main": [
+        [
+          {
             "node": "Verbindung melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kanalmeldung prüfen": {
+      "main": [
+        [
+          {
+            "node": "Kanalmeldung senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kanalmeldung senden": {
+      "main": [
+        [
+          {
+            "node": "Kanalmeldung melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat-Empfänger prüfen": {
+      "main": [
+        [
+          {
+            "node": "Teams-Konto lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teams-Konto lesen": {
+      "main": [
+        [
+          {
+            "node": "Chat öffnen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat öffnen": {
+      "main": [
+        [
+          {
+            "node": "Chat-Nachricht senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat-Nachricht senden": {
+      "main": [
+        [
+          {
+            "node": "Chat melden",
             "type": "main",
             "index": 0
           }

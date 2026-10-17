@@ -10,7 +10,7 @@ const MAIL_FELDER = [
 const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
 // Eigene Mail-Eigenschaft (Extended Property, PS_PUBLIC_STRINGS) zur Wiedererkennung gesendeter Rückfragen.
 const PROP_FREIGABE = 'String {00020329-0000-0000-C000-000000000046} Name EPA-Freigabe-ID';
-const AKTIONEN = ['eingang', 'entwurf_anlegen', 'entwurf_aktualisieren', 'entwurf_senden', 'verbindung_pruefen', 'entwurf_loeschen', 'kategorien_setzen', 'zustelltest_senden', 'versand_pruefen'];
+const AKTIONEN = ['eingang', 'entwurf_anlegen', 'entwurf_aktualisieren', 'entwurf_senden', 'verbindung_pruefen', 'entwurf_loeschen', 'kategorien_setzen', 'zustelltest_senden', 'versand_pruefen', 'teams_kanal', 'teams_chat'];
 const E = "$('Bei Einzelaufruf').first().json";
 const P = `{{ encodeURIComponent(${E}.postfach) }}`;
 
@@ -36,6 +36,24 @@ function graph(wf, name, pos, methode, url, extra = {}, optionen = {}) {
 	return wf.node(name, 'n8n-nodes-base.httpRequest', pos, p, { ...Workflow.retry(), ...(extra.node || {}) });
 }
 
+// Teams des Kunden (eigenes Credential je Postfach-Kopie, Tenant des Kunden). Kein automatischer Retry bei POST
+// (sonst doppelte Nachrichten); Fehler kommen als Status zurück und werden vom Aufrufer protokolliert.
+function teamsGraph(wf, name, pos, methode, url, body) {
+	const p = {
+		method: methode,
+		url,
+		authentication: 'predefinedCredentialType',
+		nodeCredentialType: 'microsoftTeamsOAuth2Api',
+		options: { response: { response: { fullResponse: true, neverError: true, responseFormat: 'json' } }, timeout: 20000 },
+	};
+	if (body) {
+		p.sendBody = true;
+		p.specifyBody = 'json';
+		p.jsonBody = body;
+	}
+	return wf.node(name, 'n8n-nodes-base.httpRequest', pos, p, { onError: 'continueRegularOutput', alwaysOutputData: true });
+}
+
 module.exports = function () {
 	const wf = new Workflow('EPA-00 Postfach (Vorlage)');
 
@@ -44,7 +62,7 @@ module.exports = function () {
 		'**Zweck:** Holt neue Mails aus dem Posteingang (Polling, Bauplan 5.1), lädt Header und Anhänge über Microsoft Graph, liest PDF-Text und bereitet Bilder für die KI auf und übergibt alles an "EPA-01 Eingang verarbeiten". Aussortierte Mails (Newsletter, Auto-Replies, Blockliste) werden danach in den Archivordner verschoben, nie gelöscht.',
 		'**Trigger:** Microsoft Outlook Trigger (jede Minute, nur Posteingang). Jede Mail wird als eigene Ausführung dieses Workflows verarbeitet (Aufruf von sich selbst), damit ein Fehler nur diese eine Mail betrifft.',
 		'**Einrichten:** 1) Workflow duplizieren und umbenennen (z. B. "EPA-00 Postfach anfragen@kunde.de"). 2) Im Node "Postfach festlegen" die Adresse eintragen (muss in epa_config_allgemein.postfach stehen). 3) Outlook-Credential (Microsoft Outlook OAuth2, bei Shared Mailbox mit "Use Shared Mailbox") im Trigger und in allen Graph-Nodes zuweisen. 4) Archivordner (Config: archivordner) als Ordner auf oberster Ebene im Postfach anlegen. 5) Veröffentlichen.',
-		'**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread, Betreff mit Vorgangs-ID, Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). kategorien_setzen: Outlook-Kategorie (z. B. "AI Geprüft") an den Kundenmails eines Vorgangs setzen oder entfernen; legt die Kategorie mit Farbe an, wenn die Berechtigung reicht. Fehler hier stören die Verarbeitung nie. zustelltest_senden (EPA-11): Kontrollmail mit Zustelltest-Betreff an das Prüfpostfach. versand_pruefen (EPA-04): Liegt der Entwurf einer offenen Freigabe schon in "Gesendete Elemente" (direkt in Outlook gesendet)? Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.',
+		'**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread, Betreff mit Vorgangs-ID, Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). kategorien_setzen: Outlook-Kategorie (z. B. "AI Geprüft") an den Kundenmails eines Vorgangs setzen oder entfernen; legt die Kategorie mit Farbe an, wenn die Berechtigung reicht. Fehler hier stören die Verarbeitung nie. zustelltest_senden (EPA-11): Kontrollmail mit Zustelltest-Betreff an das Prüfpostfach. versand_pruefen (EPA-04): Liegt der Entwurf einer offenen Freigabe schon in "Gesendete Elemente" (direkt in Outlook gesendet)? Teams des Kunden (eigenes Teams-Credential in dieser Kopie): teams_kanal (Meldung in den Kanal team_id/channel_id), teams_chat (Freigabe-Link im 1:1-Chat an empfaenger); verbindung_pruefen prüft Postfach und Teams. Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.',
 		'**Hinweis:** Der Trigger liefert nur die Message-ID; Header (In-Reply-To, References, Auto-Submitted, Authentication-Results) holt "Mail laden", weil der Trigger sie nicht ausgibt.',
 	].join('\n'), { breite: 900, hoehe: 380 });
 
@@ -91,6 +109,8 @@ return $input.all().filter((i) => i.json.id).map((i) => ({ json: { postfach: POS
 		['kategorien', 'string'],
 		['empfaenger', 'string'],
 		['betreff', 'string'],
+		['team_id', 'string'],
+		['channel_id', 'string'],
 	]);
 	const aktion = wf.node('Aktion', 'n8n-nodes-base.switch', [220, 300], {
 		mode: 'rules',
@@ -277,11 +297,63 @@ return [{ json: { gesendet: true, bereits: true, internet_message_id: treffer[0]
 	const posteingang = graph(wf, 'Posteingang prüfen', [440, 1400], 'GET', `=${GRAPH}/users/${P}/mailFolders/inbox`,
 		{ query: { $select: 'id' }, node: { retryOnFail: false } },
 		{ response: { response: { fullResponse: true, neverError: true, responseFormat: 'json' } } });
-	const verbindung = wf.code('Verbindung melden', [660, 1400], [], `
+	const teamsKonto = teamsGraph(wf, 'Teams prüfen', [660, 1400], 'GET', `${GRAPH}/me?$select=id`);
+	const verbindung = wf.code('Verbindung melden', [880, 1400], [], `
+const st = (r) => Number((r || {}).statusCode) || null;
+const grund = (r) => (r && r.error) ? String(r.error.message || r.error).slice(0, 120) : (r && r.body && r.body.error ? String(r.body.error.code || r.body.error.message || '').slice(0, 120) : '');
+const p = $('Posteingang prüfen').first().json || {};
+const t = $input.first().json || {};
+const status = st(p);
+const tStatus = st(t);
+return [{ json: { ok: status === 200, status, meldung: status === 200 ? '' : grund(p), teams_ok: tStatus === 200 && !t.error, teams_status: tStatus, teams_meldung: tStatus === 200 ? '' : grund(t) } }];
+`);
+
+	// ---------------------------------------------------------------- Aktion: Teams-Meldung in den Kanal des Kunden
+	const kanalPruefen = wf.code('Kanalmeldung prüfen', [440, 2400], [], `
+const e = $('Bei Einzelaufruf').first().json;
+if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(e.team_id || ''))) throw new Error('[EPA:424:KONFIGURATIONSFEHLER:' + (e.vorgangs_id || '-') + '] team_id muss eine GUID sein');
+if (!String(e.channel_id || '').trim()) throw new Error('[EPA:424:KONFIGURATIONSFEHLER:' + (e.vorgangs_id || '-') + '] channel_id fehlt');
+if (!String(e.html || '').trim()) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Nachricht fehlt');
+return [{ json: { team_id: e.team_id.trim(), channel_id: e.channel_id.trim(), html: e.html } }];
+`);
+	const kanalSenden = teamsGraph(wf, 'Kanalmeldung senden', [660, 2400], 'POST',
+		`=${GRAPH}/teams/{{ encodeURIComponent($json.team_id) }}/channels/{{ encodeURIComponent($json.channel_id) }}/messages`,
+		"={{ JSON.stringify({ body: { contentType: 'html', content: $json.html } }) }}");
+	const kanalMelden = wf.code('Kanalmeldung melden', [880, 2400], [], `
 const r = $input.first().json || {};
 const status = Number(r.statusCode) || null;
-const fehler = r.body && r.body.error ? String(r.body.error.code || r.body.error.message || '').slice(0, 120) : '';
-return [{ json: { ok: status === 200, status, meldung: status === 200 ? '' : fehler } }];
+const ok = status === 201 && !r.error;
+const meldung = ok ? '' : (r.error ? String(r.error.message || r.error) : String((r.body && r.body.error && (r.body.error.code + ': ' + r.body.error.message)) || 'HTTP ' + status)).slice(0, 200);
+return [{ json: { gesendet: ok, status, meldung } }];
+`);
+
+	// ---------------------------------------------------------------- Aktion: Freigabe-Link im 1:1-Teams-Chat
+	// Chat zwischen dem Konto dieses Credentials (Agent) und dem Freigeber; beide im Tenant des Kunden.
+	const chatPruefen = wf.code('Chat-Empfänger prüfen', [440, 2600], [], `
+const e = $('Bei Einzelaufruf').first().json;
+if (!/^[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}$/.test(String(e.empfaenger || ''))) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Freigeber ist keine gültige Adresse');
+if (!String(e.html || '').trim()) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Nachricht fehlt');
+return [{ json: { empfaenger: e.empfaenger.trim().toLowerCase(), html: e.html } }];
+`);
+	const chatIch = teamsGraph(wf, 'Teams-Konto lesen', [660, 2600], 'GET', `${GRAPH}/me?$select=id`);
+	const chatOeffnen = teamsGraph(wf, 'Chat öffnen', [880, 2600], 'POST', `${GRAPH}/chats`, `={{ JSON.stringify({ chatType: 'oneOnOne', members: [
+  { '@odata.type': '#microsoft.graph.aadUserConversationMember', roles: ['owner'], 'user@odata.bind': ${JSON.stringify(GRAPH)} + "/users('" + (($json.body || {}).id || 'unbekannt') + "')" },
+  { '@odata.type': '#microsoft.graph.aadUserConversationMember', roles: ['owner'], 'user@odata.bind': ${JSON.stringify(GRAPH)} + "/users('" + $('Chat-Empfänger prüfen').first().json.empfaenger.replace(/'/g, "''") + "')" }
+] }) }}`);
+	const chatSenden = teamsGraph(wf, 'Chat-Nachricht senden', [1100, 2600], 'POST', `=${GRAPH}/chats/{{ encodeURIComponent(($json.body || {}).id || 'unbekannt') }}/messages`,
+		"={{ JSON.stringify({ body: { contentType: 'html', content: $('Chat-Empfänger prüfen').first().json.html } }) }}");
+	const chatMelden = wf.code('Chat melden', [1320, 2600], [], `
+const schritte = [['Teams-Konto lesen', 200], ['Chat öffnen', 201], ['Chat-Nachricht senden', 201]];
+for (const [name, soll] of schritte) {
+	const r = $(name).first().json || {};
+	const status = Number(r.statusCode) || null;
+	// Ein bestehender 1:1-Chat liefert 200 statt 201
+	if (r.error || (status !== soll && !(name === 'Chat öffnen' && status === 200))) {
+		const grund = r.error ? String(r.error.message || r.error) : String((r.body && r.body.error && (r.body.error.code + ': ' + r.body.error.message)) || 'HTTP ' + status);
+		return [{ json: { gesendet: false, status, meldung: (name + ': ' + grund).slice(0, 200) } }];
+	}
+}
+return [{ json: { gesendet: true, status: 201, meldung: '' } }];
 `);
 
 	// ---------------------------------------------------------------- Aktion: Zustelltest senden (EPA-11)
@@ -412,7 +484,11 @@ return [{ json: { geaendert: r.filter((s) => s === 200).length, fehler: r.filter
 	wf.verbinde(aktion, pruefenEntwurf, 3);
 	wf.verbinde(aktion, posteingang, 4);
 	wf.verbinde(aktion, entwurfLesen, 5);
-	wf.kette(posteingang, verbindung);
+	wf.kette(posteingang, teamsKonto, verbindung);
+	wf.verbinde(aktion, kanalPruefen, 9);
+	wf.kette(kanalPruefen, kanalSenden, kanalMelden);
+	wf.verbinde(aktion, chatPruefen, 10);
+	wf.kette(chatPruefen, chatIch, chatOeffnen, chatSenden, chatMelden);
 	wf.verbinde(aktion, testPruefen, 7);
 	wf.kette(testPruefen, testSenden, testMelden);
 	wf.verbinde(aktion, versandSuchen, 8);

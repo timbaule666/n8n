@@ -110,7 +110,7 @@ function pruefen({ jetzt, cron, vorgaenge, configs, letzteMails, fehler, verbind
 	for (const t of verbindungen || []) {
 		if (t.ok) continue;
 		const code = { teams: 'VERBINDUNG_TEAMS', llm: 'VERBINDUNG_LLM', postfach: 'VERBINDUNG_POSTFACH' }[t.art] || 'VERBINDUNG_TEAMS';
-		const wer = t.art === 'postfach' ? `Postfach von ${t.kunde_id}` : t.art === 'llm' ? 'KI-Anbieter (OpenAI)' : 'Microsoft Teams';
+		const wer = t.art === 'postfach' ? `Postfach von ${t.kunde_id}` : t.art === 'llm' ? 'KI-Anbieter (OpenAI)' : t.kunde_id ? `Microsoft Teams von ${t.kunde_id}` : 'Microsoft Teams';
 		befunde.push(befund(code, 'alarm', `${wer} nicht erreichbar${t.status ? ` (HTTP ${t.status})` : ''}${t.meldung ? `: ${String(t.meldung).slice(0, 160)}` : ''}.`, t.kunde_id ? { kunde_id: t.kunde_id } : {}));
 	}
 

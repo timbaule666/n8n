@@ -11,9 +11,9 @@ Stand 2026-10-14 (M7). Gilt für n8n 2.43.4 (Cloud oder selbst gehostet), Speich
 | n8n-API-Key (*Settings → n8n API*) | Setup- und Deploy-Skripte |
 | Node.js ≥ 20 lokal | `npm run check`, Skripte |
 | OpenAI-API-Key (Projekt mit AVV, EU-Option prüfen) | KI |
-| Microsoft-365-Dienstkonto für das Postfach (Outlook OAuth2) | Mails lesen, Entwürfe, Versand |
-| Microsoft-365-Dienstkonto für Teams (Teams OAuth2, delegiert) | Meldungen, Freigabe-Chats, Watchdog |
-| Teams-Kanäle: Betriebskanal (Alarme) und je Kunde ein Meldekanal | Benachrichtigungen |
+| Je Kunde: Agent-Konto im Microsoft 365 des Kunden (Outlook OAuth2 und Teams OAuth2, delegiert) | Mails lesen, Entwürfe, Versand; Meldungen und Freigabe-Chats in Teams des Kunden |
+| Je Kunde: Teams-Kanal für Meldungen; Freigeber als eigene Benutzer im selben Tenant | Benachrichtigungen, Freigabe-Links |
+| Optional: Teams des Betreibers (Betriebskanal) oder Telegram | Störungsmeldungen an den Betreiber |
 
 Selbst gehostet: Code-Nodes nutzen `require('crypto')` → `NODE_FUNCTION_ALLOW_BUILTIN=crypto` setzen (in n8n Cloud erlaubt).
 
@@ -35,16 +35,17 @@ Das Skript legt alle 17 Workflows an bzw. aktualisiert sie anhand des Namens, ve
 | Credential | Typ | Workflows/Nodes |
 |---|---|---|
 | OpenAI | OpenAI API | SW LLM aufrufen („OpenAI aufrufen“), EPA-06 („KI prüfen“) |
-| Teams-Dienstkonto | Microsoft Teams OAuth2 | SW Benachrichtigen, SW Freigabe senden (3 Graph-Nodes), EPA-05 und EPA-06 („Teams prüfen“, Kanal-Nodes) |
-| Outlook je Postfach | Microsoft Outlook OAuth2 | nur in der EPA-00-Kopie des Kunden (Trigger und alle Graph-Nodes) |
+| Outlook je Kunde | Microsoft Outlook OAuth2 | nur in der EPA-00-Kopie des Kunden (Trigger und alle Outlook-Graph-Nodes) |
+| Teams je Kunde | Microsoft Teams OAuth2 | nur in der EPA-00-Kopie des Kunden („Teams prüfen“, „Kanalmeldung senden“, „Teams-Konto lesen“, „Chat öffnen“, „Chat-Nachricht senden“). SW Benachrichtigen und SW Freigabe senden senden über diese Kopie und brauchen kein Credential. |
+| Teams des Betreibers (optional) | Microsoft Teams OAuth2 | EPA-05 „Entwickler-Kanal alarmieren“, EPA-06 „Teams prüfen“ und „Betriebskanal benachrichtigen“; nicht nötig, wenn Störungen per Telegram gehen (Zeile `alarmierung` in `epa_system_status`) |
 | Prüfpostfach des Betreibers | Gmail OAuth2 | EPA-11 („Prüfpostfach durchsuchen“); Adresse im Node „Prüfadresse festlegen“. Ein externes Postfach, nicht beim selben Anbieter wie die Kundenpostfächer. |
 
 **Markierung in n8n:** Workflows, denen noch Credentials fehlen, tragen ein „ *“ am Namensende (z. B. „EPA-05 Error-Handler *“). Nach dem Zuweisen das Sternchen im Namen entfernen. `tools/deploy.js` ignoriert das Sternchen beim Abgleich und lässt es bei Updates stehen.
 
-Teams-IDs eintragen: in EPA-05 „Entwickler-Kanal alarmieren“ und EPA-06 „Betriebskanal benachrichtigen“ das Team (GUID, `groupId=…` im Link) und den Kanal (`19:…@thread.tacv2`). Kanalnachrichten gehen nur mit delegiertem OAuth2; das Dienstkonto muss Mitglied der Kanäle sein. Freigeber müssen im selben Tenant sein.
+Teams-IDs eintragen: in EPA-05 „Entwickler-Kanal alarmieren“ und EPA-06 „Betriebskanal benachrichtigen“ das Team (GUID, `groupId=…` im Link) und den Kanal (`19:…@thread.tacv2`). Kanalnachrichten gehen nur mit delegiertem OAuth2; das Agent-Konto des Kunden muss Mitglied seines Meldekanals sein. Freigeber müssen im selben Tenant sein und andere Benutzer als das Agent-Konto (sonst kein 1:1-Chat).
 
 ## 5. Kunde konfigurieren
-Nach `Onboarding-Neukunde.md`: Config-Zeile und Pflichtfelder (Vorlage `config/datatables/vorlage-leer.json` bzw. `config/vorlagen/*.csv`), EPA-00 duplizieren, Postfach eintragen, Outlook-Credential zuweisen, die ID der Kopie in `postfach_workflow_id`. Solange Platzhalter `<…>` in der Config stehen, lehnt „EPA SW Config laden“ sie mit 424 ab.
+Nach `Onboarding-Neukunde.md`: Config-Zeile und Pflichtfelder (Vorlage `config/datatables/vorlage-leer.json` bzw. `config/vorlagen/*.csv`), EPA-00 duplizieren, Postfach eintragen, Outlook- und Teams-Credential des Kunden zuweisen, die ID der Kopie in `postfach_workflow_id`. Solange Platzhalter `<…>` in der Config stehen, lehnt „EPA SW Config laden“ sie mit 424 ab.
 
 ## 6. Veröffentlichen (Reihenfolge)
 n8n veröffentlicht nur Workflows ohne Konfigurationsprobleme, und ein Aufrufer nur, wenn seine Sub-Workflows veröffentlicht sind:

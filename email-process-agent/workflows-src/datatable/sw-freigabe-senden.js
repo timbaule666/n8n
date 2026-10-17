@@ -1,17 +1,6 @@
 'use strict';
 const { Workflow, bedingung, bedingungen } = require('../../tools/lib/n8n');
 
-const GRAPH = 'https://graph.microsoft.com/v1.0';
-
-function teams(wf, name, pos, methode, url, body) {
-	const p = { method: methode, url, authentication: 'predefinedCredentialType', nodeCredentialType: 'microsoftTeamsOAuth2Api', options: {} };
-	if (body) {
-		p.sendBody = true;
-		p.specifyBody = 'json';
-		p.jsonBody = body;
-	}
-	return wf.node(name, 'n8n-nodes-base.httpRequest', pos, p, Workflow.retry({ onError: 'continueRegularOutput', alwaysOutputData: true }));
-}
 
 module.exports = function () {
 	const wf = new Workflow('EPA SW Freigabe senden');
@@ -25,7 +14,8 @@ module.exports = function () {
 		'**Eingaben:** kunde_id, vorgangs_id, freigeber (E-Mail/UPN), kanal, chat_id, nachricht_html.',
 		'**Nur für interne Tests:** kanal = "telegram_test" schickt den Link über "EPA-T2 Telegram senden (Test)" an chat_id (Zuordnung je Freigeber in benachrichtigung.freigeber_chat_ids, sonst benachrichtigung.chat_id). Kunden nutzen immer Teams.',
 		'**Ausgabe:** { gesendet, fehler_id }. Ein Fehler bricht nichts ab; er landet im Fehlerlog, EPA-02 meldet dann im Kanal, dass die Freigabe nicht zugestellt wurde.',
-		'**Einrichten:** In den drei Graph-Nodes das Teams-Credential (Dienstkonto, OAuth2 delegiert, Scope Chat.ReadWrite) zuweisen. [zu verifizieren] 1:1-Chat zwischen Dienstkonto und Freigeber in deinem Tenant.',
+		'**Teams je Kunde:** Der Chat läuft über die Postfach-Kopie des Kunden (Aktion teams_chat). Dort steckt das Teams-Credential aus dem Tenant des Kunden; Agent-Konto und Freigeber müssen in diesem Tenant zwei verschiedene Benutzer sein.',
+		'**Einrichten:** nichts.',
 	].join('\n'), { breite: 700, hoehe: 320 });
 
 	const trigger = wf.trigger('Bei Aufruf', [0, 0], [
@@ -58,22 +48,29 @@ return [{ json: { ...basis, chat_id: telegram.istChatId(e.chat_id) && wfOk ? Str
 		['chat_id', 'string', '={{ $json.chat_id }}'],
 		['nachricht_html', 'string', '={{ $json.nachricht_html }}'],
 	], { onError: 'continueRegularOutput', alwaysOutputData: true });
-	const ich = teams(wf, 'Eigenes Konto lesen', [660, 80], 'GET', `${GRAPH}/me?$select=id`);
-	const chat = teams(wf, 'Chat öffnen', [880, 80], 'POST', `${GRAPH}/chats`, `={{ JSON.stringify({ chatType: 'oneOnOne', members: [
-  { '@odata.type': '#microsoft.graph.aadUserConversationMember', roles: ['owner'], 'user@odata.bind': ${JSON.stringify(GRAPH)} + "/users('" + $json.id + "')" },
-  { '@odata.type': '#microsoft.graph.aadUserConversationMember', roles: ['owner'], 'user@odata.bind': ${JSON.stringify(GRAPH)} + "/users('" + $('Eingabe prüfen').first().json.freigeber.replace(/'/g, "''") + "')" }
-] }) }}`);
-	const nachricht = teams(wf, 'Nachricht senden', [1100, 80], 'POST', `=${GRAPH}/chats/{{ encodeURIComponent($json.id) }}/messages`,
-		"={{ JSON.stringify({ body: { contentType: 'html', content: $('Eingabe prüfen').first().json.nachricht_html } }) }}");
+	const kunde = wf.tabelle('Kunde lesen', [660, 80], 'get', 'epa_config_allgemein', {
+		bedingungen: [['kunde_id', 'eq', "={{ $json.kunde_id || '__kein_kunde__' }}"]],
+	}, { alwaysOutputData: true });
+	const chat = wf.aufrufDynamisch('Freigabe-Chat senden', [880, 80], "={{ /^[A-Za-z0-9]{8,32}$/.test(String($json.postfach_workflow_id || '')) ? $json.postfach_workflow_id : 'keineId0' }}", [
+		['aktion', 'string', 'teams_chat'],
+		['postfach', 'string', '={{ $json.postfach }}'],
+		['graph_id', 'string', ''],
+		['internet_message_id', 'string', ''],
+		['entwurf_id', 'string', ''],
+		['freigabe_id', 'string', ''],
+		['vorgangs_id', 'string', "={{ $('Eingabe prüfen').first().json.vorgangs_id || '' }}"],
+		['html', 'string', "={{ $('Eingabe prüfen').first().json.nachricht_html }}"],
+		['empfaenger', 'string', "={{ $('Eingabe prüfen').first().json.freigeber }}"],
+	], { onError: 'continueRegularOutput', alwaysOutputData: true });
 
 	const pruefen = wf.code('Zustellung prüfen', [1320, 0], ['fehlerklassen'], `
 const e = $('Eingabe prüfen').first().json;
-const schritte = e.kanal === 'telegram_test' ? ['Telegram-Link senden'] : ['Eigenes Konto lesen', 'Chat öffnen', 'Nachricht senden'];
+const schritte = e.kanal === 'telegram_test' ? ['Telegram-Link senden'] : ['Freigabe-Chat senden'];
 let fehler = e.kanal === 'telegram_test' && !e.chat_id ? 'keine gültige Telegram-Chat-ID bzw. telegram_workflow_id für diesen Freigeber' : null;
 for (const s of fehler ? [] : schritte) {
 	if (!$(s).isExecuted) { fehler = fehler || s + ' nicht ausgeführt'; continue; }
 	const j = $(s).first().json || {};
-	const ok = s === 'Telegram-Link senden' ? j.gesendet === true : Boolean(j.id);
+	const ok = j.gesendet === true;
 	if (j.error || !ok) { fehler = s + ': ' + (j.error ? (j.error.message || String(j.error)) : (j.meldung || 'keine ID')); break; }
 }
 if (!fehler) return [{ json: { gesendet: true } }];
@@ -100,13 +97,11 @@ const p = $('Fehler protokollieren').isExecuted ? $('Fehler protokollieren').fir
 return [{ json: { gesendet: $('Zustellung prüfen').first().json.gesendet, fehler_id: p && p.id !== undefined ? p.id : null } }];
 `);
 
-	// Bei einem Fehler in einem Schritt laufen die folgenden Graph-Nodes mit einem Fehler-Item weiter und
-	// liefern selbst einen Fehler; "Zustellung prüfen" wertet den ersten fehlgeschlagenen Schritt aus.
 	wf.kette(trigger, eingabe, welcherKanal);
 	wf.verbinde(welcherKanal, telegramSenden, 0);
-	wf.verbinde(welcherKanal, ich, 1);
+	wf.verbinde(welcherKanal, kunde, 1);
 	wf.kette(telegramSenden, pruefen);
-	wf.kette(ich, chat, nachricht, pruefen, fehlgeschlagen);
+	wf.kette(kunde, chat, pruefen, fehlgeschlagen);
 	wf.verbinde(fehlgeschlagen, zeile, 0);
 	wf.verbinde(fehlgeschlagen, melden, 1);
 	wf.kette(zeile, protokoll, melden);

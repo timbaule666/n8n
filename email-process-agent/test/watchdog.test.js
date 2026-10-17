@@ -77,6 +77,10 @@ test('Verbindungen und Fehler ohne Alarm', () => {
 	const html = w.nachricht(r, 'x');
 	assert.match(html, /Handlungsbedarf/);
 	assert.equal((html.match(/→/g) || []).length, 4);
+	// Teams je Kunde (eigenes Credential in der Postfach-Kopie)
+	const k = pruefe({ verbindungen: [{ art: 'teams', kunde_id: 'epa-m365', ok: false, status: 401 }] });
+	assert.match(k.befunde[0].text, /^Microsoft Teams von epa-m365 nicht erreichbar \(HTTP 401\)/);
+	assert.equal(k.befunde[0].kunde_id, 'epa-m365');
 });
 
 test('Nachricht escaped Inhalte, keine doppelten Empfehlungen', () => {
