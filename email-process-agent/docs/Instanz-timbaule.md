@@ -179,3 +179,33 @@ Tim hat einen Microsoft-365-Business-Basic-Testzugang (Tenant `agentdemo666.onmi
   - V-2026-0129 steht jetzt auf „Warten auf Kunde“.
   - Die Freigabe ist mit `entscheidung = manuell_gesendet`, Versandzeit 09:31:57 und Message-ID vermerkt.
 - **Nebenbefund:** EPA-04 meldet `ungueltige_configs: beispiel-transport` (Beispielkunde mit Platzhaltern, aktiv). Das ist bekannt und folgenlos, weil der Kunde keine Vorgänge hat.
+
+## Nur noch Microsoft 365 (Stand 2026-10-17, auf Wunsch von Tim)
+
+**Kanäle**
+
+| Kanal | Wofür |
+|---|---|
+| Postfach timbaule@agentdemo666.onmicrosoft.com (Kopie `NezOVz8ylWItOHcU`) | Kundenmails |
+| Teams-Kanal „Allgemein“ (Team agentdemo) | Meldungen an Mitarbeiter |
+| Teams-1:1-Chat an tim@agentdemo666.onmicrosoft.com (Disponent) | Freigabe-Links |
+| Telegram (Zeile `alarmierung` in `epa_system_status`, Chat 8961899217) | **nur Störungsmeldungen** an den Betreiber: EPA-05 Fehler, EPA-06 Watchdog, EPA-11 Zustelltest |
+
+**Was abgeschaltet wurde**
+
+| Was | Stand |
+|---|---|
+| Kunde `epa-test` (outlook.com, Telegram) | `aktiv = false`, Zeile bleibt erhalten |
+| Postfach-Kopie „EPA-00 Postfach timbaule666@outlook.com (Test)“ (`RXWxIBLIIOdXtBcO`) | unveröffentlicht und archiviert; in n8n wiederherstellbar |
+| Beispielkunde `beispiel-transport` | `aktiv = false` (hatte Platzhalter, EPA-04 meldete ihn als ungültig) |
+
+**Was geändert wurde**
+- **`epa-m365`:** übernimmt die englischen Übersetzungen von `epa-test`.
+- **EPA-T3:** sendet nur noch an das Microsoft-365-Postfach. Der Parameter `ziel` entfällt.
+
+**Was bleibt**
+- **`epa-ki-test`:** Der KI-Prüfstand (EPA-T1, ohne Postfach) meldet weiter per Telegram. Das ist nur ein interner Test und keine Kundenmeldung.
+- **Credentials:**
+  - Nicht mehr benutzt werden „Microsoft Teams account“ und, außerhalb der EPA-00-Vorlage, „Microsoft Outlook account“.
+  - Die Vorlage bekommt ohnehin je Kunde ein eigenes Credential.
+  - Die beiden alten Credentials können gelöscht werden, wenn das outlook.com-Konto nicht mehr gebraucht wird.
