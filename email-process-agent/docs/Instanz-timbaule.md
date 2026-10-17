@@ -256,3 +256,25 @@ Der Kunde `epa-ki-test` ist deaktiviert. Aktiv ist damit nur noch `epa-m365`.
   - Meldung im Kanal und Freigabe-Link im Chat des Disponenten kamen über die Kopie an, ohne neuen Eintrag im Fehlerlog.
   - Nach der Freigabe ging die Rückfrage um 10:17 UTC raus (`status = gesendet`).
 - **Deploy-Hinweis:** Bei einem Node, der unter gleichem Namen den Typ wechselt, darf die alte `workflowId` nicht übernommen werden. Der erste Deploy-Lauf scheiterte daran, der zweite war korrekt.
+
+## Testdurchlauf 17.10. (12 Mails, alle 3 Minuten) und Unzustellbarkeit
+
+**Ablauf**
+- Gesendet wurden 12 Testmails an das Microsoft-365-Postfach.
+- Alle 12 wurden wie erwartet erkannt: 5 vollständig, 4 mit Lücken, 3 ignoriert (Zahlungsavis, Abwesenheitsnotiz, Injection).
+- Kanalmeldungen und Freigabe-Chats liefen über das Teams-Credential in der Postfach-Kopie.
+- Bei der Weiterleitung (Kiel) war die Anrede neutral.
+
+**Befund**
+- Von 4 freigegebenen Rückfragen kam nur Mainz – Koblenz in Gmail an.
+- Die anderen 3 hat der Mailserver abgewiesen mit `550 5.7.708 Service unavailable. Access denied, traffic not accepted from this IP`.
+- Ursache ist eine Microsoft-Beschränkung für neue Tenants ohne eigene Domain; die Mails gingen ohne DKIM raus.
+- EPA-01 hatte die Unzustellbarkeitsmeldungen als Auto-Antwort ignoriert.
+
+**Neu (Commit e7d874b)**
+- `src/unzustellbar.js` und ein eigener Weg „unzustellbar“ in EPA-01: Der Vorgang geht auf „Eskaliert / Manuell“, im Kanal erscheint „📭 Nachricht nicht zugestellt“ mit Empfänger und SMTP-Grund.
+- Eingespielt und veröffentlicht.
+- Für die 3 Meldungen nachgeholt: Die Einträge in `epa_verarbeitete_mails` wurden gezielt per Message-ID entfernt, dann über EPA-00 `eingang` neu verarbeitet.
+- Ergebnis: V-2026-0132, V-2026-0134 und V-2026-0141 stehen auf „Eskaliert / Manuell“.
+
+**Abhilfe für den Tenant (zu verifizieren):** eigene Domain mit SPF, DKIM und DMARC einrichten.
