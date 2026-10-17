@@ -31,7 +31,7 @@ module.exports = function () {
 		'**Zweck:** Verarbeitet eine eingegangene Mail: Config laden (B1), normalisieren, Schleifenschutz/Auto-Replies (A1), Dedupe (A2), Vorgangszuordnung nach Punkteliste (A3), Klassifizierung per KI (A4), Extraktion per KI (B2), deterministische Pflichtfeld-Prüfung (B3), Speichern mit Versionsprüfung (B4), Statusweiche und Mitarbeiter-Meldung (B5).',
 		'**Trigger:** Aufruf durch den Postfach-Workflow (EPA-00) mit der Graph-Message. Enthält selbst keine Microsoft-Zugänge, daher ohne Postfach testbar.',
 		'**Eingaben:** postfach, mail (Graph-Message inkl. internetMessageHeaders, webLink), anhaenge (Liste mit name, contentType, size, isInline, text, status, hinweis, bild_data_url), aufrufer_execution_id (damit EPA-05 den Eingang bei einem Fehler wieder freigeben kann).',
-		'**Ausgabe:** { ergebnis, vorgangs_id, archivieren, archivordner }. ergebnis: duplikat | ignoriert_<grund> | antwort_<bereit|luecken|keine_daten|gemeldet|extraktion_fehlgeschlagen> | zuordnung_unklar | klassifizierung_unklar | ignoriert | bereit | luecken | extraktion_fehlgeschlagen.',
+		'**Ausgabe:** { ergebnis, vorgangs_id, archivieren, archivordner }. ergebnis: duplikat | ignoriert_<grund> | unzustellbar (NDR zu einem Vorgang: Eskaliert / Manuell, Warnung im Kanal) | antwort_<bereit|luecken|keine_daten|gemeldet|extraktion_fehlgeschlagen> | zuordnung_unklar | klassifizierung_unklar | ignoriert | bereit | luecken | extraktion_fehlgeschlagen.',
 		'**Weiterleitung:** Eindeutig zugeordnete Antworten verarbeitet EPA-03 (Phase D). Bei "luecken" bereitet EPA-02 die Rückfrage zur Freigabe vor.',
 	].join('\n'), { breite: 900, hoehe: 400 });
 
@@ -47,15 +47,19 @@ module.exports = function () {
 		['postfach', 'string', '={{ $json.postfach }}'],
 	]);
 
-	const normalisieren = wf.code('Mail normalisieren', [440, 0], ['fehlerklassen', 'mailNormalisieren', 'eingang'], `
+	const normalisieren = wf.code('Mail normalisieren', [440, 0], ['fehlerklassen', 'mailNormalisieren', 'eingang', 'unzustellbar'], `
 const e = $('Bei Aufruf').first().json;
 const config = $input.first().json.config;
 if (!e.mail || typeof e.mail !== 'object' || Array.isArray(e.mail)) throw fehlerklassen.epaFehler('UNGUELTIGES_FORMAT', null, 'mail fehlt');
 const mail = mailNormalisieren.normalisieren(e.mail, config, Array.isArray(e.anhaenge) ? e.anhaenge : []);
 mail.web_link = typeof e.mail.webLink === 'string' && /^https:\\/\\//.test(e.mail.webLink) ? e.mail.webLink : null;
+const vor = mailNormalisieren.vorpruefung(mail);
+// Unzustellbarkeitsmeldung zu einer gesendeten Rückfrage: nicht still ignorieren, sondern melden
+const ndr = vor && (vor.ergebnis === 'auto_antwort' || vor.ergebnis === 'eigene_mail') ? unzustellbar.erkennen(mail, config.postfach) : { ist: false };
 return [{ json: {
 	mail,
-	vor: mailNormalisieren.vorpruefung(mail),
+	vor,
+	ndr,
 	heute: DateTime.now().setZone(config.zeitzone).toISODate(),
 	hinweise_klassifizierung: eingang.klassifizierungsHinweise(mail),
 	hinweise_extraktion: eingang.extraktionsHinweise(mail),
@@ -89,10 +93,10 @@ return [{ json: {
 const eigene = $('Eingang eintragen').first().json.id;
 const d = eingang.dedupeEntscheiden($input.all().map((i) => i.json), eigene);
 const n = $('Mail normalisieren').first().json;
-const weg = d.duplikat ? 'duplikat' : n.vor ? 'ignorieren' : 'zuordnen';
+const weg = d.duplikat ? 'duplikat' : n.ndr && n.ndr.ist ? 'unzustellbar' : n.vor ? 'ignorieren' : 'zuordnen';
 return [{ json: { weg, claim_id: eigene, dedupe: d } }];
 `);
-	const wegWeiche = weiche(wf, 'Weg', [1540, 0], '={{ $json.weg }}', ['duplikat', 'ignorieren', 'zuordnen']);
+	const wegWeiche = weiche(wf, 'Weg', [1540, 0], '={{ $json.weg }}', ['duplikat', 'ignorieren', 'zuordnen', 'unzustellbar']);
 
 	const W = "$('Weg bestimmen').first().json";
 	const MID = `${M}.message_id`;
@@ -124,6 +128,57 @@ return [{ json: { ergebnis: 'duplikat', vorgangs_id: $('Weg bestimmen').first().
 		['referenz', 'string', `={{ ${MID} || '' }}`],
 	]);
 	const ignErgebnis = wf.code('Ergebnis: Nicht verarbeitet', [1980, -400], [], `
+return [{ json: { ergebnis: 'ignoriert_' + $('Mail normalisieren').first().json.vor.ergebnis, vorgangs_id: null } }];
+`);
+
+	// ---------------------------------------------------------------- Unzustellbarkeitsmeldung zu einer Rückfrage
+	// Der Kunde hat die Nachricht nicht bekommen: Vorgang auf "Eskaliert / Manuell" (keine Erinnerungen ins Leere)
+	// und Warnung im Kanal mit dem Grund des Mailservers. Nur für Vorgänge dieses Kunden.
+	const NDR = `${N}.ndr`;
+	const uLesen = wf.aufruf('Vorgang zur Unzustellbarkeit lesen', [1760, -240], 'EPA SW Vorgang verwalten', [
+		['aktion', 'string', 'lesen'],
+		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
+		['vorgangs_id', 'string', `={{ ${NDR}.vorgangs_id }}`],
+		['daten', 'object', '={{ {} }}'],
+		['erwartete_version', 'number', '={{ null }}'],
+		['referenz', 'string', `={{ ${MID} || '' }}`],
+		['lock_sekunden', 'number', '={{ null }}'],
+	], { onError: 'continueRegularOutput', alwaysOutputData: true });
+	const uBekannt = wf.node('Vorgang bekannt?', 'n8n-nodes-base.if', [1980, -240], {
+		conditions: bedingungen([bedingung("={{ Boolean($json.vorgang && $json.vorgang.vorgangs_id) }}", { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: {},
+	});
+	const uStatus = wf.aufruf('Status: Eskaliert (unzustellbar)', [2200, -300], 'EPA SW Status setzen', [
+		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
+		['vorgangs_id', 'string', `={{ ${NDR}.vorgangs_id }}`],
+		['neuer_status', 'string', 'Eskaliert / Manuell'],
+		['ausloeser', 'string', 'System'],
+		['details', 'object', `={{ { grund: 'Nachricht nicht zugestellt', smtp: ${NDR}.grund, empfaenger: ${NDR}.empfaenger } }}`],
+		['referenz', 'string', `={{ ${MID} || '' }}`],
+		['erwartete_version', 'number', '={{ null }}'],
+		['nur_wenn_erlaubt', 'boolean', '={{ true }}'],
+	]);
+	const uMeldung = wf.code('Meldung: nicht zugestellt', [2420, -300], ['unzustellbar'], `
+const n = $('Mail normalisieren').first().json;
+const s = $input.first().json;
+const v = $('Vorgang zur Unzustellbarkeit lesen').first().json.vorgang;
+return [{ json: { nachricht_html: unzustellbar.meldung({ ...n.ndr, betreff: v.betreff, eskaliert: s.ok === true }) } }];
+`);
+	const uInfo = wf.aufruf('Kanal warnen (unzustellbar)', [2640, -300], 'EPA SW Benachrichtigen', [
+		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
+		['vorgangs_id', 'string', `={{ ${NDR}.vorgangs_id }}`],
+		['team_id', 'string', `={{ ${C}.benachrichtigung.team_id }}`],
+		['channel_id', 'string', `={{ ${C}.benachrichtigung.channel_id }}`],
+		['kanal', 'string', `={{ ${C}.benachrichtigung.kanal }}`],
+		['chat_id', 'string', `={{ ${C}.benachrichtigung.chat_id || '' }}`],
+		['telegram_workflow_id', 'string', `={{ ${C}.benachrichtigung.telegram_workflow_id || '' }}`],
+		['nachricht_html', 'string', '={{ $json.nachricht_html }}'],
+		['anlass', 'string', 'nicht_zugestellt'],
+	], { onError: 'continueRegularOutput' });
+	const uErg = wf.code('Ergebnis: unzustellbar', [2860, -300], [], `
+return [{ json: { ergebnis: 'unzustellbar', vorgangs_id: $('Mail normalisieren').first().json.ndr.vorgangs_id } }];
+`);
+	const uErgNein = wf.code('Ergebnis: Unzustellbar ohne Vorgang', [2200, -160], [], `
 return [{ json: { ergebnis: 'ignoriert_' + $('Mail normalisieren').first().json.vor.ergebnis, vorgangs_id: null } }];
 `);
 
@@ -437,6 +492,12 @@ return [{ json: {
 	wf.verbinde(wegWeiche, dupAudit, 0);
 	wf.verbinde(wegWeiche, ignAudit, 1);
 	wf.verbinde(wegWeiche, kandidaten, 2);
+	wf.verbinde(wegWeiche, uLesen, 3);
+	wf.kette(uLesen, uBekannt);
+	wf.verbinde(uBekannt, uStatus, 0);
+	wf.verbinde(uBekannt, uErgNein, 1);
+	wf.kette(uStatus, uMeldung, uInfo, uErg, abschluss);
+	wf.kette(uErgNein, abschluss);
 	wf.kette(dupAudit, dupErgebnis, abschluss);
 	wf.kette(ignAudit, ignErgebnis, abschluss);
 	wf.kette(kandidaten, zuordnen, zWeiche);
