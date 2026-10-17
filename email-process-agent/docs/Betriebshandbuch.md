@@ -12,6 +12,8 @@ Stand 2026-10-14 (M6). Für die Person, die das System betreut: Was läuft wann,
 | EPA-06 Watchdog | 07:30 und 13:30 | Prüft, ob alles läuft; einmal täglich „Alles in Ordnung“ |
 | EPA-08 Löschjob | 02:15 | Löscht Daten nach Ablauf der Aufbewahrung |
 | EPA-05 | bei jedem Fehler | Fehlerlog, Alarm im Betriebskanal, Vorgang sichern |
+| EPA-13 Tagesübersicht | 08:05 an Geschäftstagen | Zusammenfassung der offenen Vorgänge je Kunde in seinen Kanal, mit neuem Link zur Übersichtsseite |
+| EPA-12 Übersicht-Seite | bei Klick auf den Übersicht-Link | Webseite mit den offenen Vorgängen genau eines Kunden (nur lesen) |
 
 **Grundregel:** Es geht nie eine Mail an einen Kunden ohne Klick auf „Freigeben“. Eingegangene Mails werden nie gelöscht.
 
@@ -60,6 +62,13 @@ Stand 2026-10-14 (M6). Für die Person, die das System betreut: Was läuft wann,
   - **Kein neuer Versuch** (Freigabe `nicht_zugestellt`, steht so in der Meldung): Empfängeradresse abgelehnt (5.1.x, „user unknown“), schon der zweite Fehlversuch, die Meldung ist älter als 7 Tage, oder jemand hat den Vorgang inzwischen weitergeführt. Dann Kunden anrufen bzw. Adresse prüfen.
   - Grenze: War die nicht zugestellte Nachricht eine Erinnerung, zählt der neue Versand sie ein zweites Mal (`erinnerungen_gesendet`).
 - **Löschjob testen:** EPA-08 manuell mit `probelauf = true` aufrufen. Er zeigt nur an, was gelöscht würde.
+
+## 5a. Übersichtsseite und Tagesübersicht
+- **Was der Kunde sieht:** Über den Link in der täglichen Zusammenfassung („📋 Tagesübersicht“) öffnet sich eine Seite mit den offenen Vorgängen **nur dieses Kunden**: Klärung nötig, Wartet auf Freigabe, Bereit zur Bearbeitung, Wartet auf Kunde, Wird gerade verarbeitet. Abgeschlossene und ignorierte Vorgänge erscheinen nicht. Die Seite zeigt nur an, Aktionen gibt es dort noch nicht.
+- **Link:** Jede Tagesübersicht bringt einen neuen Link mit, gültig 30 Tage. Gespeichert wird nur der Hash (`epa_uebersicht_zugaenge`). Den Kunden bestimmt allein der Link, nicht die Adresse; ein geänderter Link führt zu „Link ungültig“.
+- **Sofort einen Link:** EPA-13 manuell starten (sendet an alle aktiven Kunden, auch außerhalb der Geschäftszeit).
+- **Link sperren** (z. B. weitergeleitet): in `epa_uebersicht_zugaenge` beim Kunden `gesperrt_am` setzen oder die Zeilen löschen, danach EPA-13 manuell starten.
+- Grenze: Wer den Link hat, sieht die Vorgänge (keine Anmeldung). Deshalb kurze Gültigkeit und der Hinweis „bitte nicht weitergeben“.
 
 ## 6. Datenschutzanfragen (Auskunft, Löschung)
 1. In `epa_vorgaenge` nach `absender_adresse` filtern und die `vorgangs_id`s notieren.

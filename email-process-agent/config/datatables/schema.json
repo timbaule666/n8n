@@ -163,6 +163,13 @@
       "verbraucht_am": "date",
       "ablauf": "date"
     },
+    "epa_uebersicht_zugaenge": {
+      "kunde_id": "string",
+      "schluessel_hash": "string",
+      "erstellt_am": "date",
+      "ablauf": "date",
+      "gesperrt_am": "date"
+    },
     "epa_system_status": {
       "schluessel": "string",
       "lock_bis": "date",

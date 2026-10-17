@@ -33,6 +33,9 @@ const M2 = [
 	['epa-09-regeln-sheets', 'EPA-09_Regeln_aus_Google_Sheets.json'],
 	['epa-10-regel-sheet-anlegen', 'EPA-10_Regel-Sheet_anlegen.json'],
 	['epa-11-zustelltest', 'EPA-11_Zustelltest.json'],
+	// Übersicht je Kunde (geheimer Link) und tägliche Zusammenfassung
+	['epa-12-uebersicht', 'EPA-12_Uebersicht-Seite.json'],
+	['epa-13-tagesuebersicht', 'EPA-13_Tagesuebersicht.json'],
 	// Testphase: KI-Qualitäts-Prüfstand (keine Nebenwirkungen)
 	['epa-t1-ki-qualitaet', 'EPA-T1_KI-Qualitaet_pruefen.json'],
 	// Nur interne Tests ohne Microsoft-365-Lizenz (Kunden nutzen Teams)

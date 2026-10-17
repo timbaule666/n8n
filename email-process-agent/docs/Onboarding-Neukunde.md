@@ -39,12 +39,14 @@ Stand 2026-10-14 (M7). Ein Workflow-Satz bedient alle Kunden. Pro Kunde kommen d
 3. **Config prüfen:** `EPA SW Config laden` manuell mit `{"kunde_id": "<kürzel>"}` ausführen. Erwartet: `config` ohne Fehler. Fehlermeldungen nennen das Feld.
 4. **Testphase:** Mit dem Testpostfach bzw. einem Testabsender 5–10 typische Mails schicken: vollständig, mit Lücken, Antwort, Newsletter, Abwesenheitsnotiz. Freigaben über die Links testen.
 5. **Optional: Regeln im Google Sheet:** „EPA-10 Regel-Sheet anlegen“ ausführen und das Sheet für den Kunden freigeben (siehe `Regeln-Google-Sheets.md`).
-6. **Scharf schalten:** `aktiv = true`, Postfach-Kopie veröffentlichen. EPA-04, EPA-06 und EPA-08 laufen für alle Kunden mit.
+6. **Scharf schalten:** `aktiv = true`, Postfach-Kopie veröffentlichen. EPA-04, EPA-06, EPA-08 und EPA-13 (Tagesübersicht) laufen für alle Kunden mit.
+7. **Übersicht zeigen:** EPA-13 manuell starten. Der Kunde bekommt die erste Tagesübersicht mit dem Link zu seiner Übersichtsseite in seinen Kanal.
 
 ## 4. Datentrennung zwischen Kunden
 - Jede Zeile in allen Tabellen trägt `kunde_id`. Die Sub-Workflows lesen und schreiben immer mit `kunde_id` im Filter (auch bei Vorgängen, Freigaben, Audit).
 - Die Config wird über das Postfach gefunden (eindeutig, sonst 409). Eine Mail aus Postfach A kann keinen Vorgang von Kunde B treffen.
 - Pro Kunde eigenes Outlook- und Teams-Credential in der eigenen EPA-00-Kopie (Tenant des Kunden); Freigabe-Links sind an Personen aus der Config des jeweiligen Kunden gebunden.
+- Übersichtsseite (EPA-12): Der Kunde ergibt sich allein aus dem geheimen Link; gelesen werden nur Zeilen mit dessen `kunde_id`.
 - Grenze: Alle Kunden liegen in denselben Data Tables einer n8n-Instanz. Wer n8n-Zugriff hat, sieht alle Kunden. Für strenge Trennung eine eigene n8n-Instanz bzw. ein eigenes Projekt je Kunde verwenden (Workflows einfach erneut ausrollen).
 
 ## 5. Checkliste zum Abhaken
