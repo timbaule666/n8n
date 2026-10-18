@@ -14,6 +14,7 @@ Stand 2026-10-14 (M6). Für die Person, die das System betreut: Was läuft wann,
 | EPA-05 | bei jedem Fehler | Fehlerlog, Alarm im Betriebskanal, Vorgang sichern |
 | EPA-13 Tagesübersicht | 08:05 an Geschäftstagen | Zusammenfassung der offenen Vorgänge je Kunde in seinen Kanal, mit neuem Link zur Übersichtsseite |
 | EPA-12 Übersicht-Seite | bei Klick auf den Übersicht-Link | Webseite mit den offenen Vorgängen genau eines Kunden (nur lesen) |
+| EPA-14 Betrieb-Dashboard | bei Klick auf den Dashboard-Link | Seite nur für den Betreiber: Ampel, alle Kunden, Läufe, Verlauf, Fehler |
 
 **Grundregel:** Es geht nie eine Mail an einen Kunden ohne Klick auf „Freigeben“. Eingegangene Mails werden nie gelöscht.
 
@@ -69,6 +70,11 @@ Stand 2026-10-14 (M6). Für die Person, die das System betreut: Was läuft wann,
 - **Sofort einen Link:** EPA-13 manuell starten (sendet an alle aktiven Kunden, auch außerhalb der Geschäftszeit).
 - **Link sperren** (z. B. weitergeleitet): in `epa_uebersicht_zugaenge` beim Kunden `gesperrt_am` setzen oder die Zeilen löschen, danach EPA-13 manuell starten.
 - Grenze: Wer den Link hat, sieht die Vorgänge (keine Anmeldung). Deshalb kurze Gültigkeit und der Hinweis „bitte nicht weitergeben“.
+
+## 5b. Betreiber-Dashboard (EPA-14)
+- **Inhalt:** Ampel mit Befunden (z. B. Zustelltest fehlgeschlagen, Nachfassen steht, Fehler ohne Alarm, Config ungültig), alle Kunden mit offenen Vorgängen je Gruppe, nicht angekommenen Nachrichten, letztem Zustelltest und letzter Anfrage, letzte Läufe von EPA-04 und EPA-06, neue Anfragen je Tag (14 Tage, ohne ignorierte Mails) und die letzten Fehler (7 Tage). Lädt alle 5 Minuten neu.
+- **Link holen:** „EPA-14 Betrieb-Dashboard“ in n8n öffnen und manuell starten. Alle bisherigen Dashboard-Links werden gesperrt; der neue (90 Tage gültig) kommt per Telegram. Als Lesezeichen speichern, nicht weitergeben – er zeigt alle Kunden.
+- Kunden-Links (Tagesübersicht) öffnen das Dashboard nicht und umgekehrt.
 
 ## 6. Datenschutzanfragen (Auskunft, Löschung)
 1. In `epa_vorgaenge` nach `absender_adresse` filtern und die `vorgangs_id`s notieren.

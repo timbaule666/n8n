@@ -36,6 +36,7 @@ const M2 = [
 	// Übersicht je Kunde (geheimer Link) und tägliche Zusammenfassung
 	['epa-12-uebersicht', 'EPA-12_Uebersicht-Seite.json'],
 	['epa-13-tagesuebersicht', 'EPA-13_Tagesuebersicht.json'],
+	['epa-14-betrieb', 'EPA-14_Betrieb-Dashboard.json'],
 	// Testphase: KI-Qualitäts-Prüfstand (keine Nebenwirkungen)
 	['epa-t1-ki-qualitaet', 'EPA-T1_KI-Qualitaet_pruefen.json'],
 	// Nur interne Tests ohne Microsoft-365-Lizenz (Kunden nutzen Teams)

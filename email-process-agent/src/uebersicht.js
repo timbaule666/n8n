@@ -41,10 +41,17 @@ function zugangZeile({ kunde_id, hash, jetzt, tage = LINK_TAGE }) {
 	return { kunde_id, schluessel_hash: hash, erstellt_am: new Date(t).toISOString(), ablauf: new Date(t + tage * 86400000).toISOString(), gesperrt_am: null };
 }
 
-/** @returns {{ ok: true, kunde_id } | { ok: false, status, titel, text }} */
-function zugangPruefen({ zugang, jetzt }) {
+// Zugänge zum Betreiber-Dashboard (EPA-14) liegen in derselben Tabelle mit dieser Kennung statt einer kunde_id.
+const BETREIBER = '__betreiber__';
+
+/**
+ * betreiber: true = nur Betreiber-Zugänge gelten (EPA-14), sonst nur Kunden-Zugänge (EPA-12).
+ * @returns {{ ok: true, kunde_id } | { ok: false, status, titel, text }}
+ */
+function zugangPruefen({ zugang, jetzt, betreiber = false }) {
 	const nein = (status, titel, text) => ({ ok: false, status, titel, text });
-	if (!zugang || zugang.id === undefined || !zugang.kunde_id) return nein(404, 'Link ungültig', 'Dieser Link ist ungültig. Den aktuellen Link finden Sie in der täglichen Zusammenfassung in Teams.');
+	const passt = zugang && zugang.id !== undefined && zugang.kunde_id && (zugang.kunde_id === BETREIBER) === betreiber;
+	if (!passt) return nein(404, 'Link ungültig', 'Dieser Link ist ungültig. Den aktuellen Link finden Sie in der täglichen Zusammenfassung in Teams.');
 	if (zugang.gesperrt_am) return nein(403, 'Link gesperrt', 'Dieser Link wurde gesperrt. Den aktuellen Link finden Sie in der täglichen Zusammenfassung in Teams.');
 	if (!(new Date(zugang.ablauf).getTime() > new Date(jetzt).getTime())) return nein(410, 'Link abgelaufen', 'Dieser Link ist abgelaufen. Den aktuellen Link finden Sie in der täglichen Zusammenfassung in Teams.');
 	return { ok: true, kunde_id: zugang.kunde_id };
@@ -196,6 +203,6 @@ function zusammenfassung({ gruppen, link: url, ablauf, zone }) {
 }
 
 module.exports = {
-	LINK_TAGE, PFAD, GRUPPEN, tokenErzeugen, tokenHash, istGueltigesToken, link, zugangZeile, zugangPruefen,
+	BETREIBER, LINK_TAGE, PFAD, GRUPPEN, tokenErzeugen, tokenHash, istGueltigesToken, link, zugangZeile, zugangPruefen,
 	gruppieren, zaehlen, esc, seite, seiteMeldung, zusammenfassung,
 };

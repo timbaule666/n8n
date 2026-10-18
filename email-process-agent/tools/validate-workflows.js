@@ -67,7 +67,7 @@ function pruefeWorkflow(json, alleNamen) {
 
 // Härtung (M6)
 // Öffentliche Seiten, jeweils mit geheimem Schlüssel in der Adresse (nur Hash gespeichert).
-const WEBHOOK_ERLAUBT = new Set(['EPA-07 Freigabe-Endpunkt', 'EPA-12 Übersicht-Seite']);
+const WEBHOOK_ERLAUBT = new Set(['EPA-07 Freigabe-Endpunkt', 'EPA-12 Übersicht-Seite', 'EPA-14 Betrieb-Dashboard']);
 const SECRET_MUSTER = [
 	[/sk-(proj-)?[A-Za-z0-9_-]{20,}/, 'OpenAI-Schlüssel'],
 	[/eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\./, 'JWT/Access-Token'],
@@ -82,7 +82,7 @@ function haertung(json) {
 	for (const [re, was] of SECRET_MUSTER) if (re.test(text)) fehler.push(`möglicher Klartext-Secret (${was})`);
 	if (json.settings.callerPolicy !== 'workflowsFromSameOwner') fehler.push('settings.callerPolicy muss workflowsFromSameOwner sein');
 	for (const n of json.nodes) {
-		if (n.type === 'n8n-nodes-base.webhook' && !WEBHOOK_ERLAUBT.has(json.name)) fehler.push(`${n.name}: öffentlicher Webhook außerhalb von EPA-07/EPA-12`);
+		if (n.type === 'n8n-nodes-base.webhook' && !WEBHOOK_ERLAUBT.has(json.name)) fehler.push(`${n.name}: öffentlicher Webhook außerhalb von EPA-07/EPA-12/EPA-14`);
 	}
 	// Wer Freigabe-Links erzeugt oder anzeigt, darf erfolgreiche Ausführungen nicht speichern (Klartext-Token).
 	const token = json.nodes.some((n) => n.type === 'n8n-nodes-base.code' && /tokenErzeugen\(crypto\)/.test(n.parameters.jsCode)) || json.nodes.some((n) => n.type === 'n8n-nodes-base.webhook');
