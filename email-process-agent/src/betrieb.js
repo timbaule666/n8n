@@ -57,7 +57,8 @@ function auswerten({ configs, gueltig, vorgaenge, freigaben, system, fehler, gru
 	for (const g of gruppen || []) for (const s of g.status) statusGruppe[s] = g.key;
 
 	// ---- Kunden
-	const kunden = (configs || []).filter((c) => c && c.kunde_id).map((c) => {
+	// Nur aktive Kunden (inaktive Test- und Beispiel-Configs blenden aus).
+	const kunden = (configs || []).filter((c) => c && c.kunde_id && c.aktiv === true).map((c) => {
 		const eigene = (vorgaenge || []).filter((v) => v && v.kunde_id === c.kunde_id);
 		const zahlen = Object.fromEntries((gruppen || []).map((g) => [g.key, 0]));
 		let letzteMail = NaN;
@@ -255,7 +256,7 @@ ${(gruppen || []).map((g) => `<td class="zahl">${k.zahlen[g.key] || 0}</td>`).jo
 <h1>Betrieb Email Process Agent</h1><p class="leise">Stand ${esc(zeit(jetzt, zone))} · lädt alle 5 Minuten neu · Link gültig bis ${esc(zeit(ablauf, zone))}</p>
 <div class="karte ampel ${d.stufe}"><span style="font-size:1.6rem" aria-hidden="true">${symbol(d.stufe)}</span><div><b>${esc(titel)}</b><div class="leise">${d.befunde.length} Befund(e) · ${d.kunden.filter((k) => k.aktiv).length} aktive(r) Kunde(n) · Alarme gehen an: ${esc(d.laeufe.alarm_kanal === 'telegram_test' ? 'Telegram' : 'Teams')}</div></div></div>
 <div class="karte"><h2>Befunde</h2>${befunde}</div>
-<div class="karte"><h2>Kunden</h2><div class="tab"><table><thead><tr><th>Kunde</th><th>Status</th>${gKopf}<th class="zahl" title="Nach Freigabe nicht gesendet oder beim Kunden nicht angekommen">Nicht angekommen</th><th>Zustelltest</th><th>Letzte Anfrage</th></tr></thead><tbody>${kunden || '<tr><td colspan="9" class="leise">Keine Kunden angelegt.</td></tr>'}</tbody></table></div></div>
+<div class="karte"><h2>Kunden</h2><div class="tab"><table><thead><tr><th>Kunde</th><th>Status</th>${gKopf}<th class="zahl" title="Nach Freigabe nicht gesendet oder beim Kunden nicht angekommen">Nicht angekommen</th><th>Zustelltest</th><th>Letzte Anfrage</th></tr></thead><tbody>${kunden || '<tr><td colspan="10" class="leise">Keine aktiven Kunden.</td></tr>'}</tbody></table></div></div>
 <div class="karte"><h2>Automatische Läufe</h2><div class="raster">${lauf('Nachfassen (EPA-04, stündlich)', nf.am, GRENZE_STUNDEN.nachfassen, nfZ)}${lauf('Watchdog (EPA-06, 07:30 und 13:30)', wd.am, GRENZE_STUNDEN.watchdog, wd.gesamt ? 'Ergebnis: ' + wd.gesamt : '')}</div></div>
 <div class="karte"><h2>Neue Anfragen je Tag</h2><p class="leise">Alle Kunden, letzte ${d.verlauf.length} Tage: ${summe} Anfragen</p><div class="diagramm">${verlaufSvg(d.verlauf)}</div>
 <details><summary class="leise">Als Tabelle</summary><div class="tab"><table><thead><tr><th>Tag</th><th class="zahl">Anfragen</th></tr></thead><tbody>${d.verlauf.map((v) => `<tr><td>${esc(v.tag.split('-').reverse().join('.'))}</td><td class="zahl">${v.anzahl}</td></tr>`).join('')}</tbody></table></div></details></div>

@@ -38,7 +38,8 @@ test('Auswertung: Zahlen je Kunde, Hinweise, Verlauf über 14 Tage', () => {
 	assert.deepEqual(k1.zustelltest, { ok: true, art: 'ok', am: '2026-10-18T05:50:00Z' });
 	assert.deepEqual(d.befunde.map((x) => x.stufe), ['warnung', 'warnung']);
 	assert.match(d.befunde.map((x) => x.text).join('|'), /kamen beim Kunden nicht an.*Klärung/);
-	// Inaktiver Kunde ohne Zustelltest erzeugt keinen Befund
+	// Inaktive Kunden werden ausgeblendet und erzeugen keinen Befund
+	assert.deepEqual(d.kunden.map((k) => k.kunde_id), ['k1']);
 	assert.equal(d.befunde.some((x) => x.text.startsWith('k2')), false);
 	assert.equal(d.verlauf.length, 14);
 	assert.deepEqual(d.verlauf.slice(-2), [{ tag: '2026-10-17', anzahl: 1 }, { tag: '2026-10-18', anzahl: 1 }]);
