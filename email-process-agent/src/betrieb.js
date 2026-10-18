@@ -1,15 +1,20 @@
 'use strict';
-// Betreiber-Dashboard (EPA-14): alle Kunden, Systemläufe, Fehler und Verlauf auf einer Seite. Zugang wie bei der
-// Übersichtsseite über einen geheimen Link (Hash in epa_uebersicht_zugaenge), aber mit der festen Kennung
-// BETREIBER statt einer kunde_id. Kundenlinks öffnen dieses Dashboard nie und umgekehrt.
+// Betreiber-Dashboard (EPA-14): nur zwei Fragen – läuft alles, und ist es sicher? Ampel mit Befunden, Verbindungen
+// je Kunde, automatische Läufe, Sicherheitsprüfungen und letzte Fehler. Zugang wie bei der Übersichtsseite über
+// einen geheimen Link (Hash in epa_uebersicht_zugaenge), aber mit der festen Kennung BETREIBER statt einer kunde_id.
+// Kundenlinks öffnen dieses Dashboard nie und umgekehrt. Keine Mail-Inhalte: nur IDs, Codes, Zeiten, Zähler.
 
 const BETREIBER = '__betreiber__';
 const PFAD = 'epa-betrieb';
 const LINK_TAGE = 90;
-const VERLAUF_TAGE = 14;
 const MAX_FEHLER = 10;
-// Erwartete Laufabstände (EPA-04 stündlich, EPA-06 07:30 und 13:30, EPA-11 täglich 07:40).
-const GRENZE_STUNDEN = Object.freeze({ nachfassen: 3, watchdog: 19, zustelltest: 26 });
+const MAX_IDS = 5;
+const DIREKT_GESENDET = 'Outlook (direkt gesendet)';
+// Erwartete Laufabstände (EPA-04 stündlich, EPA-06 07:30 und 13:30, EPA-11 täglich 07:40, EPA-08 nachts).
+const GRENZE_STUNDEN = Object.freeze({ nachfassen: 3, watchdog: 19, zustelltest: 26, loeschjob: 26, haengt: 1 });
+// Status, in denen ein Vorgang nur kurz stehen darf (danach ist intern etwas abgebrochen).
+const DURCHLAUF_STATUS = Object.freeze(['Neu', 'In Prüfung', 'Lücken erkannt']);
+const LINK_WARNUNG_TAGE = 14;
 const H = 3600000;
 
 function ms(t) {
@@ -28,116 +33,117 @@ function stundenSeit(t, jetzt) {
 	return Number.isFinite(a) ? (ms(jetzt) - a) / H : Infinity;
 }
 
-/** Kalendertag (YYYY-MM-DD) in der Zeitzone. */
-function tag(t, zone) {
-	try {
-		return new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(t));
-	} catch (e) {
-		return new Date(t).toISOString().slice(0, 10);
-	}
+function liste(ids) {
+	const l = [...new Set(ids.filter(Boolean))];
+	return l.slice(0, MAX_IDS).join(', ') + (l.length > MAX_IDS ? ` und ${l.length - MAX_IDS} weitere` : '');
+}
+
+function freigeberVon(c) {
+	const f = json(c && c.freigeber, []);
+	return (Array.isArray(f) ? f : []).map((x) => String(x).trim().toLowerCase()).filter(Boolean);
 }
 
 /**
- * Wertet alle Tabellen aus. Nur Zähler, IDs, Zeitpunkte und bereinigte Fehlermeldungen (keine Mail-Inhalte).
  * @param {object} p
- * @param {object[]} p.configs  Zeilen aus epa_config_allgemein (alle, auch inaktive)
- * @param {object} p.gueltig    kunde_id -> true/false (Ergebnis des Config-Validators)
- * @param {object[]} p.vorgaenge Zeilen aus epa_vorgaenge
- * @param {object[]} p.freigaben Zeilen aus epa_freigaben (mindestens offen, fehler, unzustellbar, nicht_zugestellt)
+ * @param {object[]} p.configs  Zeilen aus epa_config_allgemein (nur aktive werden gezeigt)
+ * @param {object} p.gueltig    kunde_id -> true/false (Config-Validator)
+ * @param {object[]} p.vorgaenge Zeilen aus epa_vorgaenge (offene)
+ * @param {object[]} p.freigaben Zeilen aus epa_freigaben (Versandprobleme und Entscheidungen der letzten 7 Tage)
  * @param {object[]} p.system   Zeilen aus epa_system_status
- * @param {object[]} p.fehler   Zeilen aus epa_fehler_log (letzte Tage)
- * @param {object} p.gruppen    Gruppen aus src/uebersicht.js (GRUPPEN)
+ * @param {object[]} p.fehler   Zeilen aus epa_fehler_log (letzte 7 Tage)
+ * @param {object[]} p.zugaenge Zeilen aus epa_uebersicht_zugaenge
  */
-function auswerten({ configs, gueltig, vorgaenge, freigaben, system, fehler, gruppen, jetzt, zone = 'Europe/Berlin' }) {
+function auswerten({ configs, gueltig, vorgaenge, freigaben, system, fehler, zugaenge, jetzt }) {
 	const befunde = [];
 	const melden = (stufe, text) => befunde.push({ stufe, text });
 	const sys = {};
 	for (const z of system || []) if (z && z.schluessel) sys[z.schluessel] = z;
-	const statusGruppe = {};
-	for (const g of gruppen || []) for (const s of g.status) statusGruppe[s] = g.key;
+	const wd = sys.watchdog || null;
+	const wdErg = wd ? json(wd.letztes_ergebnis, {}) : {};
+	const wdBefunde = Array.isArray(wdErg.befunde) ? wdErg.befunde : [];
+	const fl = (fehler || []).filter((f) => f && Number.isFinite(ms(f.createdAt))).sort((a, b) => ms(b.createdAt) - ms(a.createdAt));
+	const aktiv = (configs || []).filter((c) => c && c.kunde_id && c.aktiv === true);
 
-	// ---- Kunden
-	// Nur aktive Kunden (inaktive Test- und Beispiel-Configs blenden aus).
-	const kunden = (configs || []).filter((c) => c && c.kunde_id && c.aktiv === true).map((c) => {
-		const eigene = (vorgaenge || []).filter((v) => v && v.kunde_id === c.kunde_id);
-		const zahlen = Object.fromEntries((gruppen || []).map((g) => [g.key, 0]));
-		let letzteMail = NaN;
-		for (const v of eigene) {
-			const g = statusGruppe[v.status];
-			if (g) zahlen[g] += 1;
-			if (v.status === 'Ignoriert') continue;
-			const t = ms(v.erste_mail_am || v.createdAt);
-			if (Number.isFinite(t) && !(t <= letzteMail)) letzteMail = t;
-		}
-		const fg = (freigaben || []).filter((f) => f && f.kunde_id === c.kunde_id);
-		const zaehle = (status) => fg.filter((f) => f.status === status).length;
+	// ---- Verbindungen und Durchlauf je aktivem Kunden
+	// Quelle: letzter Watchdog-Lauf; ein Anmeldefehler (401/403) des Postfach-Workflows danach gilt sofort.
+	const wdHat = (code, kunde) => wdBefunde.some((b) => b.code === code && (!b.kunde_id || b.kunde_id === kunde));
+	const kunden = aktiv.map((c) => {
+		const auth = fl.find((f) => c.postfach_workflow_id && f.workflow_id === c.postfach_workflow_id
+			&& (f.fehlercode === 'AUTH_FEHLER' || f.fehlercode === 'KEINE_BERECHTIGUNG') && !(ms(f.createdAt) < ms(wd && wd.letzter_lauf)));
+		const geprueft = wd ? wd.letzter_lauf || null : null;
+		const verb = (rot) => (geprueft ? { ok: !rot, am: geprueft } : { ok: null, am: null });
 		const zt = sys[`zustelltest:${c.kunde_id}`];
 		const zErg = zt ? json(zt.letztes_ergebnis, {}) : null;
+		const eigene = (vorgaenge || []).filter((v) => v && v.kunde_id === c.kunde_id);
+		const haengt = eigene.filter((v) => DURCHLAUF_STATUS.includes(v.status) && stundenSeit(v.updatedAt || v.createdAt, jetzt) > GRENZE_STUNDEN.haengt);
+		let letzte = NaN;
+		for (const v of eigene) { const t = ms(v.erste_mail_am || v.createdAt); if (Number.isFinite(t) && !(t <= letzte)) letzte = t; }
 		const k = {
 			kunde_id: c.kunde_id,
 			postfach: c.postfach || '',
-			aktiv: c.aktiv === true,
-			config_ok: gueltig ? gueltig[c.kunde_id] === true : null,
-			zahlen,
-			letzte_mail: Number.isFinite(letzteMail) ? new Date(letzteMail).toISOString() : null,
-			zustelltest: zt ? { ok: zErg.ok === true, art: zErg.art || null, am: zt.letzter_lauf || null } : null,
-			versandfehler: zaehle('fehler'),
-			unzustellbar: zaehle('unzustellbar') + zaehle('nicht_zugestellt'),
+			config_ok: gueltig ? gueltig[c.kunde_id] !== false : true,
+			outlook: auth ? { ok: false, am: auth.createdAt } : verb(wdHat('VERBINDUNG_POSTFACH', c.kunde_id)),
+			teams: verb(wdHat('VERBINDUNG_TEAMS', c.kunde_id)),
+			ki: verb(wdHat('VERBINDUNG_LLM', c.kunde_id)),
+			versand: zt ? { ok: zErg.ok === true, am: zt.letzter_lauf || null, art: zErg.art || null } : { ok: null, am: null },
+			haengend: haengt.map((v) => v.vorgangs_id),
+			letzte_mail: Number.isFinite(letzte) ? new Date(letzte).toISOString() : null,
+			versandfehler: (freigaben || []).filter((f) => f && f.kunde_id === c.kunde_id && f.status === 'fehler').length,
 		};
-		if (k.aktiv) {
-			if (k.config_ok === false) melden('kritisch', `${k.kunde_id}: Config ungültig – Nachfassen und Zustelltest laufen für diesen Kunden nicht`);
-			if (!k.zustelltest) melden('warnung', `${k.kunde_id}: noch kein Zustelltest gelaufen`);
-			else if (!k.zustelltest.ok) melden('kritisch', `${k.kunde_id}: letzter Zustelltest fehlgeschlagen (${k.zustelltest.art || 'unbekannt'}) – Mails kommen evtl. nicht an`);
-			else if (stundenSeit(k.zustelltest.am, jetzt) > GRENZE_STUNDEN.zustelltest) melden('warnung', `${k.kunde_id}: Zustelltest seit über ${GRENZE_STUNDEN.zustelltest} h nicht gelaufen`);
-			if (k.versandfehler) melden('kritisch', `${k.kunde_id}: ${k.versandfehler} Nachricht(en) nach Freigabe nicht gesendet`);
-			if (k.unzustellbar) melden('warnung', `${k.kunde_id}: ${k.unzustellbar} Nachricht(en) kamen beim Kunden nicht an`);
-			if (zahlen.klaerung) melden('warnung', `${k.kunde_id}: ${zahlen.klaerung} Vorgang/Vorgänge brauchen eine Klärung`);
-		}
+		const n = k.kunde_id;
+		if (!k.config_ok) melden('kritisch', `${n}: Config ungültig – der Agent arbeitet für diesen Kunden nicht vollständig`);
+		if (k.outlook.ok === false) melden('kritisch', `${n}: Outlook-Postfach nicht erreichbar – Credential in n8n neu verbinden, bis dahin werden keine Mails abgeholt`);
+		if (k.teams.ok === false) melden('kritisch', `${n}: Teams nicht erreichbar – Credential neu verbinden, bis dahin gehen keine Freigabe-Links und Meldungen raus`);
+		if (k.ki.ok === false) melden('kritisch', `${n}: KI nicht erreichbar – Schlüssel bzw. Guthaben prüfen`);
+		if (k.versand.ok === false) melden('kritisch', `${n}: letzter Zustelltest fehlgeschlagen (${k.versand.art || 'unbekannt'}) – Mails kommen evtl. nicht an`);
+		else if (k.versand.ok === null) melden('warnung', `${n}: noch kein Zustelltest gelaufen`);
+		else if (stundenSeit(k.versand.am, jetzt) > GRENZE_STUNDEN.zustelltest) melden('warnung', `${n}: Zustelltest seit über ${GRENZE_STUNDEN.zustelltest} h nicht gelaufen`);
+		if (k.haengend.length) melden('kritisch', `${n}: ${k.haengend.length} Vorgang/Vorgänge hängen seit über ${GRENZE_STUNDEN.haengt} h (${liste(k.haengend)})`);
+		if (k.versandfehler) melden('kritisch', `${n}: ${k.versandfehler} Nachricht(en) nach Freigabe nicht gesendet`);
 		return k;
 	});
+	if (!aktiv.length) melden('warnung', 'Kein Kunde ist aktiv');
 
-	// ---- Systemläufe
-	const nf = sys.epa04_lauf || null;
-	const wd = sys.watchdog || null;
-	const wdErg = wd ? json(wd.letztes_ergebnis, {}) : {};
-	const alarm = sys.alarmierung || {};
+	// ---- Automatische Läufe
+	const lauf = (schluessel, grenze) => ({ am: sys[schluessel] ? sys[schluessel].letzter_lauf || null : null, grenze, ok: stundenSeit(sys[schluessel] && sys[schluessel].letzter_lauf, jetzt) <= grenze });
 	const laeufe = {
-		nachfassen: { am: nf ? nf.letzter_lauf || null : null, ergebnis: nf ? json(nf.letztes_ergebnis, {}) : null },
-		watchdog: { am: wd ? wd.letzter_lauf || null : null, gesamt: wdErg.gesamt || null, befunde: Array.isArray(wdErg.befunde) ? wdErg.befunde : [] },
-		alarm_kanal: alarm.alarm_kanal || 'teams',
+		nachfassen: lauf('epa04_lauf', GRENZE_STUNDEN.nachfassen),
+		watchdog: { ...lauf('watchdog', GRENZE_STUNDEN.watchdog), gesamt: wdErg.gesamt || null },
+		loeschjob: lauf('loeschjob', GRENZE_STUNDEN.loeschjob),
+		alarm_kanal: (sys.alarmierung || {}).alarm_kanal || 'teams',
 	};
-	if (stundenSeit(laeufe.nachfassen.am, jetzt) > GRENZE_STUNDEN.nachfassen) melden('kritisch', `Nachfassen (EPA-04) seit über ${GRENZE_STUNDEN.nachfassen} h nicht gelaufen – Erinnerungen und Eskalationen stehen`);
-	if (stundenSeit(laeufe.watchdog.am, jetzt) > GRENZE_STUNDEN.watchdog) melden('warnung', `Watchdog (EPA-06) seit über ${GRENZE_STUNDEN.watchdog} h nicht gelaufen`);
-	else if (laeufe.watchdog.gesamt && laeufe.watchdog.gesamt !== 'ok') melden(laeufe.watchdog.gesamt === 'kritisch' ? 'kritisch' : 'warnung', `Watchdog meldet „${laeufe.watchdog.gesamt}“ (${laeufe.watchdog.befunde.map((b) => b.code).join(', ') || 'ohne Details'})`);
+	if (!laeufe.nachfassen.ok) melden('kritisch', `Nachfassen (EPA-04) seit über ${GRENZE_STUNDEN.nachfassen} h nicht gelaufen – Erinnerungen, Eskalationen und neue Freigabe-Links stehen`);
+	if (!laeufe.watchdog.ok) melden('kritisch', `Watchdog (EPA-06) seit über ${GRENZE_STUNDEN.watchdog} h nicht gelaufen – Verbindungen werden nicht geprüft`);
 
-	// ---- Fehler
-	const fl = (fehler || []).filter((f) => f && Number.isFinite(ms(f.createdAt))).sort((a, b) => ms(b.createdAt) - ms(a.createdAt));
-	const letzte24 = fl.filter((f) => stundenSeit(f.createdAt, jetzt) <= 24);
+	// ---- Fehler und Alarmweg
 	const ohneAlarm = fl.filter((f) => !f.alarmiert_am);
-	if (ohneAlarm.length) melden('kritisch', `${ohneAlarm.length} Fehler ohne zugestellten Alarm – Alarmweg (${laeufe.alarm_kanal}) prüfen`);
+	const letzte24 = fl.filter((f) => stundenSeit(f.createdAt, jetzt) <= 24);
+	if (ohneAlarm.length) melden('kritisch', `${ohneAlarm.length} Fehler ohne zugestellten Alarm – Alarmweg (${laeufe.alarm_kanal === 'telegram_test' ? 'Telegram' : 'Teams'}) prüfen`);
 	if (letzte24.length) melden('warnung', `${letzte24.length} Fehler in den letzten 24 h`);
-	const fehlerListe = fl.slice(0, MAX_FEHLER).map((f) => ({
-		am: new Date(ms(f.createdAt)).toISOString(),
-		workflow: f.workflow_name || f.workflow_id || '',
-		node: f.node || '',
-		code: `${f.statuscode || ''} ${f.fehlercode || ''}`.trim(),
-		vorgangs_id: f.vorgangs_id || '',
-		meldung: String(f.meldung || '').slice(0, 200),
-		alarmiert: Boolean(f.alarmiert_am),
-	}));
 
-	// ---- Verlauf: neue Anfragen je Tag (alle Kunden), ältester Tag zuerst
-	const heute = ms(jetzt);
-	const tage = [];
-	for (let i = VERLAUF_TAGE - 1; i >= 0; i--) tage.push(tag(heute - i * 86400000, zone));
-	const proTag = Object.fromEntries(tage.map((t) => [t, 0]));
-	for (const v of vorgaenge || []) {
-		// Ignorierte Mails (Newsletter, Abwesenheitsnotizen) sind keine Anfragen.
-		if (!v || v.status === 'Ignoriert') continue;
-		const t = ms(v.erste_mail_am || v.createdAt);
-		if (!Number.isFinite(t)) continue;
-		const d = tag(t, zone);
-		if (d in proTag) proTag[d] += 1;
+	// ---- Sicherheit
+	const freigeber = {};
+	for (const c of configs || []) if (c && c.kunde_id) freigeber[c.kunde_id] = freigeberVon(c);
+	const entschieden = (freigaben || []).filter((f) => f && f.entscheider && stundenSeit(f.updatedAt, jetzt) <= 7 * 24);
+	const unberechtigt = entschieden.filter((f) => f.entscheider !== DIREKT_GESENDET && !(freigeber[f.kunde_id] || []).includes(String(f.entscheider).toLowerCase()));
+	const direkt = entschieden.filter((f) => f.entscheider === DIREKT_GESENDET);
+	const spoofing = (vorgaenge || []).filter((v) => v && v.spoofing_hinweis && v.status !== 'Abgeschlossen' && v.status !== 'Ignoriert');
+	const gueltigeZugaenge = (zugaenge || []).filter((z) => z && !z.gesperrt_am && ms(z.ablauf) > ms(jetzt));
+	const betreiberLinks = gueltigeZugaenge.filter((z) => z.kunde_id === BETREIBER).sort((a, b) => ms(b.erstellt_am) - ms(a.erstellt_am));
+	const kundenLinks = gueltigeZugaenge.filter((z) => z.kunde_id !== BETREIBER).length;
+	const neuster = betreiberLinks[0] || null;
+	const sicherheit = [
+		{ ok: !unberechtigt.length, text: unberechtigt.length ? `Freigabe durch nicht eingetragene Person: ${liste(unberechtigt.map((f) => f.vorgangs_id))}` : 'Alle Freigaben der letzten 7 Tage kamen von eingetragenen Freigebern' },
+		{ ok: !direkt.length, stufe: 'warnung', text: direkt.length ? `An der Freigabe vorbei direkt in Outlook gesendet (7 Tage): ${liste(direkt.map((f) => f.vorgangs_id))}` : 'Keine Mail an der Freigabe vorbei gesendet (7 Tage)' },
+		{ ok: !spoofing.length, stufe: 'warnung', text: spoofing.length ? `Verdacht auf gefälschten Absender in offenen Vorgängen: ${liste(spoofing.map((v) => v.vorgangs_id))}` : 'Kein Verdacht auf gefälschte Absender in offenen Vorgängen' },
+		{ ok: betreiberLinks.length <= 1, text: betreiberLinks.length <= 1 ? 'Höchstens ein gültiger Dashboard-Link' : `${betreiberLinks.length} gültige Dashboard-Links – EPA-14 manuell starten, um alle bis auf einen neuen zu sperren` },
+		{ ok: !neuster || (ms(neuster.ablauf) - ms(jetzt)) / 86400000 > LINK_WARNUNG_TAGE, stufe: 'warnung', text: neuster ? 'Dashboard-Link gültig bis %ABLAUF%' : 'Kein gültiger Dashboard-Link', ablauf: neuster ? neuster.ablauf : null },
+		{ ok: laeufe.loeschjob.ok, stufe: 'warnung', text: laeufe.loeschjob.ok ? 'Löschjob läuft – Daten werden nach Ablauf der Aufbewahrung gelöscht' : 'Löschjob (EPA-08) läuft nicht – Daten werden nicht nach Ablauf der Aufbewahrung gelöscht' },
+		{ ok: true, info: true, text: `${kundenLinks} gültige Kunden-Übersichtslink(s) (je Tagesübersicht ein neuer, 30 Tage gültig)` },
+	];
+	for (const s of sicherheit) {
+		if (s.ok || s.info) continue;
+		melden(s.stufe || 'kritisch', `Sicherheit: ${s.ablauf ? 'Dashboard-Link läuft bald ab – EPA-14 manuell starten' : s.text}`);
 	}
 
 	const stufe = befunde.some((b) => b.stufe === 'kritisch') ? 'kritisch' : befunde.length ? 'warnung' : 'ok';
@@ -147,8 +153,20 @@ function auswerten({ configs, gueltig, vorgaenge, freigaben, system, fehler, gru
 		befunde,
 		kunden,
 		laeufe,
-		fehler: { anzahl: fl.length, letzte24: letzte24.length, liste: fehlerListe },
-		verlauf: tage.map((t) => ({ tag: t, anzahl: proTag[t] })),
+		sicherheit,
+		fehler: {
+			anzahl: fl.length,
+			letzte24: letzte24.length,
+			liste: fl.slice(0, MAX_FEHLER).map((f) => ({
+				am: new Date(ms(f.createdAt)).toISOString(),
+				workflow: f.workflow_name || f.workflow_id || '',
+				node: f.node || '',
+				code: `${f.statuscode || ''} ${f.fehlercode || ''}`.trim(),
+				vorgangs_id: f.vorgangs_id || '',
+				meldung: String(f.meldung || '').slice(0, 200),
+				alarmiert: Boolean(f.alarmiert_am),
+			})),
+		},
 	};
 }
 
@@ -171,25 +189,19 @@ function vor(iso, jetzt) {
 	return `vor ${Math.round(h / 24)} Tagen`;
 }
 
-// Farben: immer hell (weißer Hintergrund, schwarze Schrift), Diagramm und Links in Blau #1E90FF.
-// Status-Palette (gut/Warnung/kritisch) nur zusammen mit Text.
-const STIL = `:root{color-scheme:light;--bg:#ffffff;--surface-1:#ffffff;--text-primary:#000000;--text-secondary:#444444;--linie:#e3e3e3;--series-1:#1e90ff;--good:#0ca30c;--warning:#fab219;--critical:#d03b3b}
-.karte{border:1px solid var(--linie)}a{color:var(--series-1)}
+// Immer hell: weißer Hintergrund, schwarze Schrift, Links in Blau #1E90FF.
+// Statusfarben (gut/Warnung/kritisch) nur zusammen mit Text.
+const STIL = `:root{color-scheme:light;--bg:#ffffff;--text-primary:#000000;--text-secondary:#444444;--linie:#e3e3e3;--blau:#1e90ff;--good:#0ca30c;--warning:#fab219;--critical:#d03b3b}
 body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;margin:0;background:var(--bg);color:var(--text-primary)}
-main{max-width:1100px;margin:0 auto;padding:16px}h1{font-size:1.4rem;margin:8px 0 2px}h2{font-size:1.05rem;margin:0 0 10px}
-.leise{color:var(--text-secondary);font-size:.88rem}.karte{background:var(--surface-1);border-radius:10px;padding:16px;margin:14px 0;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+main{max-width:1100px;margin:0 auto;padding:16px}h1{font-size:1.4rem;margin:8px 0 2px}h2{font-size:1.05rem;margin:0 0 10px}a{color:var(--blau)}
+.leise{color:var(--text-secondary);font-size:.88rem}.karte{background:var(--bg);border:1px solid var(--linie);border-radius:10px;padding:16px;margin:14px 0}
 .ampel{display:flex;gap:12px;align-items:center;border-left:6px solid var(--s)}.ampel b{font-size:1.15rem}
-.ok{--s:var(--good)}.warnung{--s:var(--warning)}.kritisch{--s:var(--critical)}
+.ok{--s:var(--good)}.warnung{--s:var(--warning)}.kritisch{--s:var(--critical)}.unbekannt{--s:#9a9a9a}
 .punkt{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--s);margin-right:6px;vertical-align:baseline}
-ul.befunde{list-style:none;padding:0;margin:10px 0 0}ul.befunde li{padding:4px 0}
+ul.liste{list-style:none;padding:0;margin:10px 0 0}ul.liste li{padding:4px 0}
 .tab{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:.92rem}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--linie);white-space:nowrap}
-th{color:var(--text-secondary);font-weight:600}td.zahl,th.zahl{text-align:right;font-variant-numeric:tabular-nums}td.text{white-space:normal;min-width:240px}td:first-child{white-space:normal;overflow-wrap:anywhere;min-width:140px}
-.raster{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.wert{font-size:1.4rem;font-weight:600;font-variant-numeric:tabular-nums}
-svg text{fill:var(--text-secondary);font-size:11px}svg .gitter{stroke:var(--linie);stroke-width:1}svg .basis{stroke:var(--text-secondary);stroke-width:1}
-svg .balken{fill:var(--series-1)}.diagramm{overflow-x:auto}.diagramm svg{min-width:560px}svg .ziel:hover+.balken,svg .balken:hover{opacity:.8}`;
-
-// Kurze Spaltenköpfe für die Kundentabelle (voller Titel als Tooltip).
-const KURZ = Object.freeze({ klaerung: 'Klärung', freigabe: 'Freigabe', bereit: 'Bereit', kunde: 'Wartet Kunde', system: 'In Arbeit' });
+th{color:var(--text-secondary);font-weight:600}td.text{white-space:normal;min-width:200px}td.umbruch{white-space:normal;min-width:160px}td:first-child{white-space:normal;overflow-wrap:anywhere;min-width:140px}
+.raster{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.wert{font-size:1.3rem;font-weight:600}`;
 
 function symbol(stufe) {
 	return { ok: '✅', warnung: '⚠️', kritisch: '⛔' }[stufe] || '';
@@ -199,69 +211,38 @@ function statusZelle(stufe, text) {
 	return `<span class="${stufe}"><span class="punkt" aria-hidden="true"></span>${esc(text)}</span>`;
 }
 
-/** Säulendiagramm einer Reihe (neue Anfragen je Tag), ohne Skripte. Hover über <title>. */
-function verlaufSvg(verlauf) {
-	const B = 640, HOEHE = 180, L = 30, R = 8, O = 12, U = 26;
-	const max = Math.max(1, ...verlauf.map((v) => v.anzahl));
-	const schritt = max <= 4 ? 1 : max <= 10 ? 2 : Math.ceil(max / 4 / 5) * 5;
-	const oben = Math.ceil(max / schritt) * schritt;
-	const y = (w) => O + (HOEHE - O - U) * (1 - w / oben);
-	const slot = (B - L - R) / verlauf.length;
-	const breite = Math.min(24, slot - 4);
-	const teile = [];
-	for (let w = 0; w <= oben; w += schritt) {
-		teile.push(`<line class="${w === 0 ? 'basis' : 'gitter'}" x1="${L}" x2="${B - R}" y1="${y(w)}" y2="${y(w)}"/><text x="${L - 6}" y="${y(w) + 4}" text-anchor="end">${w}</text>`);
-	}
-	verlauf.forEach((v, i) => {
-		const x = L + i * slot + (slot - breite) / 2;
-		const [jj, mm, tt] = v.tag.split('-');
-		const titel = `${tt}.${mm}.${jj}: ${v.anzahl} ${v.anzahl === 1 ? 'Anfrage' : 'Anfragen'}`;
-		// Großes, unsichtbares Ziel für den Hover; die Säule selbst mit 4px runder Oberkante, eckig an der Basis.
-		teile.push(`<rect class="ziel" x="${L + i * slot}" y="${O}" width="${slot}" height="${HOEHE - O - U}" fill="transparent"><title>${esc(titel)}</title></rect>`);
-		if (v.anzahl > 0) {
-			const y0 = y(0), y1 = y(v.anzahl), r = Math.min(4, (y0 - y1) / 2, breite / 2);
-			teile.push(`<path class="balken" d="M${x},${y0} V${y1 + r} Q${x},${y1} ${x + r},${y1} H${x + breite - r} Q${x + breite},${y1} ${x + breite},${y1 + r} V${y0} Z"><title>${esc(titel)}</title></path>`);
-		}
-		// Jeden zweiten Tag beschriften, vom letzten (heute) aus gezählt.
-		if ((verlauf.length - 1 - i) % 2 === 0) teile.push(`<text x="${x + breite / 2}" y="${HOEHE - 8}" text-anchor="middle">${tt}.${mm}.</text>`);
-	});
-	return `<svg viewBox="0 0 ${B} ${HOEHE}" width="100%" role="img" aria-label="Neue Anfragen je Tag, letzte ${verlauf.length} Tage">${teile.join('')}</svg>`;
+function verbZelle(v, jetzt) {
+	if (!v || v.ok === null) return statusZelle('unbekannt', 'nicht geprüft');
+	return statusZelle(v.ok ? 'ok' : 'kritisch', `${v.ok ? 'ok' : 'Fehler'} · ${vor(v.am, jetzt)}`);
 }
 
-function seite({ daten, jetzt, zone = 'Europe/Berlin', ablauf, gruppen }) {
+function seite({ daten, jetzt, zone = 'Europe/Berlin', ablauf }) {
 	const d = daten;
-	const titel = { ok: 'Alles in Ordnung', warnung: 'Es gibt Hinweise', kritisch: 'Handlungsbedarf' }[d.stufe];
+	const titel = { ok: 'Alles läuft', warnung: 'Läuft, mit Hinweisen', kritisch: 'Handlungsbedarf' }[d.stufe];
 	const befunde = d.befunde.length
-		? `<ul class="befunde">${d.befunde.map((b) => `<li>${statusZelle(b.stufe, b.stufe === 'kritisch' ? 'Kritisch' : 'Hinweis')}: ${esc(b.text)}</li>`).join('')}</ul>`
+		? `<ul class="liste">${d.befunde.map((b) => `<li>${statusZelle(b.stufe, b.stufe === 'kritisch' ? 'Kritisch' : 'Hinweis')}: ${esc(b.text)}</li>`).join('')}</ul>`
 		: '<p class="leise">Keine Auffälligkeiten.</p>';
-	const gKopf = (gruppen || []).map((g) => `<th class="zahl" title="${esc(g.titel)}">${esc(KURZ[g.key] || g.titel)}</th>`).join('');
-	const kunden = d.kunden.map((k) => {
-		const zt = !k.zustelltest ? statusZelle('warnung', 'noch nie') : statusZelle(k.zustelltest.ok ? 'ok' : 'kritisch', `${k.zustelltest.ok ? 'ok' : 'fehlgeschlagen'} · ${vor(k.zustelltest.am, jetzt)}`);
-		return `<tr><td><b>${esc(k.kunde_id)}</b><br><span class="leise">${esc(k.postfach)}</span></td>
-<td>${k.aktiv ? statusZelle(k.config_ok === false ? 'kritisch' : 'ok', k.config_ok === false ? 'aktiv, Config ungültig' : 'aktiv') : '<span class="leise">inaktiv</span>'}</td>
-${(gruppen || []).map((g) => `<td class="zahl">${k.zahlen[g.key] || 0}</td>`).join('')}
-<td class="zahl">${k.versandfehler + k.unzustellbar}</td><td>${zt}</td><td>${esc(vor(k.letzte_mail, jetzt))}</td></tr>`;
-	}).join('');
-	const nf = d.laeufe.nachfassen;
-	const wd = d.laeufe.watchdog;
-	const nfZ = nf.ergebnis && typeof nf.ergebnis === 'object' ? `${Number(nf.ergebnis.aufgaben || 0)} Aufgaben, ${Number(nf.ergebnis.pruefungen || 0)} Prüfungen` : '';
-	const lauf = (name, am, grenze, extra) => {
-		const s = stundenSeit(am, jetzt) > grenze ? 'kritisch' : 'ok';
-		return `<div><div class="leise">${esc(name)}</div><div class="wert">${statusZelle(s, vor(am, jetzt))}</div><div class="leise">${esc(zeit(am, zone))}${extra ? ' · ' + esc(extra) : ''}</div></div>`;
-	};
+	const kunden = d.kunden.map((k) => `<tr><td><b>${esc(k.kunde_id)}</b><br><span class="leise">${esc(k.postfach)}</span></td>
+<td>${verbZelle(k.outlook, jetzt)}</td><td>${verbZelle(k.teams, jetzt)}</td><td>${verbZelle(k.ki, jetzt)}</td>
+<td>${k.versand.ok === null ? statusZelle('warnung', 'noch nie') : statusZelle(k.versand.ok ? 'ok' : 'kritisch', `${k.versand.ok ? 'kommt an' : 'kommt nicht an'} · ${vor(k.versand.am, jetzt)}`)}</td>
+<td>${k.haengend.length ? statusZelle('kritisch', `${k.haengend.length} hängen`) : statusZelle('ok', 'keine')}</td>
+<td>${esc(vor(k.letzte_mail, jetzt))}</td></tr>`).join('');
+	const lauf = (name, l, extra, fehlStufe = 'kritisch') => `<div><div class="leise">${esc(name)}</div><div class="wert">${statusZelle(l.ok ? 'ok' : fehlStufe, vor(l.am, jetzt))}</div><div class="leise">${esc(zeit(l.am, zone))}${extra ? ' · ' + esc(extra) : ''}</div></div>`;
+	const sStufe = (s) => (s.info ? 'unbekannt' : s.ok ? 'ok' : (s.stufe || 'kritisch'));
+	const sWort = (s) => (s.info ? 'Info' : s.ok ? 'OK' : s.stufe === 'warnung' ? 'Hinweis' : 'Kritisch');
+	const sicherheit = `<ul class="liste">${d.sicherheit.map((s) => `<li>${statusZelle(sStufe(s), sWort(s))}: ${esc(s.text.replace('%ABLAUF%', zeit(s.ablauf, zone)))}</li>`).join('')}</ul>`;
 	const fehler = d.fehler.liste.length
-		? `<div class="tab"><table><thead><tr><th>Zeit</th><th>Workflow / Node</th><th>Code</th><th>Vorgang</th><th>Meldung</th><th>Alarm</th></tr></thead><tbody>${d.fehler.liste.map((f) => `<tr><td>${esc(zeit(f.am, zone))}</td><td>${esc(f.workflow)}<br><span class="leise">${esc(f.node)}</span></td><td>${esc(f.code)}</td><td>${esc(f.vorgangs_id || '–')}</td><td class="text">${esc(f.meldung)}</td><td>${f.alarmiert ? statusZelle('ok', 'gesendet') : statusZelle('kritisch', 'fehlt')}</td></tr>`).join('')}</tbody></table></div>`
-		: '<p class="leise">Keine Fehler in diesem Zeitraum.</p>';
-	const summe = d.verlauf.reduce((n, v) => n + v.anzahl, 0);
+		? `<div class="tab"><table><thead><tr><th>Zeit</th><th>Workflow / Node</th><th>Code</th><th>Vorgang</th><th>Meldung</th><th>Alarm</th></tr></thead><tbody>${d.fehler.liste.map((f) => `<tr><td>${esc(zeit(f.am, zone))}</td><td class="umbruch">${esc(f.workflow)}<br><span class="leise">${esc(f.node)}</span></td><td>${esc(f.code)}</td><td>${esc(f.vorgangs_id || '–')}</td><td class="text">${esc(f.meldung)}</td><td>${f.alarmiert ? statusZelle('ok', 'gesendet') : statusZelle('kritisch', 'fehlt')}</td></tr>`).join('')}</tbody></table></div>`
+		: '<p class="leise">Keine Fehler in den letzten 7 Tagen.</p>';
 	return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta http-equiv="refresh" content="300"><title>Betrieb</title><style>${STIL}</style></head><body><main>
 <h1>Betrieb Email Process Agent</h1><p class="leise">Stand ${esc(zeit(jetzt, zone))} · lädt alle 5 Minuten neu · Link gültig bis ${esc(zeit(ablauf, zone))}</p>
-<div class="karte ampel ${d.stufe}"><span style="font-size:1.6rem" aria-hidden="true">${symbol(d.stufe)}</span><div><b>${esc(titel)}</b><div class="leise">${d.befunde.length} Befund(e) · ${d.kunden.filter((k) => k.aktiv).length} aktive(r) Kunde(n) · Alarme gehen an: ${esc(d.laeufe.alarm_kanal === 'telegram_test' ? 'Telegram' : 'Teams')}</div></div></div>
+<div class="karte ampel ${d.stufe}"><span style="font-size:1.6rem" aria-hidden="true">${symbol(d.stufe)}</span><div><b>${esc(titel)}</b><div class="leise">${d.befunde.length} Befund(e) · ${d.kunden.length} aktive(r) Kunde(n) · Alarme gehen an: ${esc(d.laeufe.alarm_kanal === 'telegram_test' ? 'Telegram' : 'Teams')}</div></div></div>
 <div class="karte"><h2>Befunde</h2>${befunde}</div>
-<div class="karte"><h2>Kunden</h2><div class="tab"><table><thead><tr><th>Kunde</th><th>Status</th>${gKopf}<th class="zahl" title="Nach Freigabe nicht gesendet oder beim Kunden nicht angekommen">Nicht angekommen</th><th>Zustelltest</th><th>Letzte Anfrage</th></tr></thead><tbody>${kunden || '<tr><td colspan="10" class="leise">Keine aktiven Kunden.</td></tr>'}</tbody></table></div></div>
-<div class="karte"><h2>Automatische Läufe</h2><div class="raster">${lauf('Nachfassen (EPA-04, stündlich)', nf.am, GRENZE_STUNDEN.nachfassen, nfZ)}${lauf('Watchdog (EPA-06, 07:30 und 13:30)', wd.am, GRENZE_STUNDEN.watchdog, wd.gesamt ? 'Ergebnis: ' + wd.gesamt : '')}</div></div>
-<div class="karte"><h2>Neue Anfragen je Tag</h2><p class="leise">Alle Kunden, letzte ${d.verlauf.length} Tage: ${summe} Anfragen</p><div class="diagramm">${verlaufSvg(d.verlauf)}</div>
-<details><summary class="leise">Als Tabelle</summary><div class="tab"><table><thead><tr><th>Tag</th><th class="zahl">Anfragen</th></tr></thead><tbody>${d.verlauf.map((v) => `<tr><td>${esc(v.tag.split('-').reverse().join('.'))}</td><td class="zahl">${v.anzahl}</td></tr>`).join('')}</tbody></table></div></details></div>
-<div class="karte"><h2>Fehler (letzte 7 Tage: ${d.fehler.anzahl}, davon 24 h: ${d.fehler.letzte24})</h2>${fehler}</div>
+<div class="karte"><h2>Läuft alles? – je Kunde</h2><div class="tab"><table><thead><tr><th>Kunde</th><th>Outlook-Postfach</th><th>Teams</th><th>KI</th><th>Versand (Zustelltest)</th><th>Hängende Vorgänge</th><th>Letzte Anfrage</th></tr></thead><tbody>${kunden || '<tr><td colspan="7" class="leise">Keine aktiven Kunden.</td></tr>'}</tbody></table></div>
+<p class="leise">Outlook, Teams und KI prüft der Watchdog um 07:30 und 13:30; ein Anmeldefehler des Postfachs dazwischen wird sofort angezeigt.</p></div>
+<div class="karte"><h2>Automatische Läufe</h2><div class="raster">${lauf('Nachfassen (EPA-04, stündlich)', d.laeufe.nachfassen)}${lauf('Watchdog (EPA-06, 07:30 und 13:30)', d.laeufe.watchdog, d.laeufe.watchdog.gesamt ? 'Ergebnis: ' + d.laeufe.watchdog.gesamt : '')}${lauf('Löschjob (EPA-08, nachts)', d.laeufe.loeschjob, '', 'warnung')}</div></div>
+<div class="karte"><h2>Sicherheit</h2>${sicherheit}</div>
+<div class="karte"><h2>Fehler (7 Tage: ${d.fehler.anzahl}, davon 24 h: ${d.fehler.letzte24})</h2>${fehler}</div>
 <p class="leise">Nur für den Betreiber. Nicht weitergeben. Neuen Link: „EPA-14 Betrieb-Dashboard“ manuell starten (der alte wird gesperrt).</p>
 </main></body></html>`;
 }
@@ -271,4 +252,4 @@ function linkNachricht({ link, ablauf, zone = 'Europe/Berlin' }) {
 	return `<b>🔐 Neuer Link zum Betreiber-Dashboard</b><br><a href="${esc(link)}">Dashboard öffnen</a><br>Gültig bis ${esc(zeit(ablauf, zone))}. Alle früheren Dashboard-Links sind gesperrt. Nicht weitergeben.`;
 }
 
-module.exports = { BETREIBER, PFAD, LINK_TAGE, VERLAUF_TAGE, GRENZE_STUNDEN, auswerten, verlaufSvg, seite, linkNachricht, esc };
+module.exports = { BETREIBER, PFAD, LINK_TAGE, GRENZE_STUNDEN, DURCHLAUF_STATUS, auswerten, seite, linkNachricht, esc };
