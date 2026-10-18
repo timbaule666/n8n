@@ -171,9 +171,10 @@ function vor(iso, jetzt) {
 	return `vor ${Math.round(h / 24)} Tagen`;
 }
 
-// Farben: Status-Palette (gut/Warnung/kritisch, immer mit Symbol und Text) und eine Reihe in Blau für den Verlauf.
-const STIL = `:root{color-scheme:light;--bg:#f4f4f2;--surface-1:#fcfcfb;--text-primary:#0b0b0b;--text-secondary:#52514e;--linie:#e4e3df;--series-1:#2a78d6;--good:#0ca30c;--warning:#fab219;--critical:#d03b3b}
-@media (prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#111110;--surface-1:#1a1a19;--text-primary:#f0efec;--text-secondary:#c3c2b7;--linie:#383835;--series-1:#3987e5}}
+// Farben: immer hell (weißer Hintergrund, schwarze Schrift), Diagramm und Links in Blau #1E90FF.
+// Status-Palette (gut/Warnung/kritisch) nur zusammen mit Text.
+const STIL = `:root{color-scheme:light;--bg:#ffffff;--surface-1:#ffffff;--text-primary:#000000;--text-secondary:#444444;--linie:#e3e3e3;--series-1:#1e90ff;--good:#0ca30c;--warning:#fab219;--critical:#d03b3b}
+.karte{border:1px solid var(--linie)}a{color:var(--series-1)}
 body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;margin:0;background:var(--bg);color:var(--text-primary)}
 main{max-width:1100px;margin:0 auto;padding:16px}h1{font-size:1.4rem;margin:8px 0 2px}h2{font-size:1.05rem;margin:0 0 10px}
 .leise{color:var(--text-secondary);font-size:.88rem}.karte{background:var(--surface-1);border-radius:10px;padding:16px;margin:14px 0;box-shadow:0 1px 2px rgba(0,0,0,.06)}
