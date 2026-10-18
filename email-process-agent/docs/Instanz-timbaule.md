@@ -285,3 +285,8 @@ Der Kunde `epa-ki-test` ist deaktiviert. Aktiv ist damit nur noch `epa-m365`.
 - `EPA-13 Tagesübersicht` (6CGAOQFceb6H5SvO), täglich 08:05 an Geschäftstagen, veröffentlicht. Erster manueller Lauf: Zusammenfassung für epa-m365 im Kanal „Anfragen“ (3 Klärung, 7 bereit, 3 wartet auf Kunde).
 - Test: falscher Schlüssel → 404 „Link ungültig“; Link aus der Tagesübersicht → Seite mit genau den 13 offenen Vorgängen von epa-m365. Darstellung im Browser (n8n-Sandbox) noch von Tim zu prüfen.
 - Unzustellbar-Test V-2026-0141: Freigabe „unzustellbar“, Telegram-Alarm gesendet. Zustelltest 16:27 fehlgeschlagen (Mail nicht in Gmail angekommen), daher noch keine erneute Freigabe.
+
+## Betreiber-Dashboard (18.10.2026)
+- `EPA-14 Betrieb-Dashboard` (OICDVae1LB9bPhwl), Webhook GET `/webhook/epa-betrieb?k=…`, veröffentlicht. Erster Link am 18.10. 08:30 per Telegram verschickt (gültig bis 16.01.2027).
+- Test: Betreiber-Link → Dashboard; Kunden-Link auf EPA-14 → 404; Betreiber-Link auf EPA-12 → 404.
+- Stand beim ersten Aufruf: ⛔ Handlungsbedarf – Zustelltest epa-m365 heute 07:40 erneut fehlgeschlagen; ein alter Fehler vom 17.10. 11:17 (Freigabe-Chat 404, inzwischen behoben) ohne zugestellten Alarm.
