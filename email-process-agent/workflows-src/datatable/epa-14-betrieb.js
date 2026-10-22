@@ -71,8 +71,8 @@ return [{ json: { ...r, ablauf: r.ok ? z.ablauf : null } }];
 	const system = wf.tabelle('Systemstatus lesen', [1980, -100], 'get', 'epa_system_status', { alle: true }, einmal);
 	const fehler = wf.tabelle('Fehler lesen', [2200, -100], 'get', 'epa_fehler_log', { bedingungen: [['createdAt', 'gte', `={{ ${A}.seit7 }}`]], alle: true }, einmal);
 	const zugaenge = wf.tabelle('Zugänge lesen', [2310, -220], 'get', 'epa_uebersicht_zugaenge', { alle: true }, einmal);
-	// Heute verarbeitete Mails (Erfolgsquote: fertig gegenüber fehler).
-	const mails = wf.tabelle('Mails heute lesen', [2420, -220], 'get', 'epa_verarbeitete_mails', { bedingungen: [['createdAt', 'gte', `={{ ${A}.heuteAb }}`]], alle: true }, einmal);
+	// Verarbeitete Mails der letzten 7 Tage (Letzter Lauf je Agent); Erfolgsquote und Tageszahlen nur von heute.
+	const mails = wf.tabelle('Mails lesen', [2420, -220], 'get', 'epa_verarbeitete_mails', { bedingungen: [['createdAt', 'gte', `={{ ${A}.seit7 }}`]], alle: true }, einmal);
 	const bauen = wf.code('Dashboard bauen', [2420, -100], ['configValidator', 'betrieb'], `
 const a = $('Anfrage lesen').first().json;
 const zeilen = (n) => $(n).all().map((i) => i.json).filter((z) => z && z.id !== undefined);
@@ -86,8 +86,10 @@ const vorgaenge = zeilen('Vorgänge lesen');
 // Befunde nur aus offenen Vorgängen; die heute angelegten zählen zusätzlich für "Vorgänge heute".
 const offen = vorgaenge.filter((v) => v.status !== 'Abgeschlossen' && v.status !== 'Ignoriert');
 const daten = betrieb.auswerten({ configs, gueltig, vorgaenge: offen, freigaben: zeilen('Freigaben lesen'), system: zeilen('Systemstatus lesen'), fehler: zeilen('Fehler lesen'), zugaenge: zeilen('Zugänge lesen'), jetzt: a.jetzt });
-const kopf = betrieb.kennzahlen({ daten, configs, vorgaenge, mails: zeilen('Mails heute lesen'), heuteAb: a.heuteAb });
-return [{ json: { status: 200, html: betrieb.seite({ daten, kopf, jetzt: a.jetzt, ablauf: $('Zugang prüfen').first().json.ablauf }) } }];
+const mails = zeilen('Mails lesen');
+const agenten = betrieb.agentStatus({ daten, mails, heuteAb: a.heuteAb, jetzt: a.jetzt });
+const kopf = betrieb.kennzahlen({ daten, configs, vorgaenge, mails, heuteAb: a.heuteAb, agenten });
+return [{ json: { status: 200, html: betrieb.seite({ daten, kopf, agenten, jetzt: a.jetzt, ablauf: $('Zugang prüfen').first().json.ablauf }) } }];
 `);
 	const abweisen = wf.code('Seite: kein Zugang', [1100, 120], ['uebersicht'], `
 const z = $input.first().json;

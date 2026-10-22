@@ -76,7 +76,7 @@ test('Hängende Vorgänge, Zustelltest, Läufe, Fehler ohne Alarm', () => {
 	}));
 	assert.deepEqual(d.kunden[0].haengend, ['V-7']);
 	const t = d.befunde.map((x) => `${x.stufe}:${x.text}`).join('\n');
-	assert.match(t, /kritisch:k1: 1 Vorgang\/Vorgänge hängen seit über 1 h \(V-7\)/);
+	assert.match(t, /warnung:k1: 1 Vorgang\/Vorgänge hängen seit über 1 h \(V-7\)/);
 	assert.match(t, /kritisch:k1: letzter Zustelltest fehlgeschlagen \(nicht_angekommen\)/);
 	assert.match(t, /kritisch:Nachfassen \(EPA-04\) seit über 3 h/);
 	assert.match(t, /kritisch:1 Fehler ohne zugestellten Alarm – Alarmweg \(Teams\)/);
@@ -191,4 +191,69 @@ test('Kritische Fehler: Kachel öffnet Liste, jeder Fehler einzeln aufklappbar m
 	const h2 = b.seite({ daten: ok, kopf: ko, jetzt: JETZT, ablauf: JETZT });
 	assert.equal(h2.includes('id="kritisch"'), false);
 	assert.equal(h2.includes('href="#kritisch"'), false);
+});
+
+test('Agent-Status pro Kunde: Ampel, letzter Lauf, Zahlen von heute, kritische zuerst', () => {
+	const HEUTE = '2026-10-17T22:00:00Z';
+	const configs = [
+		{ kunde_id: 'k1', postfach: 'a@x.de', aktiv: true, postfach_workflow_id: 'WF1', freigeber: '[]' },
+		{ kunde_id: 'k3', postfach: 'c@x.de', aktiv: true, postfach_workflow_id: 'WF3', freigeber: '[]' },
+		{ kunde_id: 'k4', postfach: 'd@x.de', aktiv: true, postfach_workflow_id: 'WF4', freigeber: '[]' },
+	];
+	const system = [
+		...OK_SYSTEM,
+		{ schluessel: 'zustelltest:k3', letzter_lauf: '2026-10-18T05:50:00Z', letztes_ergebnis: '{"ok":true}' },
+		{ schluessel: 'zustelltest:k4', letzter_lauf: '2026-10-18T05:50:00Z', letztes_ergebnis: '{"ok":false,"art":"nicht_angekommen"}' },
+	];
+	const mails = [
+		...Array.from({ length: 33 }, () => ({ kunde_id: 'k1', status: 'fertig', ergebnis: 'bereit', createdAt: '2026-10-18T06:00:00Z' })),
+		{ kunde_id: 'k1', status: 'fertig', ergebnis: 'zuordnung_unklar', createdAt: '2026-10-18T06:26:00Z' },
+		{ kunde_id: 'k1', status: 'fehler', createdAt: '2026-10-16T06:00:00Z' },
+		{ kunde_id: 'k3', status: 'fertig', ergebnis: 'antwort_extraktion_fehlgeschlagen', createdAt: '2026-10-18T07:00:00Z' },
+		{ kunde_id: 'k3', status: 'fertig', ergebnis: 'klassifizierung_unklar', createdAt: '2026-10-18T07:10:00Z' },
+		{ kunde_id: 'k3', status: 'fertig', ergebnis: 'unzustellbar', createdAt: '2026-10-18T07:20:00Z' },
+		{ kunde_id: 'k4', status: 'fertig', ergebnis: 'bereit', createdAt: '2026-10-18T05:41:00Z' },
+		{ kunde_id: 'k4', status: 'fehler', createdAt: '2026-10-18T05:42:00Z' },
+		{ kunde_id: 'k2', status: 'fehler', createdAt: '2026-10-18T05:42:00Z' },
+	];
+	const d = b.auswerten(basis({ configs, gueltig: {}, system, vorgaenge: [], freigaben: [] }));
+	const a = b.agentStatus({ daten: d, mails, heuteAb: HEUTE, jetzt: JETZT });
+	assert.deepEqual(a.map((x) => [x.kunde_id, x.stufe]), [['k4', 'kritisch'], ['k3', 'warnung'], ['k1', 'ok']]);
+	const [k4, k3, k1] = a;
+	assert.deepEqual([k1.heute, k1.erfolgreich, k1.exceptions, k1.fehler, k1.letzter_lauf], [34, 33, 1, 0, '2026-10-18T06:26:00.000Z']);
+	assert.equal(k1.symbol + ' ' + k1.text, '🟢 Healthy');
+	assert.deepEqual([k3.heute, k3.erfolgreich, k3.exceptions, k3.fehler], [3, 0, 3, 0]);
+	assert.match(k3.grund, /3 Exceptions heute/);
+	assert.deepEqual([k4.heute, k4.erfolgreich, k4.fehler], [2, 1, 1]);
+	assert.match(k4.grund, /Zustelltest fehlgeschlagen · 1 Fehler heute/);
+	assert.equal(k4.symbol, '🔴');
+
+	// Warnung: hängende Vorgänge, lange keine Mail
+	const h = b.auswerten(basis({ vorgaenge: [{ kunde_id: 'k1', vorgangs_id: 'V-7', status: 'Neu', updatedAt: '2026-10-18T06:00:00Z' }] }));
+	const ah = b.agentStatus({ daten: h, mails: [{ kunde_id: 'k1', status: 'fertig', createdAt: '2026-10-15T06:00:00Z' }], heuteAb: HEUTE, jetzt: JETZT });
+	assert.equal(ah[0].stufe, 'warnung');
+	assert.match(ah[0].grund, /1 Vorgang\/Vorgänge hängen · seit über 48 h keine Mail/);
+
+	// Gesamtzustand zählt Agents aus der Ampel; Tabelle im HTML, escaped
+	const k = b.kennzahlen({ daten: d, configs, vorgaenge: [], mails, heuteAb: HEUTE, agenten: a });
+	assert.equal(k.erfolgsquote, 97.4); // 38 fertig, 1 Fehler (k2 inaktiv, k1-Fehler von vorgestern)
+	// k4 hat schon einen kritischen Befund (Zustelltest) – die Fehler heute zählen nicht doppelt
+	assert.equal(k.kritisch, 1);
+	assert.equal(k.zustand.stufe, 'kritisch');
+	const html = b.seite({ daten: d, kopf: k, agenten: a, jetzt: JETZT, ablauf: JETZT });
+	assert.match(html, /<h2 class="abschnitt">Agent-Status pro Kunde<\/h2>/);
+	assert.match(html, /<th>Kunde<\/th><th>Agent<\/th><th>Status<\/th><th>Letzter Lauf<\/th><th class="n">Heute<\/th><th class="n">Erfolgreich<\/th><th class="n">Exceptions<\/th><th class="n">Fehler<\/th>/);
+	assert.match(html, /<tr class="kritisch"><td><b>k4<\/b>/);
+	assert.match(html, /🟢 Healthy/);
+	assert.match(html, /<td>08:26<\/td>/); // 06:26 UTC = 08:26 Berlin
+	assert.match(html, /<td class="n rot">1<\/td><\/tr>/);
+	// Nur technische Fehler heute: zusätzlicher kritischer Fehler in Kachel, Zustand und Liste
+	const ok = b.auswerten(basis());
+	const af = b.agentStatus({ daten: ok, mails: [{ kunde_id: 'k1', status: 'fehler', createdAt: '2026-10-18T07:00:00Z' }], heuteAb: HEUTE, jetzt: JETZT });
+	const kf = b.kennzahlen({ daten: ok, configs: basis().configs, vorgaenge: [], mails: [], heuteAb: HEUTE, agenten: af });
+	assert.equal(kf.kritisch, 1);
+	assert.equal(kf.zustand.symbol, '🔴');
+	assert.match(b.seite({ daten: ok, kopf: kf, agenten: af, jetzt: JETZT, ablauf: JETZT }), /<b>Verarbeitung mit Fehler abgebrochen<\/b> <span class="leise">· k1/);
+	const x = b.agentStatus({ daten: b.auswerten(basis({ configs: [{ kunde_id: '<i>', aktiv: true, postfach: '<p>' }] })), mails: [], heuteAb: HEUTE, jetzt: JETZT });
+	assert.equal(b.seite({ daten: d, kopf: k, agenten: x, jetzt: JETZT, ablauf: JETZT }).includes('<i>'), false);
 });

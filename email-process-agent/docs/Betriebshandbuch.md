@@ -72,7 +72,12 @@ Stand 2026-10-14 (M6). Für die Person, die das System betreut: Was läuft wann,
 - Grenze: Wer den Link hat, sieht die Vorgänge (keine Anmeldung). Deshalb kurze Gültigkeit und der Hinweis „bitte nicht weitergeben“.
 
 ## 5b. Betreiber-Dashboard (EPA-14)
-- **Inhalt:** Ampel mit Befunden (z. B. Zustelltest fehlgeschlagen, Nachfassen steht, Fehler ohne Alarm, Config ungültig), alle Kunden mit offenen Vorgängen je Gruppe, nicht angekommenen Nachrichten, letztem Zustelltest und letzter Anfrage, letzte Läufe von EPA-04 und EPA-06, neue Anfragen je Tag (14 Tage, ohne ignorierte Mails) und die letzten Fehler (7 Tage). Lädt alle 5 Minuten neu.
+- **Inhalt (oben):** Gesamtzustand (🟢 alle Systeme normal / 🟡 Agents benötigen Aufmerksamkeit / 🔴 kritischer Fehler) und sechs Kennzahlen: aktive Kunden, aktive Agents, Vorgänge heute, Erfolgsquote heute, offene Exceptions, kritische Fehler. Ein Klick auf „Kritische Fehler“ öffnet die Liste; jeder Fehler klappt einzeln auf (was, Kunde, seit wann, Folge, was tun, betroffene Vorgänge).
+- **Agent-Status pro Kunde:** Tabelle je aktivem Agent mit Ampel, letztem Lauf und den heute verarbeiteten Mails (Heute = Erfolgreich + Exceptions + Fehler, ggf. plus noch in Arbeit). Exceptions = Mails mit Ergebnis Zuordnung/Klassifizierung unklar, unzustellbar oder Auslesen fehlgeschlagen.
+  - 🔴 Critical: Config ungültig, Outlook-/Teams-/KI-Verbindung gestört (Watchdog oder Anmeldefehler), Zustelltest fehlgeschlagen, Versandfehler nach Freigabe oder technische Fehler heute.
+  - 🟡 Warning: ab 3 Exceptions heute (bzw. über 25 %), hängende Vorgänge (über 1 h in Neu/In Prüfung/Lücken erkannt), über 48 h keine Mail, Zustelltest fehlt oder ist älter als 26 h.
+  - 🟢 Healthy: sonst. Kritische Agents stehen oben.
+- Lädt alle 5 Minuten neu.
 - **Link holen:** „EPA-14 Betrieb-Dashboard“ in n8n öffnen und manuell starten. Alle bisherigen Dashboard-Links werden gesperrt; der neue (90 Tage gültig) kommt per Telegram. Als Lesezeichen speichern, nicht weitergeben – er zeigt alle Kunden.
 - Kunden-Links (Tagesübersicht) öffnen das Dashboard nicht und umgekehrt.
 

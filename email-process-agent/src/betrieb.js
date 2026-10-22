@@ -127,7 +127,7 @@ function auswerten({ configs, gueltig, vorgaenge, freigaben, system, fehler, zug
 		});
 		else if (k.versand.ok === null) melden('warnung', `${n}: noch kein Zustelltest gelaufen`);
 		else if (stundenSeit(k.versand.am, jetzt) > GRENZE_STUNDEN.zustelltest) melden('warnung', `${n}: Zustelltest seit über ${GRENZE_STUNDEN.zustelltest} h nicht gelaufen`);
-		if (k.haengend.length) melden('kritisch', `${n}: ${k.haengend.length} Vorgang/Vorgänge hängen seit über ${GRENZE_STUNDEN.haengt} h (${liste(k.haengend)})`, {
+		if (k.haengend.length) melden('warnung', `${n}: ${k.haengend.length} Vorgang/Vorgänge hängen seit über ${GRENZE_STUNDEN.haengt} h (${liste(k.haengend)})`, {
 			titel: 'Vorgänge hängen', kunde: n,
 			was: `${k.haengend.length} Vorgang/Vorgänge stehen seit über ${GRENZE_STUNDEN.haengt} h in „Neu“, „In Prüfung“ oder „Lücken erkannt“; die Verarbeitung ist abgebrochen.`,
 			folge: 'Der Kunde bekommt keine Rückfrage, die Anfrage bleibt liegen.',
@@ -261,6 +261,72 @@ main{max-width:1100px;margin:0 auto;padding:16px}h1{font-size:1.4rem;margin:8px 
 
 
 
+// ---------------------------------------------------------------- Agent-Status pro Kunde
+
+// Ergebnisse in epa_verarbeitete_mails, bei denen ein Mitarbeiter entscheiden muss ("Exception").
+const EXCEPTION_ERGEBNIS = Object.freeze(['zuordnung_unklar', 'klassifizierung_unklar', 'unzustellbar', 'extraktion_fehlgeschlagen']);
+// Warnung: so viele Exceptions heute (oder mehr als dieser Anteil) bzw. so lange keine Mail verarbeitet.
+const AGENT_GRENZEN = Object.freeze({ exceptions: 3, exceptionAnteil: 0.25, ruheStunden: 48 });
+const AGENT_STUFE = Object.freeze({
+	kritisch: { symbol: '🔴', text: 'Critical' },
+	warnung: { symbol: '🟡', text: 'Warning' },
+	ok: { symbol: '🟢', text: 'Healthy' },
+});
+
+function istException(m) {
+	const e = String(m.ergebnis || '');
+	return EXCEPTION_ERGEBNIS.some((x) => e === x || e.endsWith('_' + x));
+}
+
+/**
+ * Eine Zeile je aktivem Agent (Postfach-Verbindung eines Kunden): Ampel, letzter Lauf und Zahlen von heute.
+ * daten = Ergebnis von auswerten(); mails = epa_verarbeitete_mails der letzten 7 Tage.
+ * Critical: Verbindung/Config/Versand gestört, Watchdog-Befund oder technische Fehler heute.
+ * Warning: viele Exceptions, hängende Vorgänge, lange keine Mail oder Zustelltest fehlt/veraltet.
+ */
+function agentStatus({ daten, mails, heuteAb, jetzt }) {
+	const ab = ms(heuteAb);
+	const stufen = ['ok', 'warnung', 'kritisch'];
+	const zeilen = daten.kunden.map((k) => {
+		const eigene = (mails || []).filter((m) => m && m.kunde_id === k.kunde_id && Number.isFinite(ms(m.createdAt)));
+		const heute = eigene.filter((m) => ms(m.createdAt) >= ab);
+		const fertig = heute.filter((m) => m.status === 'fertig');
+		const exceptions = fertig.filter(istException).length;
+		const fehler = heute.filter((m) => m.status === 'fehler').length;
+		let lauf = NaN;
+		for (const m of eigene) { const t = ms(m.updatedAt || m.createdAt); if (Number.isFinite(t) && !(t <= lauf)) lauf = t; }
+		const letzterLauf = Number.isFinite(lauf) ? new Date(lauf).toISOString() : k.letzte_mail;
+		const gruende = { kritisch: [], warnung: [] };
+		if (!k.config_ok) gruende.kritisch.push('Config ungültig');
+		if (k.outlook.ok === false) gruende.kritisch.push('Outlook-Anmeldung fehlgeschlagen');
+		if (k.teams.ok === false) gruende.kritisch.push('Teams nicht erreichbar');
+		if (k.ki.ok === false) gruende.kritisch.push('KI nicht erreichbar');
+		if (k.versand.ok === false) gruende.kritisch.push('Zustelltest fehlgeschlagen');
+		if (k.versandfehler) gruende.kritisch.push(`${k.versandfehler} Versandfehler`);
+		if (fehler) gruende.kritisch.push(`${fehler} Fehler heute`);
+		if (exceptions >= AGENT_GRENZEN.exceptions || (fertig.length >= 4 && exceptions / fertig.length > AGENT_GRENZEN.exceptionAnteil)) gruende.warnung.push(`${exceptions} Exceptions heute`);
+		if (k.haengend.length) gruende.warnung.push(`${k.haengend.length} Vorgang/Vorgänge hängen`);
+		if (stundenSeit(letzterLauf, jetzt) > AGENT_GRENZEN.ruheStunden) gruende.warnung.push(letzterLauf ? `seit über ${AGENT_GRENZEN.ruheStunden} h keine Mail` : 'noch keine Mail verarbeitet');
+		if (k.versand.ok === null) gruende.warnung.push('noch kein Zustelltest');
+		else if (k.versand.ok === true && stundenSeit(k.versand.am, jetzt) > GRENZE_STUNDEN.zustelltest) gruende.warnung.push('Zustelltest veraltet');
+		const stufe = gruende.kritisch.length ? 'kritisch' : gruende.warnung.length ? 'warnung' : 'ok';
+		return {
+			kunde_id: k.kunde_id,
+			agent: 'E-Mail-Agent',
+			postfach: k.postfach,
+			stufe,
+			...AGENT_STUFE[stufe],
+			grund: [...gruende.kritisch, ...gruende.warnung].join(' · '),
+			letzter_lauf: letzterLauf || null,
+			heute: heute.length,
+			erfolgreich: fertig.length - exceptions,
+			exceptions,
+			fehler,
+		};
+	});
+	return zeilen.sort((a, b) => stufen.indexOf(b.stufe) - stufen.indexOf(a.stufe) || String(a.kunde_id).localeCompare(String(b.kunde_id)));
+}
+
 // ---------------------------------------------------------------- Kopfbereich: Kennzahlen und Gesamtzustand
 
 // Vorgänge, die auf eine Entscheidung eines Mitarbeiters warten ("Exceptions").
@@ -273,7 +339,7 @@ const EXCEPTION_STATUS = Object.freeze(['Eskaliert / Manuell', 'Zuordnung unklar
  * @param {object[]} p.mails      Zeilen aus epa_verarbeitete_mails seit heuteAb
  * @param {string} p.heuteAb      Beginn des heutigen Tages (ISO, Zeitzone des Betreibers)
  */
-function kennzahlen({ daten, configs, vorgaenge, mails, heuteAb }) {
+function kennzahlen({ daten, configs, vorgaenge, mails, heuteAb, agenten }) {
 	const aktiv = (configs || []).filter((c) => c && c.kunde_id && c.aktiv === true);
 	const kundenIds = new Set(aktiv.map((c) => c.kunde_id));
 	const agents = new Set(aktiv.map((c) => c.postfach_workflow_id || `kunde:${c.kunde_id}`));
@@ -284,9 +350,23 @@ function kennzahlen({ daten, configs, vorgaenge, mails, heuteAb }) {
 	const fehl = m.filter((x) => x.status === 'fehler').length;
 	const exceptions = (vorgaenge || []).filter((v) => v && kundenIds.has(v.kunde_id) && EXCEPTION_STATUS.includes(v.status));
 	const kritisch = daten.befunde.filter((b) => b.stufe === 'kritisch');
-	// Agents mit Problemen: Verbindung, Versand, hängende Vorgänge, ungültige Config oder offene Exceptions.
-	const aufmerksamkeit = daten.kunden.filter((k) => !k.config_ok || k.outlook.ok === false || k.teams.ok === false || k.ki.ok === false
-		|| k.versand.ok !== true || k.haengend.length || k.versandfehler || exceptions.some((v) => v.kunde_id === k.kunde_id)).length;
+	// Technische Fehler heute ohne eigenen kritischen Befund des Kunden: zusätzlich als kritischer Fehler zählen,
+	// damit Ampel der Tabelle, Gesamtzustand und Fehlerliste übereinstimmen.
+	for (const a of agenten || []) {
+		if (!a.fehler || kritisch.some((b) => b.kunde === a.kunde_id)) continue;
+		kritisch.push({
+			stufe: 'kritisch', text: `${a.kunde_id}: ${a.fehler} Mail(s) heute mit technischem Fehler abgebrochen`, titel: 'Verarbeitung mit Fehler abgebrochen', kunde: a.kunde_id,
+			was: `${a.fehler} eingegangene Mail(s) wurden heute nicht fertig verarbeitet (epa_verarbeitete_mails, Status „fehler“).`,
+			folge: 'Zu diesen Mails gibt es evtl. keinen Vorgang und keine Rückfrage.',
+			tun: 'In n8n die fehlgeschlagenen Ausführungen von „EPA-01“ bzw. dem Postfach-Workflow des Kunden ansehen; Ursache beheben. Die Mails liegen weiter im Postfach.',
+			betroffen: [],
+		});
+	}
+	// Agents mit Problemen: Ampel aus agentStatus() (sonst: Verbindung, Versand, hängende Vorgänge, ungültige Config oder offene Exceptions).
+	const aufmerksamkeit = agenten
+		? agenten.filter((a) => a.stufe !== 'ok').length
+		: daten.kunden.filter((k) => !k.config_ok || k.outlook.ok === false || k.teams.ok === false || k.ki.ok === false
+			|| k.versand.ok !== true || k.haengend.length || k.versandfehler || exceptions.some((v) => v.kunde_id === k.kunde_id)).length;
 	const zustand = kritisch.length
 		? { stufe: 'kritisch', symbol: '🔴', text: kritisch.length === 1 ? 'Kritischer Fehler' : `${kritisch.length} kritische Fehler`, grund: kritisch[0].text }
 		: aufmerksamkeit
@@ -302,6 +382,7 @@ function kennzahlen({ daten, configs, vorgaenge, mails, heuteAb }) {
 		verarbeitet_heute: ok + fehl,
 		exceptions: exceptions.length,
 		kritisch: kritisch.length,
+		kritisch_liste: kritisch,
 		zustand,
 	};
 }
@@ -320,13 +401,38 @@ a.kachel{color:inherit;text-decoration:none;display:block}a.kachel:hover,a.kache
 .fehler summary::before{content:'▸';color:var(--blau);margin-right:8px}.fehler[open] summary::before{content:'▾'}
 .fehler summary b{font-size:1.05rem}.fehler .inhalt{padding:0 14px 14px 32px}
 .fehler dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:0}.fehler dt{color:var(--text-secondary)}.fehler dd{margin:0;overflow-wrap:anywhere}
-.fehler ul{margin:0;padding-left:18px}`;
+.fehler ul{margin:0;padding-left:18px}
+h2.abschnitt{font-size:1.15rem;margin:24px 0 8px}.tabelle{overflow-x:auto;border:1px solid var(--linie);border-radius:12px}
+table.agenten{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.agenten th,.agenten td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--linie);vertical-align:top}
+.agenten th{color:var(--text-secondary);font-weight:600;font-size:.85rem;white-space:nowrap}.agenten tr:last-child td{border-bottom:0}
+.agenten td.n{text-align:right;color:var(--blau);font-weight:600}.agenten th.n{text-align:right}.agenten td.n.rot{color:var(--critical)}
+.agenten .ampel,.agenten td:first-child{white-space:nowrap}.agenten .ampel{font-weight:600}.agenten tr.kritisch td:first-child{box-shadow:inset 4px 0 0 var(--critical)}
+.agenten tr.warnung td:first-child{box-shadow:inset 4px 0 0 var(--warning)}`;
 
 function zahlText(n) {
 	return Number(n).toLocaleString('de-DE');
 }
 
-function seite({ daten, kopf, jetzt, zone = 'Europe/Berlin', ablauf }) {
+function uhrzeit(iso, jetzt, zone) {
+	if (!iso || !Number.isFinite(ms(iso))) return '–';
+	try {
+		const tag = (t) => new Date(t).toLocaleDateString('de-DE', { timeZone: zone });
+		const uhr = new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: zone });
+		return tag(iso) === tag(jetzt) ? uhr : `${new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', timeZone: zone })} ${uhr}`;
+	} catch (e) { return iso; }
+}
+
+function agentTabelle(agenten, jetzt, zone) {
+	if (!agenten || !agenten.length) return '<h2 class="abschnitt">Agent-Status pro Kunde</h2><p class="leise">Kein aktiver Kunde.</p>';
+	const zeilen = agenten.map((a) => `<tr class="${a.stufe}"><td><b>${esc(a.kunde_id)}</b></td><td>${esc(a.agent)}${a.postfach ? `<div class="leise">${esc(a.postfach)}</div>` : ''}</td>
+<td><span class="ampel">${a.symbol} ${esc(a.text)}</span>${a.grund ? `<div class="leise">${esc(a.grund)}</div>` : ''}</td><td>${esc(uhrzeit(a.letzter_lauf, jetzt, zone))}</td>
+<td class="n">${zahlText(a.heute)}</td><td class="n">${zahlText(a.erfolgreich)}</td><td class="n">${zahlText(a.exceptions)}</td><td class="n${a.fehler ? ' rot' : ''}">${zahlText(a.fehler)}</td></tr>`).join('');
+	return `<h2 class="abschnitt">Agent-Status pro Kunde</h2><div class="tabelle"><table class="agenten"><thead><tr><th>Kunde</th><th>Agent</th><th>Status</th><th>Letzter Lauf</th><th class="n">Heute</th><th class="n">Erfolgreich</th><th class="n">Exceptions</th><th class="n">Fehler</th></tr></thead><tbody>${zeilen}</tbody></table></div>
+<p class="leise">🟢 Healthy: läuft normal · 🟡 Warning: viele Exceptions, hängende Vorgänge, lange keine Mail oder Zustelltest fehlt · 🔴 Critical: Verbindungs-, Credential-, Versand- oder Workflow-Fehler. Zahlen: heute verarbeitete Mails.</p>`;
+}
+
+function seite({ daten, kopf, agenten, jetzt, zone = 'Europe/Berlin', ablauf }) {
 	const k = kopf;
 	const quote = k.erfolgsquote === null ? '–' : `${k.erfolgsquote.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
 	const kachel = (zahl, name, alarm, titel, ziel) => {
@@ -344,7 +450,7 @@ function seite({ daten, kopf, jetzt, zone = 'Europe/Berlin', ablauf }) {
 	].join('');
 	// Liste der kritischen Fehler: öffnet sich per Klick auf die Kachel (Sprungziel, ohne JavaScript);
 	// jeder Fehler klappt einzeln auf.
-	const kritisch = daten.befunde.filter((b) => b.stufe === 'kritisch');
+	const kritisch = k.kritisch_liste || daten.befunde.filter((b) => b.stufe === 'kritisch');
 	const zeile = (name, wert) => (wert ? `<dt>${esc(name)}</dt><dd>${wert}</dd>` : '');
 	const fehlerliste = kritisch.length ? `<section id="kritisch" class="fehlerliste"><div class="kopf"><h2>Kritische Fehler (${kritisch.length})</h2><a href="#">Schließen</a></div>
 <p class="leise">Auf einen Fehler klicken, um die Einzelheiten zu sehen.</p>
@@ -358,6 +464,7 @@ ${KOPF_STIL}</style></head><body><main>
 <div class="zustand ${z.stufe}"><span class="symbol" aria-hidden="true">${z.symbol}</span><div><div class="gross">${esc(z.text)}</div>${z.grund ? `<div class="leise">${esc(z.grund)}${daten.befunde.length > 1 ? ` · insgesamt ${daten.befunde.length} Befunde` : ''}</div>` : ''}</div></div>
 <div class="kacheln">${kacheln}</div>
 ${fehlerliste}
+${agentTabelle(agenten, jetzt, zone)}
 <p class="leise">Nur für den Betreiber. Nicht weitergeben. Neuen Link: „EPA-14 Betrieb-Dashboard“ manuell starten (der alte wird gesperrt).</p>
 </main></body></html>`;
 }
@@ -367,4 +474,4 @@ function linkNachricht({ link, ablauf, zone = 'Europe/Berlin' }) {
 	return `<b>🔐 Neuer Link zum Betreiber-Dashboard</b><br><a href="${esc(link)}">Dashboard öffnen</a><br>Gültig bis ${esc(zeit(ablauf, zone))}. Alle früheren Dashboard-Links sind gesperrt. Nicht weitergeben.`;
 }
 
-module.exports = { BETREIBER, PFAD, LINK_TAGE, GRENZE_STUNDEN, DURCHLAUF_STATUS, EXCEPTION_STATUS, auswerten, kennzahlen, seite, linkNachricht, esc };
+module.exports = { BETREIBER, PFAD, LINK_TAGE, GRENZE_STUNDEN, DURCHLAUF_STATUS, EXCEPTION_STATUS, EXCEPTION_ERGEBNIS, AGENT_GRENZEN, auswerten, agentStatus, kennzahlen, seite, linkNachricht, esc };
