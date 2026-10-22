@@ -36,11 +36,12 @@ test('Alles in Ordnung: nur aktive Kunden, alle Verbindungen grün, Sicherheit o
 	assert.deepEqual(k.haengend, []);
 	assert.equal(k.letzte_mail, '2026-10-18T07:00:00.000Z');
 	assert.equal(d.sicherheit.filter((s) => !s.ok).length, 0);
-	const html = b.seite({ daten: d, jetzt: JETZT, ablauf: '2027-01-16T06:00:00Z' });
-	assert.match(html, /Alles läuft/);
+	const kopf = b.kennzahlen({ daten: d, configs: basis().configs, vorgaenge: basis().vorgaenge, mails: [], heuteAb: '2026-10-17T22:00:00Z' });
+	assert.equal(kopf.zustand.text, 'Alle Systeme normal');
+	const html = b.seite({ daten: d, kopf, jetzt: JETZT, ablauf: '2027-01-16T06:00:00Z' });
+	assert.match(html, /🟢/);
 	assert.match(html, /--bg:#ffffff/);
-	assert.match(html, /Alle Freigaben der letzten 7 Tage kamen von eingetragenen Freigebern/);
-	assert.match(html, /Dashboard-Link gültig bis 16\.01\.27/);
+	assert.match(html, /Link gültig bis 16\.01\.27/);
 });
 
 test('Anmeldefehler des Postfachs nach dem Watchdog-Lauf ist sofort rot; Watchdog-Befunde für Teams und KI', () => {
@@ -108,8 +109,10 @@ test('Sicherheit: fremder Freigeber, direkt gesendet, Fälschungsverdacht, mehre
 });
 
 test('Seite: escaped, Link-Nachricht, Trennung Kunden- und Betreiber-Links', () => {
-	const d = b.auswerten(basis({ configs: [{ kunde_id: 'k1', postfach: '<b>x</b>', aktiv: true, freigeber: '[]' }] }));
-	const html = b.seite({ daten: d, jetzt: JETZT, ablauf: '2027-01-16T08:00:00Z' });
+	// Ohne Freigaben: der erste Befund nennt den Kunden ("noch kein Zustelltest") und muss escaped erscheinen.
+	const d = b.auswerten(basis({ configs: [{ kunde_id: '<b>x</b>', postfach: 'p', aktiv: true, freigeber: '[]' }], freigaben: [] }));
+	const kopf = b.kennzahlen({ daten: d, configs: [{ kunde_id: '<b>x</b>', aktiv: true }], vorgaenge: [], mails: [], heuteAb: JETZT });
+	const html = b.seite({ daten: d, kopf, jetzt: JETZT, ablauf: '2027-01-16T08:00:00Z' });
 	assert.equal(html.includes('<b>x</b>'), false);
 	assert.match(html, /&lt;b&gt;x&lt;\/b&gt;/);
 	assert.match(html, /http-equiv="refresh"/);
@@ -120,4 +123,50 @@ test('Seite: escaped, Link-Nachricht, Trennung Kunden- und Betreiber-Links', () 
 	assert.equal(u.zugangPruefen({ zugang: z, jetzt: JETZT, betreiber: true }).ok, true);
 	assert.equal(u.zugangPruefen({ zugang: { ...z, kunde_id: 'k1' }, jetzt: JETZT, betreiber: true }).ok, false);
 	assert.equal(u.zugangPruefen({ zugang: { ...z, kunde_id: 'k1' }, jetzt: JETZT }).ok, true);
+});
+
+test('Kennzahlen: Kunden, Agents, Vorgänge heute, Erfolgsquote, Exceptions, kritische Fehler, Zustand', () => {
+	const configs = [
+		{ kunde_id: 'k1', aktiv: true, postfach_workflow_id: 'WF1', freigeber: '["disponent@x.de"]', postfach: 'a@x.de' },
+		{ kunde_id: 'k3', aktiv: true, postfach_workflow_id: 'WF3', freigeber: '[]', postfach: 'c@x.de' },
+		{ kunde_id: 'k2', aktiv: false, postfach_workflow_id: 'WF2' },
+	];
+	const HEUTE = '2026-10-17T22:00:00Z';
+	const vorgaenge = [
+		{ kunde_id: 'k1', vorgangs_id: 'V-1', status: 'Bereit zur Bearbeitung', createdAt: '2026-10-18T06:00:00Z', updatedAt: '2026-10-18T06:00:00Z' },
+		{ kunde_id: 'k1', vorgangs_id: 'V-2', status: 'Ignoriert', createdAt: '2026-10-18T06:10:00Z' },
+		{ kunde_id: 'k1', vorgangs_id: 'V-3', status: 'Eskaliert / Manuell', createdAt: '2026-10-15T06:00:00Z', updatedAt: '2026-10-15T06:00:00Z' },
+		{ kunde_id: 'k3', vorgangs_id: 'V-4', status: 'Zuordnung unklar', createdAt: '2026-10-18T07:00:00Z', updatedAt: '2026-10-18T07:00:00Z' },
+		{ kunde_id: 'k2', vorgangs_id: 'V-5', status: 'Neu', createdAt: '2026-10-18T07:00:00Z' },
+	];
+	const mails = [
+		...Array.from({ length: 69 }, () => ({ kunde_id: 'k1', status: 'fertig', createdAt: '2026-10-18T06:00:00Z' })),
+		{ kunde_id: 'k1', status: 'fehler', createdAt: '2026-10-18T06:00:00Z' },
+		{ kunde_id: 'k1', status: 'in_arbeit', createdAt: '2026-10-18T07:59:00Z' },
+		{ kunde_id: 'k1', status: 'fehler', createdAt: '2026-10-17T20:00:00Z' },
+	];
+	const system = [...OK_SYSTEM, { schluessel: 'zustelltest:k3', letzter_lauf: '2026-10-18T05:50:00Z', letztes_ergebnis: '{"ok":true}' }];
+	const d = b.auswerten(basis({ configs, vorgaenge: vorgaenge.filter((v) => v.status !== 'Ignoriert'), system }));
+	const k = b.kennzahlen({ daten: d, configs, vorgaenge, mails, heuteAb: HEUTE });
+	assert.equal(k.kunden, 2);
+	assert.equal(k.agents, 2);
+	assert.equal(k.vorgaenge_heute, 2); // V-1, V-4 (nicht ignoriert, nicht inaktiver Kunde, nicht von gestern)
+	assert.equal(k.erfolgsquote, 98.6); // 69 von 70
+	assert.equal(k.exceptions, 2); // V-3, V-4
+	assert.equal(k.kritisch, 0);
+	assert.equal(k.zustand.stufe, 'warnung');
+	assert.equal(k.zustand.text, '2 Agents benötigen Aufmerksamkeit');
+	const html = b.seite({ daten: d, kopf: k, jetzt: JETZT, ablauf: '2027-01-16T08:00:00Z' });
+	assert.match(html, /98,6 %/);
+	assert.match(html, /🟡/);
+	assert.match(html, />2<\/div><div class="name">Offene Exceptions/);
+
+	// Kritisch: rot mit Grund; ohne Mails heute keine Quote
+	const krit = b.auswerten(basis({ fehler: [{ createdAt: '2026-10-18T07:00:00Z', meldung: 'x', alarmiert_am: null }] }));
+	const kk = b.kennzahlen({ daten: krit, configs: basis().configs, vorgaenge: [], mails: [], heuteAb: HEUTE });
+	assert.equal(kk.zustand.symbol, '🔴');
+	assert.equal(kk.zustand.text, 'Kritischer Fehler');
+	assert.match(kk.zustand.grund, /Fehler ohne zugestellten Alarm/);
+	assert.equal(kk.erfolgsquote, null);
+	assert.match(b.seite({ daten: krit, kopf: kk, jetzt: JETZT, ablauf: JETZT }), /<div class="zahl">–<\/div><div class="name">Erfolgsquote heute/);
 });

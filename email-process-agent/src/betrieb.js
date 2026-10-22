@@ -181,68 +181,91 @@ function zeit(iso, zone) {
 	try { return new Date(iso).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short', timeZone: zone }); } catch (e) { return iso; }
 }
 
-function vor(iso, jetzt) {
-	const h = stundenSeit(iso, jetzt);
-	if (!Number.isFinite(h)) return 'nie';
-	if (h < 1) return `vor ${Math.max(0, Math.round(h * 60))} min`;
-	if (h < 48) return `vor ${Math.round(h)} h`;
-	return `vor ${Math.round(h / 24)} Tagen`;
-}
 
-// Immer hell: weißer Hintergrund, schwarze Schrift, Links in Blau #1E90FF.
-// Statusfarben (gut/Warnung/kritisch) nur zusammen mit Text.
+// Immer hell: weißer Hintergrund, schwarze Schrift, Zahlen in Blau #1E90FF.
+// Statusfarben (gut/Warnung/kritisch) nur zusammen mit Symbol und Text.
 const STIL = `:root{color-scheme:light;--bg:#ffffff;--text-primary:#000000;--text-secondary:#444444;--linie:#e3e3e3;--blau:#1e90ff;--good:#0ca30c;--warning:#fab219;--critical:#d03b3b}
 body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;margin:0;background:var(--bg);color:var(--text-primary)}
-main{max-width:1100px;margin:0 auto;padding:16px}h1{font-size:1.4rem;margin:8px 0 2px}h2{font-size:1.05rem;margin:0 0 10px}a{color:var(--blau)}
-.leise{color:var(--text-secondary);font-size:.88rem}.karte{background:var(--bg);border:1px solid var(--linie);border-radius:10px;padding:16px;margin:14px 0}
-.ampel{display:flex;gap:12px;align-items:center;border-left:6px solid var(--s)}.ampel b{font-size:1.15rem}
-.ok{--s:var(--good)}.warnung{--s:var(--warning)}.kritisch{--s:var(--critical)}.unbekannt{--s:#9a9a9a}
-.punkt{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--s);margin-right:6px;vertical-align:baseline}
-ul.liste{list-style:none;padding:0;margin:10px 0 0}ul.liste li{padding:4px 0}
-.tab{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:.92rem}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--linie);white-space:nowrap}
-th{color:var(--text-secondary);font-weight:600}td.text{white-space:normal;min-width:200px}td.umbruch{white-space:normal;min-width:160px}td:first-child{white-space:normal;overflow-wrap:anywhere;min-width:140px}
-.raster{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.wert{font-size:1.3rem;font-weight:600}`;
+main{max-width:1100px;margin:0 auto;padding:16px}h1{font-size:1.4rem;margin:8px 0 2px}a{color:var(--blau)}
+.leise{color:var(--text-secondary);font-size:.88rem}.ok{--s:var(--good)}.warnung{--s:var(--warning)}.kritisch{--s:var(--critical)}`;
 
-function symbol(stufe) {
-	return { ok: '✅', warnung: '⚠️', kritisch: '⛔' }[stufe] || '';
+
+
+
+// ---------------------------------------------------------------- Kopfbereich: Kennzahlen und Gesamtzustand
+
+// Vorgänge, die auf eine Entscheidung eines Mitarbeiters warten ("Exceptions").
+const EXCEPTION_STATUS = Object.freeze(['Eskaliert / Manuell', 'Zuordnung unklar', 'Klassifizierung unklar']);
+
+/**
+ * Kennzahlen für den Kopf. daten = Ergebnis von auswerten().
+ * Agent = aktive Postfach-Verbindung (EPA-00-Kopie) eines Kunden.
+ * @param {object[]} p.vorgaenge  offene und heute angelegte Vorgänge
+ * @param {object[]} p.mails      Zeilen aus epa_verarbeitete_mails seit heuteAb
+ * @param {string} p.heuteAb      Beginn des heutigen Tages (ISO, Zeitzone des Betreibers)
+ */
+function kennzahlen({ daten, configs, vorgaenge, mails, heuteAb }) {
+	const aktiv = (configs || []).filter((c) => c && c.kunde_id && c.aktiv === true);
+	const kundenIds = new Set(aktiv.map((c) => c.kunde_id));
+	const agents = new Set(aktiv.map((c) => c.postfach_workflow_id || `kunde:${c.kunde_id}`));
+	const ab = ms(heuteAb);
+	const heute = (vorgaenge || []).filter((v) => v && kundenIds.has(v.kunde_id) && v.status !== 'Ignoriert' && ms(v.createdAt) >= ab);
+	const m = (mails || []).filter((x) => x && kundenIds.has(x.kunde_id) && ms(x.createdAt) >= ab);
+	const ok = m.filter((x) => x.status === 'fertig').length;
+	const fehl = m.filter((x) => x.status === 'fehler').length;
+	const exceptions = (vorgaenge || []).filter((v) => v && kundenIds.has(v.kunde_id) && EXCEPTION_STATUS.includes(v.status));
+	const kritisch = daten.befunde.filter((b) => b.stufe === 'kritisch');
+	// Agents mit Problemen: Verbindung, Versand, hängende Vorgänge, ungültige Config oder offene Exceptions.
+	const aufmerksamkeit = daten.kunden.filter((k) => !k.config_ok || k.outlook.ok === false || k.teams.ok === false || k.ki.ok === false
+		|| k.versand.ok !== true || k.haengend.length || k.versandfehler || exceptions.some((v) => v.kunde_id === k.kunde_id)).length;
+	const zustand = kritisch.length
+		? { stufe: 'kritisch', symbol: '🔴', text: kritisch.length === 1 ? 'Kritischer Fehler' : `${kritisch.length} kritische Fehler`, grund: kritisch[0].text }
+		: aufmerksamkeit
+			? { stufe: 'warnung', symbol: '🟡', text: aufmerksamkeit === 1 ? '1 Agent benötigt Aufmerksamkeit' : `${aufmerksamkeit} Agents benötigen Aufmerksamkeit`, grund: daten.befunde[0] ? daten.befunde[0].text : '' }
+			: daten.befunde.length
+				? { stufe: 'warnung', symbol: '🟡', text: 'Systeme laufen, es gibt Hinweise', grund: daten.befunde[0].text }
+				: { stufe: 'ok', symbol: '🟢', text: 'Alle Systeme normal', grund: '' };
+	return {
+		kunden: kundenIds.size,
+		agents: agents.size,
+		vorgaenge_heute: heute.length,
+		erfolgsquote: ok + fehl ? Math.round((ok / (ok + fehl)) * 1000) / 10 : null,
+		verarbeitet_heute: ok + fehl,
+		exceptions: exceptions.length,
+		kritisch: kritisch.length,
+		zustand,
+	};
 }
 
-function statusZelle(stufe, text) {
-	return `<span class="${stufe}"><span class="punkt" aria-hidden="true"></span>${esc(text)}</span>`;
+// Kennzahl-Kacheln: große Zahl, Beschriftung darunter. Blau für Zahlen, Rot nur bei Problemen (mit Text).
+const KOPF_STIL = `.kacheln{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0}
+.kachel{border:1px solid var(--linie);border-radius:12px;padding:16px}.kachel .zahl{font-size:2.2rem;font-weight:700;line-height:1.1;color:var(--blau);font-variant-numeric:tabular-nums}
+.kachel .name{color:var(--text-secondary);margin-top:4px}.kachel.alarm .zahl{color:var(--critical)}
+.zustand{display:flex;gap:14px;align-items:center;border:1px solid var(--linie);border-left:8px solid var(--s);border-radius:12px;padding:18px}
+.zustand .gross{font-size:1.5rem;font-weight:700}.zustand .symbol{font-size:2rem;line-height:1}`;
+
+function zahlText(n) {
+	return Number(n).toLocaleString('de-DE');
 }
 
-function verbZelle(v, jetzt) {
-	if (!v || v.ok === null) return statusZelle('unbekannt', 'nicht geprüft');
-	return statusZelle(v.ok ? 'ok' : 'kritisch', `${v.ok ? 'ok' : 'Fehler'} · ${vor(v.am, jetzt)}`);
-}
-
-function seite({ daten, jetzt, zone = 'Europe/Berlin', ablauf }) {
-	const d = daten;
-	const titel = { ok: 'Alles läuft', warnung: 'Läuft, mit Hinweisen', kritisch: 'Handlungsbedarf' }[d.stufe];
-	const befunde = d.befunde.length
-		? `<ul class="liste">${d.befunde.map((b) => `<li>${statusZelle(b.stufe, b.stufe === 'kritisch' ? 'Kritisch' : 'Hinweis')}: ${esc(b.text)}</li>`).join('')}</ul>`
-		: '<p class="leise">Keine Auffälligkeiten.</p>';
-	const kunden = d.kunden.map((k) => `<tr><td><b>${esc(k.kunde_id)}</b><br><span class="leise">${esc(k.postfach)}</span></td>
-<td>${verbZelle(k.outlook, jetzt)}</td><td>${verbZelle(k.teams, jetzt)}</td><td>${verbZelle(k.ki, jetzt)}</td>
-<td>${k.versand.ok === null ? statusZelle('warnung', 'noch nie') : statusZelle(k.versand.ok ? 'ok' : 'kritisch', `${k.versand.ok ? 'kommt an' : 'kommt nicht an'} · ${vor(k.versand.am, jetzt)}`)}</td>
-<td>${k.haengend.length ? statusZelle('kritisch', `${k.haengend.length} hängen`) : statusZelle('ok', 'keine')}</td>
-<td>${esc(vor(k.letzte_mail, jetzt))}</td></tr>`).join('');
-	const lauf = (name, l, extra, fehlStufe = 'kritisch') => `<div><div class="leise">${esc(name)}</div><div class="wert">${statusZelle(l.ok ? 'ok' : fehlStufe, vor(l.am, jetzt))}</div><div class="leise">${esc(zeit(l.am, zone))}${extra ? ' · ' + esc(extra) : ''}</div></div>`;
-	const sStufe = (s) => (s.info ? 'unbekannt' : s.ok ? 'ok' : (s.stufe || 'kritisch'));
-	const sWort = (s) => (s.info ? 'Info' : s.ok ? 'OK' : s.stufe === 'warnung' ? 'Hinweis' : 'Kritisch');
-	const sicherheit = `<ul class="liste">${d.sicherheit.map((s) => `<li>${statusZelle(sStufe(s), sWort(s))}: ${esc(s.text.replace('%ABLAUF%', zeit(s.ablauf, zone)))}</li>`).join('')}</ul>`;
-	const fehler = d.fehler.liste.length
-		? `<div class="tab"><table><thead><tr><th>Zeit</th><th>Workflow / Node</th><th>Code</th><th>Vorgang</th><th>Meldung</th><th>Alarm</th></tr></thead><tbody>${d.fehler.liste.map((f) => `<tr><td>${esc(zeit(f.am, zone))}</td><td class="umbruch">${esc(f.workflow)}<br><span class="leise">${esc(f.node)}</span></td><td>${esc(f.code)}</td><td>${esc(f.vorgangs_id || '–')}</td><td class="text">${esc(f.meldung)}</td><td>${f.alarmiert ? statusZelle('ok', 'gesendet') : statusZelle('kritisch', 'fehlt')}</td></tr>`).join('')}</tbody></table></div>`
-		: '<p class="leise">Keine Fehler in den letzten 7 Tagen.</p>';
-	return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta http-equiv="refresh" content="300"><title>Betrieb</title><style>${STIL}</style></head><body><main>
+function seite({ daten, kopf, jetzt, zone = 'Europe/Berlin', ablauf }) {
+	const k = kopf;
+	const quote = k.erfolgsquote === null ? '–' : `${k.erfolgsquote.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
+	const kachel = (zahl, name, alarm, titel) => `<div class="kachel${alarm ? ' alarm' : ''}"${titel ? ` title="${esc(titel)}"` : ''}><div class="zahl">${esc(zahl)}</div><div class="name">${esc(name)}</div></div>`;
+	const kacheln = [
+		kachel(zahlText(k.kunden), k.kunden === 1 ? 'Aktiver Kunde' : 'Aktive Kunden'),
+		kachel(zahlText(k.agents), k.agents === 1 ? 'Aktiver Agent' : 'Aktive Agents', false, 'Agent = aktive Postfach-Verbindung eines Kunden'),
+		kachel(zahlText(k.vorgaenge_heute), 'Vorgänge heute'),
+		kachel(quote, 'Erfolgsquote heute', k.erfolgsquote !== null && k.erfolgsquote < 95, `${k.verarbeitet_heute} Mails heute verarbeitet; Anteil ohne technischen Fehler`),
+		kachel(zahlText(k.exceptions), k.exceptions === 1 ? 'Offene Exception' : 'Offene Exceptions', false, 'Vorgänge, die eine Entscheidung eines Mitarbeiters brauchen'),
+		kachel(zahlText(k.kritisch), k.kritisch === 1 ? 'Kritischer Fehler' : 'Kritische Fehler', k.kritisch > 0),
+	].join('');
+	const z = k.zustand;
+	return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta http-equiv="refresh" content="300"><title>Betrieb</title><style>${STIL}
+${KOPF_STIL}</style></head><body><main>
 <h1>Betrieb Email Process Agent</h1><p class="leise">Stand ${esc(zeit(jetzt, zone))} · lädt alle 5 Minuten neu · Link gültig bis ${esc(zeit(ablauf, zone))}</p>
-<div class="karte ampel ${d.stufe}"><span style="font-size:1.6rem" aria-hidden="true">${symbol(d.stufe)}</span><div><b>${esc(titel)}</b><div class="leise">${d.befunde.length} Befund(e) · ${d.kunden.length} aktive(r) Kunde(n) · Alarme gehen an: ${esc(d.laeufe.alarm_kanal === 'telegram_test' ? 'Telegram' : 'Teams')}</div></div></div>
-<div class="karte"><h2>Befunde</h2>${befunde}</div>
-<div class="karte"><h2>Läuft alles? – je Kunde</h2><div class="tab"><table><thead><tr><th>Kunde</th><th>Outlook-Postfach</th><th>Teams</th><th>KI</th><th>Versand (Zustelltest)</th><th>Hängende Vorgänge</th><th>Letzte Anfrage</th></tr></thead><tbody>${kunden || '<tr><td colspan="7" class="leise">Keine aktiven Kunden.</td></tr>'}</tbody></table></div>
-<p class="leise">Outlook, Teams und KI prüft der Watchdog um 07:30 und 13:30; ein Anmeldefehler des Postfachs dazwischen wird sofort angezeigt.</p></div>
-<div class="karte"><h2>Automatische Läufe</h2><div class="raster">${lauf('Nachfassen (EPA-04, stündlich)', d.laeufe.nachfassen)}${lauf('Watchdog (EPA-06, 07:30 und 13:30)', d.laeufe.watchdog, d.laeufe.watchdog.gesamt ? 'Ergebnis: ' + d.laeufe.watchdog.gesamt : '')}${lauf('Löschjob (EPA-08, nachts)', d.laeufe.loeschjob, '', 'warnung')}</div></div>
-<div class="karte"><h2>Sicherheit</h2>${sicherheit}</div>
-<div class="karte"><h2>Fehler (7 Tage: ${d.fehler.anzahl}, davon 24 h: ${d.fehler.letzte24})</h2>${fehler}</div>
+<div class="zustand ${z.stufe}"><span class="symbol" aria-hidden="true">${z.symbol}</span><div><div class="gross">${esc(z.text)}</div>${z.grund ? `<div class="leise">${esc(z.grund)}${daten.befunde.length > 1 ? ` · insgesamt ${daten.befunde.length} Befunde` : ''}</div>` : ''}</div></div>
+<div class="kacheln">${kacheln}</div>
 <p class="leise">Nur für den Betreiber. Nicht weitergeben. Neuen Link: „EPA-14 Betrieb-Dashboard“ manuell starten (der alte wird gesperrt).</p>
 </main></body></html>`;
 }
@@ -252,4 +275,4 @@ function linkNachricht({ link, ablauf, zone = 'Europe/Berlin' }) {
 	return `<b>🔐 Neuer Link zum Betreiber-Dashboard</b><br><a href="${esc(link)}">Dashboard öffnen</a><br>Gültig bis ${esc(zeit(ablauf, zone))}. Alle früheren Dashboard-Links sind gesperrt. Nicht weitergeben.`;
 }
 
-module.exports = { BETREIBER, PFAD, LINK_TAGE, GRENZE_STUNDEN, DURCHLAUF_STATUS, auswerten, seite, linkNachricht, esc };
+module.exports = { BETREIBER, PFAD, LINK_TAGE, GRENZE_STUNDEN, DURCHLAUF_STATUS, EXCEPTION_STATUS, auswerten, kennzahlen, seite, linkNachricht, esc };

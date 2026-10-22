@@ -20,7 +20,7 @@ module.exports = function () {
 
 	wf.notiz('Notiz Zweck', [-120, -620], [
 		'## EPA-14 Betrieb-Dashboard',
-		'**Zweck:** Eine Seite für den Betreiber, nur zwei Fragen: Läuft alles, und ist es sicher? Ampel mit Befunden; je aktivem Kunden Outlook, Teams, KI (Watchdog bzw. Anmeldefehler), Versand (Zustelltest), hängende Vorgänge, letzte Anfrage; Läufe von Nachfassen, Watchdog, Löschjob; Sicherheit (Freigaben nur durch eingetragene Freigeber, direkt in Outlook gesendet, Fälschungsverdacht, gültige Links, Löschjob); letzte Fehler mit Alarmstatus. Nur lesen.',
+		'**Zweck:** Eine Seite für den Betreiber. Oben der Gesamtzustand (🟢 Alle Systeme normal / 🟡 N Agents benötigen Aufmerksamkeit / 🔴 Kritischer Fehler, mit Grund) und sechs Kennzahlen: aktive Kunden, aktive Agents (aktive Postfach-Verbindungen), Vorgänge heute, Erfolgsquote heute (verarbeitete Mails ohne technischen Fehler), offene Exceptions (Eskaliert, Zuordnung/Klassifizierung unklar), kritische Fehler. Grundlage sind dieselben Prüfungen wie bisher (Verbindungen, Zustelltest, Läufe, Fehler, Sicherheit). Nur lesen.',
 		`**Zugang:** geheimer Link …/webhook/${PFAD}?k=<Schlüssel>, gespeichert nur als Hash in epa_uebersicht_zugaenge mit kunde_id "${BETREIBER}". Kunden-Links öffnen dieses Dashboard nicht.`,
 		`**Neuer Link:** diesen Workflow manuell starten. Alle bisherigen Dashboard-Links werden gesperrt, der neue (${LINK_TAGE} Tage gültig) kommt per Telegram (Zeile "alarmierung" in epa_system_status). Ohne Telegram steht er im Ergebnis dieser manuellen Ausführung.`,
 		'**Trigger:** Webhook GET (muss veröffentlicht sein) bzw. manuell. Keine Credentials nötig.',
@@ -38,7 +38,9 @@ const crypto = require('crypto');
 const k = String(($input.first().json.query || {}).k || '');
 const gueltig = uebersicht.istGueltigesToken(k);
 const jetzt = new Date();
-return [{ json: { hash: gueltig ? uebersicht.tokenHash(crypto, k) : '__ungueltig__', jetzt: jetzt.toISOString(), seit7: new Date(jetzt.getTime() - 7 * 86400000).toISOString() } }];
+// "Heute" in der Zeitzone des Betreibers (Kennzahlen Vorgänge und Erfolgsquote).
+const heuteAb = DateTime.fromJSDate(jetzt).setZone('Europe/Berlin').startOf('day').toUTC().toISO();
+return [{ json: { hash: gueltig ? uebersicht.tokenHash(crypto, k) : '__ungueltig__', jetzt: jetzt.toISOString(), seit7: new Date(jetzt.getTime() - 7 * 86400000).toISOString(), heuteAb } }];
 `);
 	const zugang = wf.tabelle('Zugang lesen', [440, 0], 'get', 'epa_uebersicht_zugaenge', { bedingungen: [['schluessel_hash', 'eq', '={{ $json.hash }}']] }, { alwaysOutputData: true });
 	const pruefen = wf.code('Zugang prüfen', [660, 0], ['uebersicht'], `
@@ -54,9 +56,10 @@ return [{ json: { ...r, ablauf: r.ok ? z.ablauf : null } }];
 	const einmal = { alwaysOutputData: true, executeOnce: true };
 	const configs = wf.tabelle('Configs lesen', [1100, -100], 'get', 'epa_config_allgemein', { alle: true }, einmal);
 	const felder = wf.tabelle('Pflichtfelder lesen', [1320, -100], 'get', 'epa_config_pflichtfelder', { bedingungen: [['aktiv', 'isTrue']], alle: true }, einmal);
-	// Offene Vorgänge (hängende, Fälschungsverdacht, letzte Anfrage).
+	// Offene Vorgänge (Exceptions, hängende, Fälschungsverdacht) und alle heute angelegten (Kennzahl "Vorgänge heute").
 	const vorgaenge = wf.tabelle('Vorgänge lesen', [1540, -100], 'get', 'epa_vorgaenge', {
-		bedingungen: [['status', 'neq', 'Abgeschlossen'], ['status', 'neq', 'Ignoriert']],
+		bedingungen: [['status', 'neq', 'Abgeschlossen'], ['createdAt', 'gte', `={{ ${A}.heuteAb }}`]],
+		match: 'anyCondition',
 		alle: true,
 	}, einmal);
 	// Versandfehler und alle Entscheidungen der letzten 7 Tage (Freigaben nur durch eingetragene Freigeber?).
@@ -68,6 +71,8 @@ return [{ json: { ...r, ablauf: r.ok ? z.ablauf : null } }];
 	const system = wf.tabelle('Systemstatus lesen', [1980, -100], 'get', 'epa_system_status', { alle: true }, einmal);
 	const fehler = wf.tabelle('Fehler lesen', [2200, -100], 'get', 'epa_fehler_log', { bedingungen: [['createdAt', 'gte', `={{ ${A}.seit7 }}`]], alle: true }, einmal);
 	const zugaenge = wf.tabelle('Zugänge lesen', [2310, -220], 'get', 'epa_uebersicht_zugaenge', { alle: true }, einmal);
+	// Heute verarbeitete Mails (Erfolgsquote: fertig gegenüber fehler).
+	const mails = wf.tabelle('Mails heute lesen', [2420, -220], 'get', 'epa_verarbeitete_mails', { bedingungen: [['createdAt', 'gte', `={{ ${A}.heuteAb }}`]], alle: true }, einmal);
 	const bauen = wf.code('Dashboard bauen', [2420, -100], ['configValidator', 'betrieb'], `
 const a = $('Anfrage lesen').first().json;
 const zeilen = (n) => $(n).all().map((i) => i.json).filter((z) => z && z.id !== undefined);
@@ -77,8 +82,12 @@ const gueltig = {};
 for (const c of configs) {
 	try { gueltig[c.kunde_id] = configValidator.validiereConfig(c, pflicht.filter((p) => p.kunde_id === c.kunde_id), { zeitzoneGueltig: (zone) => DateTime.now().setZone(zone).isValid }).gueltig === true; } catch (e) { gueltig[c.kunde_id] = false; }
 }
-const daten = betrieb.auswerten({ configs, gueltig, vorgaenge: zeilen('Vorgänge lesen'), freigaben: zeilen('Freigaben lesen'), system: zeilen('Systemstatus lesen'), fehler: zeilen('Fehler lesen'), zugaenge: zeilen('Zugänge lesen'), jetzt: a.jetzt });
-return [{ json: { status: 200, html: betrieb.seite({ daten, jetzt: a.jetzt, ablauf: $('Zugang prüfen').first().json.ablauf }) } }];
+const vorgaenge = zeilen('Vorgänge lesen');
+// Befunde nur aus offenen Vorgängen; die heute angelegten zählen zusätzlich für "Vorgänge heute".
+const offen = vorgaenge.filter((v) => v.status !== 'Abgeschlossen' && v.status !== 'Ignoriert');
+const daten = betrieb.auswerten({ configs, gueltig, vorgaenge: offen, freigaben: zeilen('Freigaben lesen'), system: zeilen('Systemstatus lesen'), fehler: zeilen('Fehler lesen'), zugaenge: zeilen('Zugänge lesen'), jetzt: a.jetzt });
+const kopf = betrieb.kennzahlen({ daten, configs, vorgaenge, mails: zeilen('Mails heute lesen'), heuteAb: a.heuteAb });
+return [{ json: { status: 200, html: betrieb.seite({ daten, kopf, jetzt: a.jetzt, ablauf: $('Zugang prüfen').first().json.ablauf }) } }];
 `);
 	const abweisen = wf.code('Seite: kein Zugang', [1100, 120], ['uebersicht'], `
 const z = $input.first().json;
@@ -136,7 +145,7 @@ return [{ json: gesendet ? { ergebnis: 'link_per_telegram_gesendet', gueltig_bis
 	wf.kette(hook, lesen, zugang, pruefen, ok);
 	wf.verbinde(ok, configs, 0);
 	wf.verbinde(ok, abweisen, 1);
-	wf.kette(configs, felder, vorgaenge, freigaben, system, fehler, zugaenge, bauen, antwort);
+	wf.kette(configs, felder, vorgaenge, freigaben, system, fehler, zugaenge, mails, bauen, antwort);
 	wf.kette(abweisen, antwort);
 	wf.kette(manuell, erzeugen, sperrDaten, sperren, neuDaten, speichern, ziel, nachricht, perTelegram);
 	wf.verbinde(perTelegram, senden, 0);
