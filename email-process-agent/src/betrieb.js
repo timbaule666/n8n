@@ -55,7 +55,11 @@ function freigeberVon(c) {
  */
 function auswerten({ configs, gueltig, vorgaenge, freigaben, system, fehler, zugaenge, jetzt }) {
 	const befunde = [];
-	const melden = (stufe, text) => befunde.push({ stufe, text });
+	// Jeder Befund: Kurztext (Zustand, Liste) und Einzelheiten für die aufklappbare Fehlerliste im Dashboard.
+	const melden = (stufe, text, d = {}) => befunde.push({
+		stufe, text, titel: d.titel || text, kunde: d.kunde || null, was: d.was || text, seit: d.seit || null,
+		folge: d.folge || '', tun: d.tun || '', betroffen: d.betroffen || [],
+	});
 	const sys = {};
 	for (const z of system || []) if (z && z.schluessel) sys[z.schluessel] = z;
 	const wd = sys.watchdog || null;
@@ -91,15 +95,52 @@ function auswerten({ configs, gueltig, vorgaenge, freigaben, system, fehler, zug
 			versandfehler: (freigaben || []).filter((f) => f && f.kunde_id === c.kunde_id && f.status === 'fehler').length,
 		};
 		const n = k.kunde_id;
-		if (!k.config_ok) melden('kritisch', `${n}: Config ungültig – der Agent arbeitet für diesen Kunden nicht vollständig`);
-		if (k.outlook.ok === false) melden('kritisch', `${n}: Outlook-Postfach nicht erreichbar – Credential in n8n neu verbinden, bis dahin werden keine Mails abgeholt`);
-		if (k.teams.ok === false) melden('kritisch', `${n}: Teams nicht erreichbar – Credential neu verbinden, bis dahin gehen keine Freigabe-Links und Meldungen raus`);
-		if (k.ki.ok === false) melden('kritisch', `${n}: KI nicht erreichbar – Schlüssel bzw. Guthaben prüfen`);
-		if (k.versand.ok === false) melden('kritisch', `${n}: letzter Zustelltest fehlgeschlagen (${k.versand.art || 'unbekannt'}) – Mails kommen evtl. nicht an`);
+		if (!k.config_ok) melden('kritisch', `${n}: Config ungültig – der Agent arbeitet für diesen Kunden nicht vollständig`, {
+			titel: 'Config ungültig', kunde: n,
+			was: 'Die Einstellungen dieses Kunden (epa_config_allgemein bzw. Pflichtfelder) sind unvollständig oder fehlerhaft.',
+			folge: 'Nachfassen, Zustelltest und Tagesübersicht laufen für diesen Kunden nicht.',
+			tun: 'In n8n „EPA SW Config laden“ mit der kunde_id ausführen; die Fehlermeldung nennt das Feld. Danach die Config korrigieren.',
+		});
+		if (k.outlook.ok === false) melden('kritisch', `${n}: Outlook-Postfach nicht erreichbar – Credential in n8n neu verbinden, bis dahin werden keine Mails abgeholt`, {
+			titel: 'Outlook-Postfach nicht erreichbar', kunde: n, seit: k.outlook.am,
+			was: `Microsoft lehnt die Anmeldung am Postfach ${k.postfach || n} ab (Zugang abgelaufen oder Rechte entzogen).`,
+			folge: 'Neue Mails werden nicht abgeholt, Rückfragen können nicht gesendet werden.',
+			tun: 'n8n → Credentials → Outlook-Credential dieses Kunden öffnen → „Reconnect“ und mit dem Postfach-Konto anmelden.',
+		});
+		if (k.teams.ok === false) melden('kritisch', `${n}: Teams nicht erreichbar – Credential neu verbinden, bis dahin gehen keine Freigabe-Links und Meldungen raus`, {
+			titel: 'Teams nicht erreichbar', kunde: n, seit: k.teams.am,
+			was: 'Die Verbindung zu Microsoft Teams dieses Kunden ist fehlgeschlagen.',
+			folge: 'Freigabe-Links und Meldungen im Kanal kommen nicht an.',
+			tun: 'n8n → Credentials → Teams-Credential dieses Kunden → „Reconnect“ mit demselben Konto wie das Postfach.',
+		});
+		if (k.ki.ok === false) melden('kritisch', `${n}: KI nicht erreichbar – Schlüssel bzw. Guthaben prüfen`, {
+			titel: 'KI nicht erreichbar', kunde: n, seit: k.ki.am,
+			was: 'Der KI-Anbieter (OpenAI) hat nicht geantwortet oder den Zugang abgelehnt.',
+			folge: 'Neue Mails werden nicht ausgelesen; sie gehen nicht verloren und werden als Fehler gemeldet.',
+			tun: 'OpenAI-Konto prüfen: Schlüssel gültig, Guthaben bzw. Limit ausreichend; Credential in n8n.',
+		});
+		if (k.versand.ok === false) melden('kritisch', `${n}: letzter Zustelltest fehlgeschlagen (${k.versand.art || 'unbekannt'}) – Mails kommen evtl. nicht an`, {
+			titel: 'Zustelltest fehlgeschlagen', kunde: n, seit: k.versand.am,
+			was: k.versand.art === 'versand_abgelehnt' ? 'Microsoft hat den Versand der täglichen Testmail abgelehnt.' : 'Die tägliche Testmail wurde als gesendet gemeldet, kam aber nicht im Prüfpostfach an.',
+			folge: 'Rückfragen und Erinnerungen erreichen die Kunden vermutlich nicht.',
+			tun: 'Im Postfach nach Unzustellbarkeitsmeldungen sehen. Bei „550 5.7.708“: eigene Domain mit SPF, DKIM und DMARC einrichten. Nach der Behebung „EPA-11 Zustelltest“ manuell starten.',
+		});
 		else if (k.versand.ok === null) melden('warnung', `${n}: noch kein Zustelltest gelaufen`);
 		else if (stundenSeit(k.versand.am, jetzt) > GRENZE_STUNDEN.zustelltest) melden('warnung', `${n}: Zustelltest seit über ${GRENZE_STUNDEN.zustelltest} h nicht gelaufen`);
-		if (k.haengend.length) melden('kritisch', `${n}: ${k.haengend.length} Vorgang/Vorgänge hängen seit über ${GRENZE_STUNDEN.haengt} h (${liste(k.haengend)})`);
-		if (k.versandfehler) melden('kritisch', `${n}: ${k.versandfehler} Nachricht(en) nach Freigabe nicht gesendet`);
+		if (k.haengend.length) melden('kritisch', `${n}: ${k.haengend.length} Vorgang/Vorgänge hängen seit über ${GRENZE_STUNDEN.haengt} h (${liste(k.haengend)})`, {
+			titel: 'Vorgänge hängen', kunde: n,
+			was: `${k.haengend.length} Vorgang/Vorgänge stehen seit über ${GRENZE_STUNDEN.haengt} h in „Neu“, „In Prüfung“ oder „Lücken erkannt“; die Verarbeitung ist abgebrochen.`,
+			folge: 'Der Kunde bekommt keine Rückfrage, die Anfrage bleibt liegen.',
+			tun: 'Fehlerlog bzw. Ausführung zum Vorgang in n8n ansehen. Vorgang danach manuell weiterführen oder auf „Eskaliert / Manuell“ setzen.',
+			betroffen: k.haengend,
+		});
+		if (k.versandfehler) melden('kritisch', `${n}: ${k.versandfehler} Nachricht(en) nach Freigabe nicht gesendet`, {
+			titel: 'Nachricht nach Freigabe nicht gesendet', kunde: n,
+			was: `${k.versandfehler} freigegebene Nachricht(en) konnten nicht gesendet werden (Freigabe-Status „fehler“).`,
+			folge: 'Der Kunde hat die Rückfrage nicht bekommen.',
+			tun: 'Grund steht in epa_freigaben (Spalte grund). Ist das Postfach wieder erreichbar, kommt die Nachricht automatisch mit neuem Link erneut zur Freigabe.',
+			betroffen: (freigaben || []).filter((f) => f && f.kunde_id === c.kunde_id && f.status === 'fehler').map((f) => f.vorgangs_id),
+		});
 		return k;
 	});
 	if (!aktiv.length) melden('warnung', 'Kein Kunde ist aktiv');
@@ -112,13 +153,30 @@ function auswerten({ configs, gueltig, vorgaenge, freigaben, system, fehler, zug
 		loeschjob: lauf('loeschjob', GRENZE_STUNDEN.loeschjob),
 		alarm_kanal: (sys.alarmierung || {}).alarm_kanal || 'teams',
 	};
-	if (!laeufe.nachfassen.ok) melden('kritisch', `Nachfassen (EPA-04) seit über ${GRENZE_STUNDEN.nachfassen} h nicht gelaufen – Erinnerungen, Eskalationen und neue Freigabe-Links stehen`);
-	if (!laeufe.watchdog.ok) melden('kritisch', `Watchdog (EPA-06) seit über ${GRENZE_STUNDEN.watchdog} h nicht gelaufen – Verbindungen werden nicht geprüft`);
+	if (!laeufe.nachfassen.ok) melden('kritisch', `Nachfassen (EPA-04) seit über ${GRENZE_STUNDEN.nachfassen} h nicht gelaufen – Erinnerungen, Eskalationen und neue Freigabe-Links stehen`, {
+		titel: 'Nachfassen läuft nicht', seit: laeufe.nachfassen.am,
+		was: `Der stündliche Ablauf „EPA-04 Nachfassen“ ist seit über ${GRENZE_STUNDEN.nachfassen} h nicht gelaufen.`,
+		folge: 'Erinnerungen, Eskalationen, neue Freigabe-Links und das Erkennen direkt gesendeter Mails stehen still.',
+		tun: 'In n8n prüfen, ob EPA-04 veröffentlicht ist und die letzte Ausführung fehlerfrei war; Lauf-Lock in epa_system_status (Zeile epa04_lauf) prüfen.',
+	});
+	if (!laeufe.watchdog.ok) melden('kritisch', `Watchdog (EPA-06) seit über ${GRENZE_STUNDEN.watchdog} h nicht gelaufen – Verbindungen werden nicht geprüft`, {
+		titel: 'Watchdog läuft nicht', seit: laeufe.watchdog.am,
+		was: `Der Systemwächter „EPA-06 Watchdog“ ist seit über ${GRENZE_STUNDEN.watchdog} h nicht gelaufen.`,
+		folge: 'Verbindungen zu Outlook, Teams und KI werden nicht mehr geprüft; Ausfälle fallen später auf.',
+		tun: 'In n8n prüfen, ob EPA-06 veröffentlicht ist und die letzte Ausführung fehlerfrei war.',
+	});
 
 	// ---- Fehler und Alarmweg
 	const ohneAlarm = fl.filter((f) => !f.alarmiert_am);
 	const letzte24 = fl.filter((f) => stundenSeit(f.createdAt, jetzt) <= 24);
-	if (ohneAlarm.length) melden('kritisch', `${ohneAlarm.length} Fehler ohne zugestellten Alarm – Alarmweg (${laeufe.alarm_kanal === 'telegram_test' ? 'Telegram' : 'Teams'}) prüfen`);
+	const alarmweg = laeufe.alarm_kanal === 'telegram_test' ? 'Telegram' : 'Teams';
+	if (ohneAlarm.length) melden('kritisch', `${ohneAlarm.length} Fehler ohne zugestellten Alarm – Alarmweg (${alarmweg}) prüfen`, {
+		titel: 'Fehler ohne zugestellten Alarm', seit: ohneAlarm[ohneAlarm.length - 1].createdAt,
+		was: `Zu ${ohneAlarm.length} Fehler(n) ging kein Alarm an dich raus.`,
+		folge: 'Du erfährst von diesen Fehlern nur hier im Dashboard.',
+		tun: `Alarmweg (${alarmweg}) prüfen. Ist ein Fehler erledigt, in epa_fehler_log bei diesem Eintrag alarmiert_am setzen.`,
+		betroffen: ohneAlarm.slice(0, MAX_FEHLER).map((f) => `${new Date(ms(f.createdAt)).toISOString().slice(0, 16).replace('T', ' ')} UTC · ${f.workflow_name || f.workflow_id || '?'}${f.vorgangs_id ? ' · ' + f.vorgangs_id : ''}: ${String(f.meldung || '').slice(0, 160)}`),
+	});
 	if (letzte24.length) melden('warnung', `${letzte24.length} Fehler in den letzten 24 h`);
 
 	// ---- Sicherheit
@@ -133,17 +191,28 @@ function auswerten({ configs, gueltig, vorgaenge, freigaben, system, fehler, zug
 	const kundenLinks = gueltigeZugaenge.filter((z) => z.kunde_id !== BETREIBER).length;
 	const neuster = betreiberLinks[0] || null;
 	const sicherheit = [
-		{ ok: !unberechtigt.length, text: unberechtigt.length ? `Freigabe durch nicht eingetragene Person: ${liste(unberechtigt.map((f) => f.vorgangs_id))}` : 'Alle Freigaben der letzten 7 Tage kamen von eingetragenen Freigebern' },
+		{ ok: !unberechtigt.length, text: unberechtigt.length ? `Freigabe durch nicht eingetragene Person: ${liste(unberechtigt.map((f) => f.vorgangs_id))}` : 'Alle Freigaben der letzten 7 Tage kamen von eingetragenen Freigebern',
+			titel: 'Freigabe durch nicht eingetragene Person',
+			was: 'Rückfragen wurden von Personen freigegeben, die (nicht mehr) als Freigeber des Kunden eingetragen sind.',
+			folge: 'Möglicherweise wurde ein Freigabe-Link weitergegeben.',
+			tun: 'In epa_freigaben (Spalte entscheider) nachsehen, wer freigegeben hat. Wurde nur die Freigeber-Liste geändert, ist es unkritisch (die Meldung verschwindet nach 7 Tagen); sonst die Weitergabe klären.',
+			betroffen: unberechtigt.map((f) => `${f.vorgangs_id} · ${f.kunde_id} · freigegeben von ${f.entscheider}`) },
 		{ ok: !direkt.length, stufe: 'warnung', text: direkt.length ? `An der Freigabe vorbei direkt in Outlook gesendet (7 Tage): ${liste(direkt.map((f) => f.vorgangs_id))}` : 'Keine Mail an der Freigabe vorbei gesendet (7 Tage)' },
 		{ ok: !spoofing.length, stufe: 'warnung', text: spoofing.length ? `Verdacht auf gefälschten Absender in offenen Vorgängen: ${liste(spoofing.map((v) => v.vorgangs_id))}` : 'Kein Verdacht auf gefälschte Absender in offenen Vorgängen' },
-		{ ok: betreiberLinks.length <= 1, text: betreiberLinks.length <= 1 ? 'Höchstens ein gültiger Dashboard-Link' : `${betreiberLinks.length} gültige Dashboard-Links – EPA-14 manuell starten, um alle bis auf einen neuen zu sperren` },
+		{ ok: betreiberLinks.length <= 1, text: betreiberLinks.length <= 1 ? 'Höchstens ein gültiger Dashboard-Link' : `${betreiberLinks.length} gültige Dashboard-Links – EPA-14 manuell starten, um alle bis auf einen neuen zu sperren`,
+			titel: 'Mehrere gültige Dashboard-Links',
+			was: `Es gibt ${betreiberLinks.length} gültige Links zu diesem Dashboard.`,
+			folge: 'Ein alter, evtl. weitergegebener Link zeigt weiterhin alle Kunden.',
+			tun: '„EPA-14 Betrieb-Dashboard“ manuell starten: alle alten Links werden gesperrt, der neue kommt per Telegram.' },
 		{ ok: !neuster || (ms(neuster.ablauf) - ms(jetzt)) / 86400000 > LINK_WARNUNG_TAGE, stufe: 'warnung', text: neuster ? 'Dashboard-Link gültig bis %ABLAUF%' : 'Kein gültiger Dashboard-Link', ablauf: neuster ? neuster.ablauf : null },
 		{ ok: laeufe.loeschjob.ok, stufe: 'warnung', text: laeufe.loeschjob.ok ? 'Löschjob läuft – Daten werden nach Ablauf der Aufbewahrung gelöscht' : 'Löschjob (EPA-08) läuft nicht – Daten werden nicht nach Ablauf der Aufbewahrung gelöscht' },
 		{ ok: true, info: true, text: `${kundenLinks} gültige Kunden-Übersichtslink(s) (je Tagesübersicht ein neuer, 30 Tage gültig)` },
 	];
 	for (const s of sicherheit) {
 		if (s.ok || s.info) continue;
-		melden(s.stufe || 'kritisch', `Sicherheit: ${s.ablauf ? 'Dashboard-Link läuft bald ab – EPA-14 manuell starten' : s.text}`);
+		melden(s.stufe || 'kritisch', `Sicherheit: ${s.ablauf ? 'Dashboard-Link läuft bald ab – EPA-14 manuell starten' : s.text}`, {
+			titel: s.titel ? `Sicherheit: ${s.titel}` : null, was: s.was, folge: s.folge, tun: s.tun, betroffen: s.betroffen,
+		});
 	}
 
 	const stufe = befunde.some((b) => b.stufe === 'kritisch') ? 'kritisch' : befunde.length ? 'warnung' : 'ok';
@@ -239,10 +308,19 @@ function kennzahlen({ daten, configs, vorgaenge, mails, heuteAb }) {
 
 // Kennzahl-Kacheln: große Zahl, Beschriftung darunter. Blau für Zahlen, Rot nur bei Problemen (mit Text).
 const KOPF_STIL = `.kacheln{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0}
-.kachel{border:1px solid var(--linie);border-radius:12px;padding:16px}.kachel .zahl{font-size:2.2rem;font-weight:700;line-height:1.1;color:var(--blau);font-variant-numeric:tabular-nums}
+.kachel{border:1px solid var(--linie);border-radius:12px;padding:16px}.kachel .zahl{font-size:clamp(1.7rem,3.2vw,2.2rem);white-space:nowrap;font-weight:700;line-height:1.1;color:var(--blau);font-variant-numeric:tabular-nums}
 .kachel .name{color:var(--text-secondary);margin-top:4px}.kachel.alarm .zahl{color:var(--critical)}
 .zustand{display:flex;gap:14px;align-items:center;border:1px solid var(--linie);border-left:8px solid var(--s);border-radius:12px;padding:18px}
-.zustand .gross{font-size:1.5rem;font-weight:700}.zustand .symbol{font-size:2rem;line-height:1}`;
+.zustand .gross{font-size:1.5rem;font-weight:700}.zustand .symbol{font-size:2rem;line-height:1}
+a.kachel{color:inherit;text-decoration:none;display:block}a.kachel:hover,a.kachel:focus{border-color:var(--blau);outline:none}.kachel .mehr{color:var(--blau);font-size:.85rem;margin-top:6px}
+.fehlerliste{display:none;border:1px solid var(--linie);border-radius:12px;padding:16px;margin:0 0 16px}.fehlerliste:target{display:block}
+.fehlerliste .kopf{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.fehlerliste h2{font-size:1.15rem;margin:0}
+.fehler{border:1px solid var(--linie);border-left:6px solid var(--critical);border-radius:10px;margin:10px 0}
+.fehler summary{cursor:pointer;padding:12px 14px;list-style:none}.fehler summary::-webkit-details-marker{display:none}
+.fehler summary::before{content:'▸';color:var(--blau);margin-right:8px}.fehler[open] summary::before{content:'▾'}
+.fehler summary b{font-size:1.05rem}.fehler .inhalt{padding:0 14px 14px 32px}
+.fehler dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:0}.fehler dt{color:var(--text-secondary)}.fehler dd{margin:0;overflow-wrap:anywhere}
+.fehler ul{margin:0;padding-left:18px}`;
 
 function zahlText(n) {
 	return Number(n).toLocaleString('de-DE');
@@ -251,21 +329,35 @@ function zahlText(n) {
 function seite({ daten, kopf, jetzt, zone = 'Europe/Berlin', ablauf }) {
 	const k = kopf;
 	const quote = k.erfolgsquote === null ? '–' : `${k.erfolgsquote.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
-	const kachel = (zahl, name, alarm, titel) => `<div class="kachel${alarm ? ' alarm' : ''}"${titel ? ` title="${esc(titel)}"` : ''}><div class="zahl">${esc(zahl)}</div><div class="name">${esc(name)}</div></div>`;
+	const kachel = (zahl, name, alarm, titel, ziel) => {
+		const inhalt = `<div class="zahl">${esc(zahl)}</div><div class="name">${esc(name)}</div>${ziel ? '<div class="mehr">Liste anzeigen ▾</div>' : ''}`;
+		const attr = `class="kachel${alarm ? ' alarm' : ''}"${titel ? ` title="${esc(titel)}"` : ''}`;
+		return ziel ? `<a ${attr} href="#${ziel}">${inhalt}</a>` : `<div ${attr}>${inhalt}</div>`;
+	};
 	const kacheln = [
 		kachel(zahlText(k.kunden), k.kunden === 1 ? 'Aktiver Kunde' : 'Aktive Kunden'),
 		kachel(zahlText(k.agents), k.agents === 1 ? 'Aktiver Agent' : 'Aktive Agents', false, 'Agent = aktive Postfach-Verbindung eines Kunden'),
 		kachel(zahlText(k.vorgaenge_heute), 'Vorgänge heute'),
-		kachel(quote, 'Erfolgsquote heute', k.erfolgsquote !== null && k.erfolgsquote < 95, `${k.verarbeitet_heute} Mails heute verarbeitet; Anteil ohne technischen Fehler`),
+		kachel(quote, 'Erfolgsquote heute', k.erfolgsquote !== null && k.erfolgsquote < 95, `${k.verarbeitet_heute} ${k.verarbeitet_heute === 1 ? 'Mail' : 'Mails'} heute verarbeitet; Anteil ohne technischen Fehler`),
 		kachel(zahlText(k.exceptions), k.exceptions === 1 ? 'Offene Exception' : 'Offene Exceptions', false, 'Vorgänge, die eine Entscheidung eines Mitarbeiters brauchen'),
-		kachel(zahlText(k.kritisch), k.kritisch === 1 ? 'Kritischer Fehler' : 'Kritische Fehler', k.kritisch > 0),
+		kachel(zahlText(k.kritisch), k.kritisch === 1 ? 'Kritischer Fehler' : 'Kritische Fehler', k.kritisch > 0, null, k.kritisch > 0 ? 'kritisch' : null),
 	].join('');
+	// Liste der kritischen Fehler: öffnet sich per Klick auf die Kachel (Sprungziel, ohne JavaScript);
+	// jeder Fehler klappt einzeln auf.
+	const kritisch = daten.befunde.filter((b) => b.stufe === 'kritisch');
+	const zeile = (name, wert) => (wert ? `<dt>${esc(name)}</dt><dd>${wert}</dd>` : '');
+	const fehlerliste = kritisch.length ? `<section id="kritisch" class="fehlerliste"><div class="kopf"><h2>Kritische Fehler (${kritisch.length})</h2><a href="#">Schließen</a></div>
+<p class="leise">Auf einen Fehler klicken, um die Einzelheiten zu sehen.</p>
+${kritisch.map((b) => `<details class="fehler"><summary><b>${esc(b.titel)}</b>${b.kunde ? ` <span class="leise">· ${esc(b.kunde)}</span>` : ''}${b.seit ? ` <span class="leise">· seit ${esc(zeit(b.seit, zone))}</span>` : ''}</summary>
+<div class="inhalt"><dl>${zeile('Was ist passiert', esc(b.was))}${zeile('Kunde', b.kunde ? esc(b.kunde) : '')}${zeile('Seit', b.seit ? esc(zeit(b.seit, zone)) : '')}${zeile('Folge', esc(b.folge))}${zeile('Was tun', esc(b.tun))}${zeile('Betroffen', b.betroffen && b.betroffen.length ? `<ul>${b.betroffen.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '')}</dl></div></details>`).join('')}
+</section>` : '';
 	const z = k.zustand;
 	return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta http-equiv="refresh" content="300"><title>Betrieb</title><style>${STIL}
 ${KOPF_STIL}</style></head><body><main>
 <h1>Betrieb Email Process Agent</h1><p class="leise">Stand ${esc(zeit(jetzt, zone))} · lädt alle 5 Minuten neu · Link gültig bis ${esc(zeit(ablauf, zone))}</p>
 <div class="zustand ${z.stufe}"><span class="symbol" aria-hidden="true">${z.symbol}</span><div><div class="gross">${esc(z.text)}</div>${z.grund ? `<div class="leise">${esc(z.grund)}${daten.befunde.length > 1 ? ` · insgesamt ${daten.befunde.length} Befunde` : ''}</div>` : ''}</div></div>
 <div class="kacheln">${kacheln}</div>
+${fehlerliste}
 <p class="leise">Nur für den Betreiber. Nicht weitergeben. Neuen Link: „EPA-14 Betrieb-Dashboard“ manuell starten (der alte wird gesperrt).</p>
 </main></body></html>`;
 }

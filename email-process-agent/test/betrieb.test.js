@@ -170,3 +170,25 @@ test('Kennzahlen: Kunden, Agents, Vorgänge heute, Erfolgsquote, Exceptions, kri
 	assert.equal(kk.erfolgsquote, null);
 	assert.match(b.seite({ daten: krit, kopf: kk, jetzt: JETZT, ablauf: JETZT }), /<div class="zahl">–<\/div><div class="name">Erfolgsquote heute/);
 });
+
+test('Kritische Fehler: Kachel öffnet Liste, jeder Fehler einzeln aufklappbar mit Einzelheiten', () => {
+	const d = b.auswerten(basis({
+		system: OK_SYSTEM.map((z) => (z.schluessel === 'zustelltest:k1' ? { ...z, letztes_ergebnis: '{"ok":false,"art":"nicht_angekommen"}' } : z)),
+		fehler: [{ createdAt: '2026-10-18T07:00:00Z', workflow_name: 'EPA SW Freigabe senden', vorgangs_id: 'V-9', meldung: 'Chat <öffnen>', alarmiert_am: null }],
+	}));
+	const k = b.kennzahlen({ daten: d, configs: basis().configs, vorgaenge: [], mails: [], heuteAb: JETZT });
+	assert.equal(k.kritisch, 2);
+	const html = b.seite({ daten: d, kopf: k, jetzt: JETZT, ablauf: '2027-01-16T08:00:00Z' });
+	assert.match(html, /<a class="kachel alarm" href="#kritisch">/);
+	assert.match(html, /<section id="kritisch" class="fehlerliste">/);
+	assert.equal((html.match(/<details class="fehler">/g) || []).length, 2);
+	assert.match(html, /<b>Zustelltest fehlgeschlagen<\/b> <span class="leise">· k1<\/span>/);
+	assert.match(html, /<dt>Was tun<\/dt><dd>Im Postfach nach Unzustellbarkeitsmeldungen/);
+	assert.match(html, /<li>2026-10-18 07:00 UTC · EPA SW Freigabe senden · V-9: Chat &lt;öffnen&gt;<\/li>/);
+	// Ohne kritische Fehler: keine Liste, Kachel nicht anklickbar
+	const ok = b.auswerten(basis());
+	const ko = b.kennzahlen({ daten: ok, configs: basis().configs, vorgaenge: [], mails: [], heuteAb: JETZT });
+	const h2 = b.seite({ daten: ok, kopf: ko, jetzt: JETZT, ablauf: JETZT });
+	assert.equal(h2.includes('id="kritisch"'), false);
+	assert.equal(h2.includes('href="#kritisch"'), false);
+});
