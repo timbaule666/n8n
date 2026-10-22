@@ -458,8 +458,8 @@ function kennzahlen({ daten, configs, vorgaenge, mails, heuteAb, agenten }) {
 const KOPF_STIL = `.kacheln{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0}
 .kachel{border:1px solid var(--linie);border-radius:12px;padding:16px}.kachel .zahl{font-size:clamp(1.7rem,3.2vw,2.2rem);white-space:nowrap;font-weight:700;line-height:1.1;color:var(--blau);font-variant-numeric:tabular-nums}
 .kachel .name{color:var(--text-secondary);margin-top:4px}.kachel.alarm .zahl{color:var(--critical)}
-.zustand{display:flex;width:fit-content;max-width:100%;box-sizing:border-box;gap:10px;align-items:center;border:1px solid var(--linie);border-left:5px solid var(--s);border-radius:10px;padding:8px 14px;margin-top:10px}
-.zustand .gross{font-size:1.05rem;font-weight:700}.zustand .symbol{font-size:1.2rem;line-height:1}.zustand .leise{font-size:.8rem}
+.zustand{display:flex;width:fit-content;max-width:100%;box-sizing:border-box;gap:10px;align-items:center;border:1px solid var(--linie);border-left:5px solid var(--s);border-radius:10px;padding:6px 12px;margin-top:10px}
+.zustand .gross{font-size:1.05rem;font-weight:700}.zustand .symbol{font-size:1.1rem;line-height:1}
 a.kachel{color:inherit;text-decoration:none;display:block}a.kachel:hover,a.kachel:focus{border-color:var(--blau);outline:none}.kachel .mehr{color:var(--blau);font-size:.85rem;margin-top:6px}
 .fehlerliste{display:none;border:1px solid var(--linie);border-radius:12px;padding:16px;margin:0 0 16px}.fehlerliste:target{display:block}
 .fehlerliste .kopf{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.fehlerliste h2{font-size:1.15rem;margin:0}
@@ -533,7 +533,7 @@ ${kritisch.map((b) => `<details class="fehler"><summary><b>${esc(b.titel)}</b>${
 	return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta http-equiv="refresh" content="300"><title>Betrieb</title><style>${STIL}
 ${KOPF_STIL}</style></head><body><main>
 <h1>Betrieb Email Process Agent</h1><p class="leise">Stand ${esc(zeit(jetzt, zone))} · lädt alle 5 Minuten neu · Link gültig bis ${esc(zeit(ablauf, zone))}</p>
-<div class="zustand ${z.stufe}"><span class="symbol" aria-hidden="true">${z.symbol}</span><div><div class="gross">${esc(z.text)}</div>${z.grund ? `<div class="leise">${esc(z.grund)}${daten.befunde.length > 1 ? ` · insgesamt ${daten.befunde.length} Befunde` : ''}</div>` : ''}</div></div>
+<div class="zustand ${z.stufe}"${z.grund ? ` title="${esc(z.grund)}"` : ''}><span class="symbol" aria-hidden="true">${z.symbol}</span><div class="gross">${esc(z.text)}</div></div>
 <div class="kacheln">${kacheln}</div>
 ${fehlerliste}
 ${agentTabelle(agenten, jetzt, zone)}
