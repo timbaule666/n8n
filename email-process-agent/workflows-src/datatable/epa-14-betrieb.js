@@ -89,7 +89,8 @@ const daten = betrieb.auswerten({ configs, gueltig, vorgaenge: offen, freigaben:
 const mails = zeilen('Mails lesen');
 const agenten = betrieb.agentStatus({ daten, mails, heuteAb: a.heuteAb, jetzt: a.jetzt });
 const kopf = betrieb.kennzahlen({ daten, configs, vorgaenge, mails, heuteAb: a.heuteAb, agenten });
-return [{ json: { status: 200, html: betrieb.seite({ daten, kopf, agenten, jetzt: a.jetzt, ablauf: $('Zugang prüfen').first().json.ablauf }) } }];
+const verteilung = betrieb.vorgangsstatus({ daten, mails, heuteAb: a.heuteAb });
+return [{ json: { status: 200, html: betrieb.seite({ daten, kopf, agenten, verteilung, jetzt: a.jetzt, ablauf: $('Zugang prüfen').first().json.ablauf }) } }];
 `);
 	const abweisen = wf.code('Seite: kein Zugang', [1100, 120], ['uebersicht'], `
 const z = $input.first().json;

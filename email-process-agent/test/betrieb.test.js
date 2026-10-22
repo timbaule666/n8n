@@ -257,3 +257,36 @@ test('Agent-Status pro Kunde: Ampel, letzter Lauf, Zahlen von heute, kritische z
 	const x = b.agentStatus({ daten: b.auswerten(basis({ configs: [{ kunde_id: '<i>', aktiv: true, postfach: '<p>' }] })), mails: [], heuteAb: HEUTE, jetzt: JETZT });
 	assert.equal(b.seite({ daten: d, kopf: k, agenten: x, jetzt: JETZT, ablauf: JETZT }).includes('<i>'), false);
 });
+
+test('Vorgangsstatus heute: Ringdiagramm, Legende, Automation Rate', () => {
+	const HEUTE = '2026-10-17T22:00:00Z';
+	const d = b.auswerten(basis());
+	const m = (n, status, ergebnis, kunde_id = 'k1', createdAt = '2026-10-18T06:00:00Z') => Array.from({ length: n }, () => ({ kunde_id, status, ergebnis, createdAt }));
+	const mails = [
+		...m(20, 'fertig', 'bereit'), ...m(5, 'fertig', 'antwort_bereit'), ...m(1, 'fertig', 'antwort_keine_daten'), ...m(1, 'fertig', 'antwort_gemeldet'),
+		...m(4, 'fertig', 'luecken'), ...m(1, 'fertig', 'antwort_luecken'),
+		...m(2, 'fertig', 'zuordnung_unklar'), ...m(1, 'fertig', 'antwort_extraktion_fehlgeschlagen'),
+		...m(1, 'fehler', null),
+		// nicht gezählt
+		...m(3, 'fertig', 'duplikat'), ...m(2, 'fertig', 'ignoriert_auto_antwort'), ...m(1, 'fertig', 'ignoriert'), ...m(1, 'in_arbeit', null),
+		...m(4, 'fertig', 'bereit', 'k2'), ...m(4, 'fertig', 'bereit', 'k1', '2026-10-17T10:00:00Z'),
+	];
+	const v = b.vorgangsstatus({ daten: d, mails, heuteAb: HEUTE });
+	assert.deepEqual(v.zahlen, { automatisch: 27, freigabe: 5, exception: 3, fehler: 1 });
+	assert.equal(v.gesamt, 36);
+	assert.equal(v.automation_rate, 75);
+	const k = b.kennzahlen({ daten: d, configs: basis().configs, vorgaenge: [], mails, heuteAb: HEUTE });
+	const html = b.seite({ daten: d, kopf: k, verteilung: v, jetzt: JETZT, ablauf: JETZT });
+	assert.match(html, /<h2 class="abschnitt">Vorgangsstatus heute<\/h2>/);
+	assert.equal((html.match(/<circle r="70"[^>]*stroke-dasharray/g) || []).length, 4);
+	assert.match(html, /<div class="name">Human Approval<\/div><div class="wert">5<\/div>/);
+	assert.match(html, /75,0 %<\/span> Automation Rate/);
+	// Ohne Daten: leerer Ring, keine Quote
+	const leer = b.vorgangsstatus({ daten: d, mails: [], heuteAb: HEUTE });
+	assert.equal(leer.automation_rate, null);
+	const h2 = b.seite({ daten: d, kopf: k, verteilung: leer, jetzt: JETZT, ablauf: JETZT });
+	assert.match(h2, /keine Daten/);
+	assert.equal(h2.includes('stroke-dasharray'), false);
+	// Duplikate zählen in der Agent-Tabelle nicht als Mail
+	assert.equal(b.agentStatus({ daten: d, mails, heuteAb: HEUTE, jetzt: JETZT })[0].heute, 36 + 3 + 1);
+});

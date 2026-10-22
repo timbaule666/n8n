@@ -253,7 +253,7 @@ function zeit(iso, zone) {
 
 // Immer hell: weißer Hintergrund, schwarze Schrift, Zahlen in Blau #1E90FF.
 // Statusfarben (gut/Warnung/kritisch) nur zusammen mit Symbol und Text.
-const STIL = `:root{color-scheme:light;--bg:#ffffff;--text-primary:#000000;--text-secondary:#444444;--linie:#e3e3e3;--blau:#1e90ff;--good:#0ca30c;--warning:#fab219;--critical:#d03b3b}
+const STIL = `:root{color-scheme:light;--bg:#ffffff;--text-primary:#000000;--text-secondary:#444444;--linie:#e3e3e3;--blau:#1e90ff;--good:#0ca30c;--warning:#fab219;--critical:#d03b3b;--orange:#f07c24}
 body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;margin:0;background:var(--bg);color:var(--text-primary)}
 main{max-width:1100px;margin:0 auto;padding:16px}h1{font-size:1.4rem;margin:8px 0 2px}a{color:var(--blau)}
 .leise{color:var(--text-secondary);font-size:.88rem}.ok{--s:var(--good)}.warnung{--s:var(--warning)}.kritisch{--s:var(--critical)}`;
@@ -289,7 +289,7 @@ function agentStatus({ daten, mails, heuteAb, jetzt }) {
 	const stufen = ['ok', 'warnung', 'kritisch'];
 	const zeilen = daten.kunden.map((k) => {
 		const eigene = (mails || []).filter((m) => m && m.kunde_id === k.kunde_id && Number.isFinite(ms(m.createdAt)));
-		const heute = eigene.filter((m) => ms(m.createdAt) >= ab);
+		const heute = eigene.filter((m) => ms(m.createdAt) >= ab && m.ergebnis !== 'duplikat');
 		const fertig = heute.filter((m) => m.status === 'fertig');
 		const exceptions = fertig.filter(istException).length;
 		const fehler = heute.filter((m) => m.status === 'fehler').length;
@@ -325,6 +325,73 @@ function agentStatus({ daten, mails, heuteAb, jetzt }) {
 		};
 	});
 	return zeilen.sort((a, b) => stufen.indexOf(b.stufe) - stufen.indexOf(a.stufe) || String(a.kunde_id).localeCompare(String(b.kunde_id)));
+}
+
+// ---------------------------------------------------------------- Vorgangsstatus heute (Ringdiagramm)
+
+// Ergebnis einer heute verarbeiteten Mail -> Anteil im Diagramm. Gezählt werden nur Mails, die zu einem Vorgang
+// gehören; Duplikate, vorgefilterte Mails (ignoriert_*), "keine Anfrage" (ignoriert) und laufende zählen nicht.
+const VERTEILUNG = Object.freeze([
+	{ schluessel: 'automatisch', name: 'Automatisch erledigt', farbe: 'var(--blau)', erklaerung: 'vollständig erkannt oder Kundenantwort ohne neue Rückfrage verarbeitet' },
+	{ schluessel: 'freigabe', name: 'Human Approval', farbe: 'var(--good)', erklaerung: 'Rückfrage erstellt, wartet auf bzw. ging durch eine Freigabe' },
+	{ schluessel: 'exception', name: 'Exception', farbe: 'var(--warning)', erklaerung: 'ein Mitarbeiter muss entscheiden' },
+	{ schluessel: 'fehler', name: 'Fehler', farbe: 'var(--orange)', erklaerung: 'technischer Fehler, Mail nicht fertig verarbeitet' },
+]);
+const AUTOMATISCH_ERGEBNIS = Object.freeze(['bereit', 'antwort_bereit', 'antwort_keine_daten', 'antwort_gemeldet']);
+const FREIGABE_ERGEBNIS = Object.freeze(['luecken', 'antwort_luecken']);
+
+function verteilungArt(m) {
+	if (m.status === 'fehler') return 'fehler';
+	if (m.status !== 'fertig') return null;
+	if (istException(m)) return 'exception';
+	if (AUTOMATISCH_ERGEBNIS.includes(m.ergebnis)) return 'automatisch';
+	if (FREIGABE_ERGEBNIS.includes(m.ergebnis)) return 'freigabe';
+	return null;
+}
+
+/** Verteilung der heute verarbeiteten Mails aktiver Kunden; Automation Rate = automatisch / alle gezählten. */
+function vorgangsstatus({ daten, mails, heuteAb }) {
+	const ids = new Set(daten.kunden.map((k) => k.kunde_id));
+	const ab = ms(heuteAb);
+	const zahlen = Object.fromEntries(VERTEILUNG.map((v) => [v.schluessel, 0]));
+	for (const m of mails || []) {
+		if (!m || !ids.has(m.kunde_id) || !(ms(m.createdAt) >= ab)) continue;
+		const art = verteilungArt(m);
+		if (art) zahlen[art] += 1;
+	}
+	const gesamt = Object.values(zahlen).reduce((a, b) => a + b, 0);
+	return { zahlen, gesamt, automation_rate: gesamt ? Math.round((zahlen.automatisch / gesamt) * 1000) / 10 : null };
+}
+
+function prozent(x) {
+	return `${x.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
+}
+
+// Ring als SVG ohne JavaScript: je Anteil ein Kreisbogen (stroke-dasharray), kleine Lücke zwischen den Bögen.
+function ring(v) {
+	const r = 70;
+	const u = 2 * Math.PI * r;
+	const teile = VERTEILUNG.filter((x) => v.zahlen[x.schluessel] > 0);
+	const luecke = teile.length > 1 ? 3 : 0;
+	let versatz = 0;
+	const boegen = teile.map((x) => {
+		const laenge = (v.zahlen[x.schluessel] / v.gesamt) * u;
+		const bogen = `<circle r="${r}" cx="90" cy="90" fill="none" stroke="${x.farbe}" stroke-width="28" stroke-dasharray="${Math.max(laenge - luecke, 0.5).toFixed(2)} ${u.toFixed(2)}" stroke-dashoffset="${(-versatz).toFixed(2)}" transform="rotate(-90 90 90)"><title>${esc(x.name)}: ${v.zahlen[x.schluessel]}</title></circle>`;
+		versatz += laenge;
+		return bogen;
+	}).join('');
+	const mitte = v.automation_rate === null
+		? '<text x="90" y="96" text-anchor="middle" class="ring-leer">keine Daten</text>'
+		: `<text x="90" y="92" text-anchor="middle" class="ring-zahl">${esc(prozent(v.automation_rate))}</text><text x="90" y="113" text-anchor="middle" class="ring-name">automatisiert</text>`;
+	return `<svg viewBox="0 0 180 180" class="ring" role="img" aria-label="Vorgänge heute nach Status"><circle r="${r}" cx="90" cy="90" fill="none" stroke="var(--linie)" stroke-width="28"/>${boegen}${mitte}</svg>`;
+}
+
+function vorgangsBereich(v) {
+	if (!v) return '';
+	const legende = VERTEILUNG.map((x) => `<div class="legende" style="--f:${x.farbe}" title="${esc(x.erklaerung)}"><div class="name">${esc(x.name)}</div><div class="wert">${zahlText(v.zahlen[x.schluessel])}</div></div>`).join('');
+	return `<h2 class="abschnitt">Vorgangsstatus heute</h2><div class="vorgangsstatus">${ring(v)}<div><div class="legenden">${legende}</div>
+<div class="rate"><span class="zahl">${v.automation_rate === null ? '–' : esc(prozent(v.automation_rate))}</span> Automation Rate<div class="leise">Automatisch erledigt ÷ alle Vorgänge heute (${zahlText(v.gesamt)})</div></div></div></div>
+<p class="leise">Automatisch erledigt: vollständig erkannt bzw. Kundenantwort ohne neue Rückfrage verarbeitet · Human Approval: Rückfrage erstellt, geht nur nach Freigabe raus · Exception: Mitarbeiter muss entscheiden · Fehler: technisch abgebrochen. Nicht gezählt: Duplikate, Newsletter/Abwesenheitsnotizen und Mails ohne Anfrage.</p>`;
 }
 
 // ---------------------------------------------------------------- Kopfbereich: Kennzahlen und Gesamtzustand
@@ -408,7 +475,12 @@ table.agenten{width:100%;border-collapse:collapse;font-variant-numeric:tabular-n
 .agenten th{color:var(--text-secondary);font-weight:600;font-size:.85rem;white-space:nowrap}.agenten tr:last-child td{border-bottom:0}
 .agenten td.n{text-align:right;color:var(--blau);font-weight:600}.agenten th.n{text-align:right}.agenten td.n.rot{color:var(--critical)}
 .agenten .ampel,.agenten td:first-child{white-space:nowrap}.agenten .ampel{font-weight:600}.agenten tr.kritisch td:first-child{box-shadow:inset 4px 0 0 var(--critical)}
-.agenten tr.warnung td:first-child{box-shadow:inset 4px 0 0 var(--warning)}`;
+.agenten tr.warnung td:first-child{box-shadow:inset 4px 0 0 var(--warning)}
+.vorgangsstatus{display:flex;flex-wrap:wrap;gap:24px;align-items:center;border:1px solid var(--linie);border-radius:12px;padding:16px}
+.ring{width:220px;max-width:100%;height:auto;flex:0 0 auto}.ring-zahl{font-size:22px;font-weight:700;fill:var(--blau)}.ring-name,.ring-leer{font-size:12px;fill:var(--text-secondary)}
+.vorgangsstatus>div{flex:1 1 260px}.legenden{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 24px}
+.legende{border-left:5px solid var(--f);padding-left:10px}.legende .name{color:var(--text-secondary)}.legende .wert{font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums}
+.rate{margin-top:18px}.rate .zahl{font-size:1.6rem;font-weight:700;color:var(--blau)}`;
 
 function zahlText(n) {
 	return Number(n).toLocaleString('de-DE');
@@ -432,7 +504,7 @@ function agentTabelle(agenten, jetzt, zone) {
 <p class="leise">🟢 Healthy: läuft normal · 🟡 Warning: viele Exceptions, hängende Vorgänge, lange keine Mail oder Zustelltest fehlt · 🔴 Critical: Verbindungs-, Credential-, Versand- oder Workflow-Fehler. Zahlen: heute verarbeitete Mails.</p>`;
 }
 
-function seite({ daten, kopf, agenten, jetzt, zone = 'Europe/Berlin', ablauf }) {
+function seite({ daten, kopf, agenten, verteilung, jetzt, zone = 'Europe/Berlin', ablauf }) {
 	const k = kopf;
 	const quote = k.erfolgsquote === null ? '–' : `${k.erfolgsquote.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
 	const kachel = (zahl, name, alarm, titel, ziel) => {
@@ -465,6 +537,7 @@ ${KOPF_STIL}</style></head><body><main>
 <div class="kacheln">${kacheln}</div>
 ${fehlerliste}
 ${agentTabelle(agenten, jetzt, zone)}
+${vorgangsBereich(verteilung)}
 <p class="leise">Nur für den Betreiber. Nicht weitergeben. Neuen Link: „EPA-14 Betrieb-Dashboard“ manuell starten (der alte wird gesperrt).</p>
 </main></body></html>`;
 }
@@ -474,4 +547,4 @@ function linkNachricht({ link, ablauf, zone = 'Europe/Berlin' }) {
 	return `<b>🔐 Neuer Link zum Betreiber-Dashboard</b><br><a href="${esc(link)}">Dashboard öffnen</a><br>Gültig bis ${esc(zeit(ablauf, zone))}. Alle früheren Dashboard-Links sind gesperrt. Nicht weitergeben.`;
 }
 
-module.exports = { BETREIBER, PFAD, LINK_TAGE, GRENZE_STUNDEN, DURCHLAUF_STATUS, EXCEPTION_STATUS, EXCEPTION_ERGEBNIS, AGENT_GRENZEN, auswerten, agentStatus, kennzahlen, seite, linkNachricht, esc };
+module.exports = { BETREIBER, PFAD, LINK_TAGE, GRENZE_STUNDEN, DURCHLAUF_STATUS, EXCEPTION_STATUS, EXCEPTION_ERGEBNIS, AGENT_GRENZEN, auswerten, agentStatus, vorgangsstatus, kennzahlen, seite, linkNachricht, esc };

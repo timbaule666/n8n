@@ -77,6 +77,11 @@ Stand 2026-10-14 (M6). Für die Person, die das System betreut: Was läuft wann,
   - 🔴 Critical: Config ungültig, Outlook-/Teams-/KI-Verbindung gestört (Watchdog oder Anmeldefehler), Zustelltest fehlgeschlagen, Versandfehler nach Freigabe oder technische Fehler heute.
   - 🟡 Warning: ab 3 Exceptions heute (bzw. über 25 %), hängende Vorgänge (über 1 h in Neu/In Prüfung/Lücken erkannt), über 48 h keine Mail, Zustelltest fehlt oder ist älter als 26 h.
   - 🟢 Healthy: sonst. Kritische Agents stehen oben.
+- **Vorgangsstatus heute:** Ringdiagramm der heute verarbeiteten Mails aktiver Kunden mit **Automation Rate** (Automatisch erledigt ÷ alle gezählten).
+  - Automatisch erledigt (blau): Ergebnis `bereit`, `antwort_bereit`, `antwort_keine_daten`, `antwort_gemeldet`.
+  - Human Approval (grün): `luecken`, `antwort_luecken` (Rückfrage, geht nur nach Freigabe raus).
+  - Exception (gelb): wie in der Agent-Tabelle. Fehler (orange): Status `fehler`.
+  - Nicht gezählt: Duplikate, vorgefilterte Mails (`ignoriert_*`), „keine Anfrage“ (`ignoriert`) und noch laufende.
 - Lädt alle 5 Minuten neu.
 - **Link holen:** „EPA-14 Betrieb-Dashboard“ in n8n öffnen und manuell starten. Alle bisherigen Dashboard-Links werden gesperrt; der neue (90 Tage gültig) kommt per Telegram. Als Lesezeichen speichern, nicht weitergeben – er zeigt alle Kunden.
 - Kunden-Links (Tagesübersicht) öffnen das Dashboard nicht und umgekehrt.
