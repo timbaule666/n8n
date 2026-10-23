@@ -72,6 +72,7 @@ Stand 2026-10-14 (M6). Für die Person, die das System betreut: Was läuft wann,
 - Grenze: Wer den Link hat, sieht die Vorgänge (keine Anmeldung). Deshalb kurze Gültigkeit und der Hinweis „bitte nicht weitergeben“.
 
 ## 5b. Betreiber-Dashboard (EPA-14)
+- **Ausführungen:** Jeder Aufruf und jedes automatische Neuladen (alle 5 Minuten) ist eine Ausführung in n8n und zählt aufs Kontingent. Bei Nichtgebrauch EPA-14 in n8n „Unpublish“; der Link liefert dann 404 und verbraucht nichts. Zum Einschalten „Publish“ – der bisherige Link gilt wieder.
 - **Inhalt (oben):** Gesamtzustand (🟢 alle Systeme normal / 🟡 Agents benötigen Aufmerksamkeit / 🔴 kritischer Fehler) und sechs Kennzahlen: aktive Kunden, aktive Agents, Vorgänge heute, Erfolgsquote heute, offene Exceptions, kritische Fehler. Ein Klick auf „Kritische Fehler“ öffnet die Liste; jeder Fehler klappt einzeln auf (was, Kunde, seit wann, Folge, was tun, betroffene Vorgänge).
 - **Agent-Status pro Kunde:** Tabelle je aktivem Agent mit Ampel, letztem Lauf und den heute verarbeiteten Mails (Heute = Erfolgreich + Exceptions + Fehler, ggf. plus noch in Arbeit). Exceptions = Mails mit Ergebnis Zuordnung/Klassifizierung unklar, unzustellbar oder Auslesen fehlgeschlagen.
   - 🔴 Critical: Config ungültig, Outlook-/Teams-/KI-Verbindung gestört (Watchdog oder Anmeldefehler), Zustelltest fehlgeschlagen, Versandfehler nach Freigabe oder technische Fehler heute.
