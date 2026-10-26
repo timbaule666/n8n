@@ -155,13 +155,23 @@ Tim hat einen Microsoft-365-Business-Basic-Testzugang (Tenant `agentdemo666.onmi
 
 | Was | Stand |
 |---|---|
-| Credentials | „Microsoft Outlook account 2“ (`ahmYUBFC0yGuvTLu`) und „Microsoft Teams account 2“ (`lSRi3VbAUwbPKsVl`), beide angemeldet als TimBaule@agentdemo666.onmicrosoft.com (Agent-Konto). Lesetest: Postfach, Team „agentdemo“ und Kanal „General“ erreichbar |
-| Postfach-Kopie | „EPA-00 Postfach timbaule@agentdemo666.onmicrosoft.com (Test)“, ID `NezOVz8ylWItOHcU`, aus der bestehenden Kopie erzeugt, 21 Outlook-Nodes auf das neue Credential umgestellt, veröffentlicht |
+| Credentials | „Microsoft Outlook account 2“ (`ahmYUBFC0yGuvTLu`) und „Microsoft Teams account 2“ (`lSRi3VbAUwbPKsVl`), beide angemeldet als Agent-Konto, seit 26.10. `demo@tb-agenttest.de` (vorher TimBaule@agentdemo666.onmicrosoft.com; umbenannt ohne Reconnect). Lesetest: Postfach, Team „agentdemo“ und Kanal „General“ erreichbar |
+| Postfach-Kopie | „EPA-00 Postfach demo@tb-agenttest.de (Test)“ (bis 26.10. „… timbaule@agentdemo666.onmicrosoft.com …“), ID `NezOVz8ylWItOHcU`, aus der bestehenden Kopie erzeugt, 21 Outlook-Nodes auf das neue Credential umgestellt, veröffentlicht |
 | Teams-Credential | In SW Benachrichtigen, SW Freigabe senden (3 Nodes), EPA-05 und EPA-06 auf „Microsoft Teams account 2“ umgestellt und neu veröffentlicht. Die Alarm-Nodes in EPA-05/EPA-06 bleiben deaktiviert; Betreiberalarme gehen weiter per Telegram |
 | Config | `epa-m365` in `epa_config_allgemein` und 10 Pflichtfelder (wie `epa-test`), Kanal `teams` mit Team `agentdemo` / Kanal `Anfragen` (seit 17.10. nachmittags; vorher `General`/„Allgemein“, der sich in Teams nicht umbenennen lässt), Freigeber `disponent@agentdemo666.onmicrosoft.com` (Benutzer „Disponent“, bis 17.10. nachmittags `tim@…`), Signatur „Testsystem 2“, ohne Config-Sheet. „SW Config laden“ akzeptiert die Config |
 | Verbindungstest | Meldung über SW Benachrichtigen in den Kanal „General“: gesendet |
 | EPA-T3 | Parameter `ziel` (`outlook` = Standard, `m365`); die Rückfragesuche in Gmail nutzt die jeweilige Absenderadresse |
 | Probelauf | Bestanden: Gmail-Anfrage „Wuppertal – Solingen“ → Meldung im Kanal → Freigabe-Link im 1:1-Teams-Chat des Disponenten → freigegeben → Rückfrage in Gmail angekommen → Kundenantwort → V-2026-0130 „Bereit zur Bearbeitung“. Vorher (V-2026-0129) war der Freigeber falsch eingetragen: „Chat öffnen“ lieferte 404, EPA-02 meldete das korrekt im Kanal. Der 1:1-Chat braucht zwei verschiedene Benutzer im Tenant |
+
+
+### Eigene Domain tb-agenttest.de (26.10.)
+Der Versand aus dem Tenant mit der Standardadresse `…@agentdemo666.onmicrosoft.com` kam nicht an (Zustelltest täglich „nicht_angekommen“). Lösung:
+- Domain `tb-agenttest.de` bei IONOS registriert und im M365 Admin Center hinzugefügt (Status „Fehlerfrei“: MX, SPF, Autodiscover).
+- DKIM: CNAME `selector1._domainkey` und `selector2._domainkey` bei IONOS, Signierung in Microsoft Defender aktiviert.
+- DMARC: TXT `_dmarc` = `v=DMARC1; p=none;`.
+- Agent-Benutzer umbenannt in `demo@tb-agenttest.de`; Config `epa-m365.postfach` und Node „Postfach festlegen“ der Kopie angepasst.
+- Zustelltest 26.10. 15:10: Testmail nach 2 Minuten im Gmail-Posteingang (nicht Spam).
+- Offen: M365-Testphase endet 17.11.2026 – vorher Abo abschließen oder kündigen.
 
 ## Direkt in Outlook gesendete Entwürfe (Stand 2026-10-17)
 - **Anlass:** Tim hat den Entwurf zu V-2026-0129 direkt in Outlook gesendet. Die Freigabe blieb „offen“ und der Vorgang auf „Freigabe ausstehend“.
@@ -186,7 +196,7 @@ Tim hat einen Microsoft-365-Business-Basic-Testzugang (Tenant `agentdemo666.onmi
 
 | Kanal | Wofür |
 |---|---|
-| Postfach timbaule@agentdemo666.onmicrosoft.com (Kopie `NezOVz8ylWItOHcU`) | Kundenmails |
+| Postfach demo@tb-agenttest.de (Kopie `NezOVz8ylWItOHcU`) | Kundenmails |
 | Teams-Kanal „Allgemein“ (Team agentdemo) | Meldungen an Mitarbeiter |
 | Teams-1:1-Chat an tim@agentdemo666.onmicrosoft.com (Disponent) | Freigabe-Links |
 | Telegram (Zeile `alarmierung` in `epa_system_status`, Chat 8961899217) | **nur Störungsmeldungen** an den Betreiber: EPA-05 Fehler, EPA-06 Watchdog, EPA-11 Zustelltest |
