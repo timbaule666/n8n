@@ -265,6 +265,11 @@ throw new Error(\`[EPA:\${status === 401 ? '401:AUTH_FEHLER' : status === 403 ? 
 		conditions: bedingungen([bedingung('={{ $json.weg }}', { type: 'string', operation: 'equals' }, 'senden')]),
 		options: {},
 	});
+	// Absender vor dem Versand auf die Postfach-Adresse setzen: Ein Entwurf merkt sich den Absender von seiner Anlage.
+	// Wurde die Adresse des Postfachs seitdem geändert (z. B. neue Domain), ginge er sonst von der alten raus.
+	// Schlägt das fehl, wird trotzdem gesendet (der Entwurf hat dann seinen bisherigen Absender).
+	const absender = graph(wf, 'Absender festlegen', [990, 1000], 'PATCH', `=${GRAPH}/users/${P}/messages/{{ encodeURIComponent(${E}.entwurf_id) }}`,
+		{ body: `={{ JSON.stringify({ from: { emailAddress: { address: ${E}.postfach } }, sender: { emailAddress: { address: ${E}.postfach } } }) }}`, query: { $select: 'id' }, node: { onError: 'continueRegularOutput', alwaysOutputData: true } });
 	// Kein automatischer Retry: Ein Timeout nach erfolgreichem Versand würde sonst als Fehler enden.
 	// Stattdessen wird bei jedem Fehler in "Gesendete Elemente" nachgesehen.
 	const senden = graph(wf, 'Entwurf senden', [1100, 1000], 'POST', `=${GRAPH}/users/${P}/messages/{{ encodeURIComponent(${E}.entwurf_id) }}/send`,
@@ -500,7 +505,8 @@ return [{ json: { geaendert: r.filter((s) => s === 200).length, fehler: r.filter
 	wf.kette(suchen, ursprung, reply, befuellen, entwurfMelden);
 	wf.kette(aktualisieren, aktualisiert);
 	wf.kette(pruefenEntwurf, entscheiden, sendenFrage);
-	wf.verbinde(sendenFrage, senden, 0);
+	wf.verbinde(sendenFrage, absender, 0);
+	wf.kette(absender, senden);
 	wf.verbinde(sendenFrage, gesendetSuchen, 1);
 	wf.kette(senden, sendeErgebnis, bestaetigt);
 	wf.verbinde(bestaetigt, gesendetMelden, 0);

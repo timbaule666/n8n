@@ -1114,6 +1114,41 @@
     },
     {
       "parameters": {
+        "method": "PATCH",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.entwurf_id) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "options": {},
+        "sendQuery": true,
+        "specifyQuery": "keypair",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$select",
+              "value": "id"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: { emailAddress: { address: $('Bei Einzelaufruf').first().json.postfach } }, sender: { emailAddress: { address: $('Bei Einzelaufruf').first().json.postfach } } }) }}"
+      },
+      "id": "5fe4e80b-c95f-41cf-a63b-049c9a09ff64",
+      "name": "Absender festlegen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        990,
+        1000
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.entwurf_id) }}/send",
         "authentication": "predefinedCredentialType",
@@ -2470,7 +2505,7 @@
       "main": [
         [
           {
-            "node": "Entwurf senden",
+            "node": "Absender festlegen",
             "type": "main",
             "index": 0
           }
@@ -2478,6 +2513,17 @@
         [
           {
             "node": "In Gesendet suchen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Absender festlegen": {
+      "main": [
+        [
+          {
+            "node": "Entwurf senden",
             "type": "main",
             "index": 0
           }
