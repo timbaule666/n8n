@@ -23,6 +23,7 @@ module.exports = function () {
 		'**freigabe_erinnerung:** Freigabe ist seit freigabe_erinnerung_stunden offen: neue persönliche Links an alle Freigeber (alte bleiben gültig).',
 		'**freigabe_erneuern:** Freigabe ist abgelaufen: neue Ablaufzeit, alle alten Links gesperrt (410), neue Links an alle Freigeber. Es wird nie automatisch gesendet.',
 		'**versand_pruefen:** Offene Freigabe: Liegt der Entwurf schon in "Gesendete Elemente" (jemand hat ihn direkt in Outlook gesendet)? Dann Freigabe "gesendet" (entscheidung manuell_gesendet), Links gesperrt, Status "Warten auf Kunde" mit Antwortfrist, Meldung im Kanal. Sonst nichts.',
+		'**freigabe_eskalation:** Freigabe wartet seit 72 h (ab Anlage): neue Ablaufzeit, alle alten Links gesperrt, neuer Link an alle Freigeber mit Hinweis "⏰ Eskalation: wartet seit N Stunden". Höchstens alle 24 h (Spalte eskaliert_am).',
 		'**freigabe_nach_fehler:** Versand nach Freigabe ist fehlgeschlagen (z. B. Postfach gesperrt). Ist das Postfach wieder erreichbar (verbindung_pruefen), wird die Freigabe wieder geöffnet und kommt mit neuem Link und Fehlergrund erneut zur Freigabe; alte Links bleiben gesperrt.',
 		'**freigabe_nach_unzustellbar:** Die gesendete Nachricht kam beim Kunden nicht an (Freigabe "unzustellbar") und der Zustelltest danach war erfolgreich. Steht der Vorgang noch auf "Eskaliert / Manuell" mit dieser Freigabe, wird sie "ersetzt" und EPA-02 (art = erneut) legt einen neuen Entwurf mit demselben Text und eine neue Freigabe an. Sonst "nicht_zugestellt" (kein neuer Versuch).',
 		'**Trigger:** Aufruf durch EPA-04 (einzeln je Aufgabe). **Eingaben:** aktion, kunde_id, vorgangs_id, freigabe_id, jetzt, referenz. **Ausgabe:** { ergebnis }',
@@ -212,7 +213,7 @@ const a = $('Auffrischen prüfen').first().json;
 return a.tokens.map((t) => ({ json: { freigabe_id: e.freigabe_id, kunde_id: e.kunde_id, freigeber: t.freigeber, token_hash: t.hash, verbraucht_am: null, ablauf: a.ablauf } }));
 `, { executeOnce: true });
 	const tokSpeichern = wf.tabelle('Neue Links speichern', [3080, 40], 'insert', 'epa_freigabe_tokens');
-	const nachrichten = wf.code('Nachrichten vorbereiten', [3300, 40], ['freigabe'], `
+	const nachrichten = wf.code('Nachrichten vorbereiten', [3300, 40], ['freigabe', 'nachfassen'], `
 const e = $('Bei Aufruf').first().json;
 const config = $('Config laden').first().json.config;
 const v = $('Vorgang lesen').first().json.vorgang;
@@ -224,7 +225,7 @@ const basis = freigabe.basisUrl($execution.resumeUrl, config.freigabe_basis_url)
 const ablaufText = DateTime.fromISO(a.ablauf).setZone(config.zeitzone).toFormat('dd.LL.yyyy, HH:mm');
 return a.tokens.map((t) => ({ json: {
 	freigeber: t.freigeber,
-	nachricht_html: freigabe.nachrichtFreigeber({ vorgang: v, freigabe: f, fehlende: fehlende.map((x) => ({ anzeigename: x.anzeigename || x.feldname })), link: freigabe.link(basis, t.token), ablaufText, art: f.art, anlass: e.aktion }),
+	nachricht_html: freigabe.nachrichtFreigeber({ vorgang: v, freigabe: f, fehlende: fehlende.map((x) => ({ anzeigename: x.anzeigename || x.feldname })), link: freigabe.link(basis, t.token), ablaufText, art: f.art, anlass: e.aktion, wartet_stunden: nachfassen.wartetStunden(f, e.jetzt || new Date().toISOString()) }),
 } }));
 `, { executeOnce: true });
 	const senden = wf.aufruf('Freigeber benachrichtigen', [3520, 40], 'EPA SW Freigabe senden', [
@@ -259,7 +260,7 @@ return [{ json: { zugestellt, nachricht_html: html } }];
 	]);
 	const ergFg = wf.code('Ergebnis: Freigabe', [4400, 40], [], `
 const e = $('Bei Aufruf').first().json;
-return [{ json: { ergebnis: { freigabe_erneuern: 'links_erneuert', freigabe_nach_fehler: 'erneut_zur_freigabe' }[e.aktion] || 'freigeber_erinnert', zugestellt: $('Zustellung auswerten').first().json.zugestellt } }];
+return [{ json: { ergebnis: { freigabe_erneuern: 'links_erneuert', freigabe_nach_fehler: 'erneut_zur_freigabe', freigabe_eskalation: 'freigeber_eskaliert' }[e.aktion] || 'freigeber_erinnert', zugestellt: $('Zustellung auswerten').first().json.zugestellt } }];
 `);
 	const ergFgNein = wf.code('Ergebnis: Freigabe entfällt', [1540, 300], [], `
 const p = $('Postfach auswerten').isExecuted ? $('Postfach auswerten').first().json : $('Auffrischen prüfen').first().json;

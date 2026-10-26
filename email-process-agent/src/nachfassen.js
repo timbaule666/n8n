@@ -24,9 +24,13 @@ const ZUSTELLTEST_PRAEFIX = 'zustelltest:';
 // jede offene Freigabe ab diesem Alter in jedem Lauf, unabhängig von Geschäftszeiten (es geht nichts an Kunden).
 const VERSAND_PRUEFEN_AB_MINUTEN = 5;
 const MAX_PRUEFUNGEN = 50;
+// Freigabe liegt zu lange (gleiche Grenze wie der Watchdog-Befund FREIGABE_OFFEN): Der Freigeber bekommt einen
+// frischen Link mit deutlichem Hinweis, alte Links werden gesperrt. Danach höchstens alle 24 h erneut.
+const FREIGABE_ESKALATION_STUNDEN = 72;
+const FREIGABE_ESKALATION_WIEDERHOLEN_STUNDEN = 24;
 
 // Reihenfolge, falls mehr Aufgaben anfallen als ein Lauf abarbeitet (Rest folgt im nächsten Lauf).
-const PRIORITAET = Object.freeze({ eskalation: 1, erinnerung: 2, freigabe_nach_fehler: 3, freigabe_nach_unzustellbar: 3, freigabe_erneuern: 3, freigabe_erinnerung: 4 });
+const PRIORITAET = Object.freeze({ eskalation: 1, erinnerung: 2, freigabe_nach_fehler: 3, freigabe_nach_unzustellbar: 3, freigabe_erneuern: 3, freigabe_eskalation: 3, freigabe_erinnerung: 4 });
 
 function ms(t) {
 	if (t === null || t === undefined || t === '') return NaN;
@@ -124,6 +128,11 @@ function planen({ vorgaenge, freigaben, configs, jetzt, fristen, zustelltests = 
 			pruefungen.push({ aktion: 'versand_pruefen', ...ref, version: null, erinnerungen_gesendet: null });
 		}
 		const abgelaufen = ms(f.ablauf) <= jetztMs;
+		if (eskalationFaellig(f, jetztMs)) {
+			if (!geschaeftszeit(f.kunde_id, c)) uebersprungen.push({ ...ref, grund: 'ausserhalb_geschaeftszeit' });
+			else aufgaben.push({ aktion: 'freigabe_eskalation', ...ref, version: null, erinnerungen_gesendet: null });
+			continue;
+		}
 		let erinnern = false;
 		if (!abgelaufen && !f.erinnert_am && Number(c.freigabe_erinnerung_stunden) > 0) {
 			const basis = f.erneuert_am || f.createdAt;
@@ -144,6 +153,20 @@ function planen({ vorgaenge, freigaben, configs, jetzt, fristen, zustelltests = 
 		uebersprungen,
 		verschoben: Math.max(0, aufgaben.length - max) + Math.max(0, pruefungen.length - MAX_PRUEFUNGEN),
 	};
+}
+
+/** Wartet die Freigabe seit FREIGABE_ESKALATION_STUNDEN (ab Anlage) und wurde in den letzten 24 h nicht eskaliert? */
+function eskalationFaellig(f, jetztMs) {
+	const seit = ms(f.createdAt);
+	if (!Number.isFinite(seit) || jetztMs - seit < FREIGABE_ESKALATION_STUNDEN * 3600000) return false;
+	const zuletzt = ms(f.eskaliert_am);
+	return !Number.isFinite(zuletzt) || jetztMs - zuletzt >= FREIGABE_ESKALATION_WIEDERHOLEN_STUNDEN * 3600000;
+}
+
+/** Ganze Stunden, die eine Freigabe schon wartet (für den Hinweis in der Nachricht). */
+function wartetStunden(f, jetzt) {
+	const seit = ms(f && f.createdAt);
+	return Number.isFinite(seit) ? Math.max(0, Math.floor((ms(jetzt) - seit) / 3600000)) : null;
 }
 
 // ---------------------------------------------------------------- Lauf-Lock (Tabelle epa_system_status)
@@ -253,6 +276,13 @@ function freigabeAuffrischen({ aktion, freigabe, config, jetzt, vorgang }) {
 	}
 	if (!freigabe || freigabe.status !== 'offen') return { ok: false, grund: 'nicht_mehr_offen' };
 	const abgelaufen = ms(freigabe.ablauf) <= t;
+	if (aktion === 'freigabe_eskalation') {
+		// Liegt zu lange: frischer Link mit voller Laufzeit, alte Links gesperrt.
+		if (!eskalationFaellig(freigabe, t)) return { ok: false, grund: 'nicht_faellig' };
+		const ablauf = new Date(t + Number(config.freigabe_ablauf_stunden) * 3600000).toISOString();
+		const jetztIso = new Date(t).toISOString();
+		return { ok: true, alteLinksSperren: true, ablauf, daten: { ablauf, erneuert_am: jetztIso, erinnert_am: null, eskaliert_am: jetztIso } };
+	}
 	if (aktion === 'freigabe_erneuern') {
 		if (!abgelaufen) return { ok: false, grund: 'nicht_abgelaufen' };
 		const ablauf = new Date(t + Number(config.freigabe_ablauf_stunden) * 3600000).toISOString();
@@ -326,6 +356,7 @@ function meldungManuellGesendet({ vorgang, freigabe, gesendetText, fristText }) 
 }
 
 module.exports = {
+	FREIGABE_ESKALATION_STUNDEN, FREIGABE_ESKALATION_WIEDERHOLEN_STUNDEN, eskalationFaellig, wartetStunden,
 	VERSAND_PRUEFEN_AB_MINUTEN, MAX_PRUEFUNGEN, ausfuehrungen, manuellGesendet, meldungManuellGesendet,
 	LOCK_SCHLUESSEL, LOCK_MINUTEN, MAX_AUFGABEN, EPOCHE, PRIORITAET, NACH_FEHLER_WARTEN_MINUTEN, NACH_UNZUSTELLBAR_HOECHSTALTER_TAGE, NACH_FEHLER_HOECHSTALTER_STUNDEN,
 	planen, lockHolen, lockFreigeben, laufAuswerten, tageOhneReaktion, meldungKeineReaktion, freigabeAuffrischen,

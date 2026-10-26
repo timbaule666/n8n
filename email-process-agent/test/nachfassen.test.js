@@ -63,7 +63,7 @@ test('Freigabe: abgelaufen -> erneuern; Erinnerung nach freigabe_erinnerung_stun
 	// schon erinnert -> erst nach Erneuerung wieder
 	assert.equal(plan({ jetzt: '2026-10-15T12:00:00.000Z', freigaben: [fg({ erinnert_am: '2026-10-14T12:00:00.000Z' })] }).aufgaben.length, 0);
 	// nach Erneuerung zählt erneuert_am
-	const erneuert = fg({ createdAt: '2026-10-01T07:00:00.000Z', erneuert_am: '2026-10-14T07:30:00.000Z' });
+	const erneuert = fg({ createdAt: '2026-10-01T07:00:00.000Z', erneuert_am: '2026-10-14T07:30:00.000Z', eskaliert_am: '2026-10-14T07:30:00.000Z' });
 	assert.equal(plan({ freigaben: [erneuert] }).aufgaben.length, 0);
 	// nicht offen -> nichts
 	assert.equal(plan({ freigaben: [fg({ status: 'gesendet', ablauf: '2026-10-01T00:00:00.000Z' })] }).aufgaben.length, 0);
@@ -276,4 +276,35 @@ test('Nachricht an Freigeber nach Unzustellbarkeit: Hinweis und Grund der vorige
 	assert.match(html, /🔁 Erneut zur Freigabe: Die Nachricht kam beim Kunden nicht an/);
 	assert.match(html, /550 &lt;5\.7\.708&gt;/);
 	assert.match(html, /Zustelltest war wieder erfolgreich/);
+});
+
+test('Freigabe liegt zu lange: Eskalation mit frischem Link an den Freigeber, höchstens alle 24 h', () => {
+	const watchdog = require('../src/watchdog');
+	assert.equal(n.FREIGABE_ESKALATION_STUNDEN, watchdog.GRENZEN.freigabe_stunden);
+	// angelegt Sonntag 11.10. 07:00 UTC -> am Mittwoch 08:00 UTC 73 h alt; hat Vorrang vor Erinnerung/Erneuern
+	const alt = fg({ createdAt: '2026-10-11T07:00:00.000Z', ablauf: '2026-10-14T07:00:00.000Z', erneuert_am: '2026-10-13T07:00:00.000Z' });
+	assert.deepEqual(plan({ freigaben: [alt] }).aufgaben.map((a) => a.aktion), ['freigabe_eskalation']);
+	// 71 h: noch normale Erneuerung
+	assert.deepEqual(plan({ freigaben: [{ ...alt, createdAt: '2026-10-11T09:00:00.000Z' }] }).aufgaben.map((a) => a.aktion), ['freigabe_erneuern']);
+	// vor 23 h eskaliert -> nicht erneut eskalieren (nur erneuern, weil abgelaufen); nach 24 h wieder
+	assert.deepEqual(plan({ freigaben: [{ ...alt, eskaliert_am: '2026-10-13T09:00:00.000Z' }] }).aufgaben.map((a) => a.aktion), ['freigabe_erneuern']);
+	assert.deepEqual(plan({ freigaben: [{ ...alt, eskaliert_am: '2026-10-13T08:00:00.000Z' }] }).aufgaben.map((a) => a.aktion), ['freigabe_eskalation']);
+	// nachts: übersprungen, nicht verloren
+	assert.deepEqual(plan({ jetzt: NACHTS, freigaben: [alt] }).uebersprungen.map((u) => u.grund), ['ausserhalb_geschaeftszeit']);
+
+	const r = n.freigabeAuffrischen({ aktion: 'freigabe_eskalation', freigabe: alt, config: CONFIG, jetzt: JETZT });
+	assert.equal(r.ok, true);
+	assert.equal(r.alteLinksSperren, true);
+	assert.equal(r.daten.eskaliert_am, JETZT);
+	assert.equal(r.daten.erneuert_am, JETZT);
+	assert.equal(r.daten.erinnert_am, null);
+	assert.equal(r.ablauf, new Date(Date.parse(JETZT) + CONFIG.freigabe_ablauf_stunden * 3600000).toISOString());
+	assert.equal(n.freigabeAuffrischen({ aktion: 'freigabe_eskalation', freigabe: { ...alt, eskaliert_am: '2026-10-14T07:00:00.000Z' }, config: CONFIG, jetzt: JETZT }).grund, 'nicht_faellig');
+	assert.equal(n.freigabeAuffrischen({ aktion: 'freigabe_eskalation', freigabe: { ...alt, status: 'gesendet' }, config: CONFIG, jetzt: JETZT }).grund, 'nicht_mehr_offen');
+
+	assert.equal(n.wartetStunden(alt, JETZT), 73);
+	const html = freigabe.nachrichtFreigeber({ vorgang: { vorgangs_id: 'V-9' }, freigabe: { empfaenger: 'k@x.de', betreff: 'B' }, fehlende: [], link: 'https://x/l', ablaufText: '16.10.2026, 10:00', art: 'rueckfrage', anlass: 'freigabe_eskalation', wartet_stunden: 73 });
+	assert.match(html, /⏰ Eskalation: Diese Freigabe wartet seit 73 Stunden/);
+	assert.match(html, /alle bisherigen Links gelten nicht mehr/);
+	assert.match(html, /href="https:\/\/x\/l"/);
 });

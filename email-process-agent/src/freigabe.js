@@ -124,6 +124,7 @@ const ANLASS = Object.freeze({
 	freigabe_erinnerung: 'Erinnerung: Diese Freigabe ist noch offen. Hier ist ein neuer persönlicher Link.',
 	freigabe_erneuern: 'Der bisherige Link ist abgelaufen und gilt nicht mehr. Hier ist ein neuer persönlicher Link.',
 	freigabe_nach_fehler: 'Diese Nachricht wurde wegen eines Fehlers NICHT gesendet. Das Postfach ist wieder erreichbar, bitte erneut freigeben. Die bisherigen Links gelten nicht mehr.',
+	freigabe_eskalation: 'Bitte jetzt entscheiden: freigeben, bearbeiten oder ablehnen. Hier ist ein neuer persönlicher Link; alle bisherigen Links gelten nicht mehr.',
 	freigabe_nach_unzustellbar: 'Der Zustelltest war wieder erfolgreich, der Versand funktioniert. Bitte prüfen und erneut freigeben; gesendet wird eine neue Mail mit demselben Text.',
 });
 
@@ -132,12 +133,15 @@ const ANLASS = Object.freeze({
  * zur Mail (erkannte und fehlende Angaben, Warnhinweise). Dann ersetzt diese eine Nachricht die sonst zusätzliche
  * Eingangsmeldung, und die Liste der fehlenden Angaben steht nicht doppelt drin.
  */
-function nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art, anlass, kontext_html: kontext }) {
+function nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art, anlass, kontext_html: kontext, wartet_stunden: wartet }) {
 	const liste = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}</li>`).join('');
 	const titel = art === 'erinnerung' ? 'Erinnerung an den Kunden freigeben' : 'Rückfrage an den Kunden freigeben';
 	let hinweis = ANLASS[anlass] ? `<i>${esc(ANLASS[anlass])}</i><br>` : '';
 	if (anlass === 'freigabe_nach_fehler') {
 		hinweis = `<b>🔁 Erneut zur Freigabe: Versand war fehlgeschlagen</b><br>${freigabe.grund ? `Grund: ${esc(freigabe.grund)}<br>` : ''}${hinweis}<br>`;
+	} else if (anlass === 'freigabe_eskalation') {
+		const dauer = Number.isFinite(Number(wartet)) && wartet !== null ? `seit ${Number(wartet)} Stunden` : 'seit längerer Zeit';
+		hinweis = `<b>⏰ Eskalation: Diese Freigabe wartet ${esc(dauer)}</b><br>Der Kunde hat noch keine Antwort bekommen.<br>${hinweis}<br>`;
 	} else if (anlass === 'freigabe_nach_unzustellbar') {
 		// freigabe.grund trägt hier den Grund der vorigen (nicht zugestellten) Freigabe.
 		hinweis = `<b>🔁 Erneut zur Freigabe: Die Nachricht kam beim Kunden nicht an</b><br>${freigabe.grund ? `${esc(freigabe.grund)}<br>` : ''}${hinweis}<br>`;

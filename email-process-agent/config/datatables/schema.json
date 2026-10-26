@@ -153,6 +153,7 @@
       "gesendet_message_id": "string",
       "erinnert_am": "date",
       "erneuert_am": "date",
+      "eskaliert_am": "date",
       "entwurf_entfernt_am": "date"
     },
     "epa_freigabe_tokens": {

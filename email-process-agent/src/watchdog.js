@@ -22,7 +22,7 @@ const EMPFEHLUNG = Object.freeze({
 	CRON_NIE: 'EPA-04 veröffentlichen (Reihenfolge siehe Inbetriebnahme). Bis dahin gibt es keine Erinnerungen und keine Eskalation.',
 	CRON_AUS: 'In n8n prüfen, ob EPA-04 veröffentlicht ist und die letzten Ausführungen erfolgreich waren. Hängt der Lauf-Lock (epa_system_status, Zeile epa04_lauf), gibt er sich nach 55 Minuten selbst frei.',
 	VORGANG_HAENGT: 'Ausführung zum Vorgang in n8n ansehen (Fehlerlog/EPA-05). Den Vorgang danach manuell weiterführen oder auf "Eskaliert / Manuell" setzen.',
-	FREIGABE_OFFEN: 'Freigeber bzw. Vertretung ansprechen. Links werden automatisch erneuert; gesendet wird erst nach Freigabe.',
+	FREIGABE_OFFEN: 'Der Freigeber bekommt automatisch einen neuen Link mit Eskalationshinweis (Teams-Chat, im nächsten Nachfass-Lauf in Geschäftszeit, danach höchstens alle 24 h). Wenn nötig Freigeber bzw. Vertretung direkt ansprechen; gesendet wird erst nach Freigabe.',
 	ARBEITSLISTE: 'Diese Vorgänge warten auf eine Entscheidung eines Mitarbeiters.',
 	STILLE: 'Postfach-Workflow (EPA-00-Kopie) prüfen: veröffentlicht, Outlook-Credential gültig, Mails im Posteingang? Bei echter Ruhe kann der Hinweis ignoriert werden.',
 	VERBINDUNG_TEAMS: 'Teams-Credential (Dienstkonto) in n8n neu verbinden. Ohne Teams gehen keine Freigabe-Links und Meldungen raus.',
