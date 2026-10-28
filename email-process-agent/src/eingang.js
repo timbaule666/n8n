@@ -80,13 +80,37 @@ function esc(s) {
 	return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
-function kopf(titel, vorgangsId, mail) {
-	const z = [`<b>${esc(titel)}</b>`];
-	if (vorgangsId) z.push(`Vorgang: <b>${esc(vorgangsId)}</b>`);
+const TRENNER = '————————————————————';
+const STANDARD_ZONE = 'Europe/Berlin';
+
+/** "am 27.10.2026 um 14:56 Uhr" in der Zeitzone des Kunden; leer, wenn kein gültiger Zeitpunkt. */
+function erfasstText(iso, zone) {
+	const t = new Date(iso || NaN);
+	if (!Number.isFinite(t.getTime())) return '';
+	try {
+		const z = zone || STANDARD_ZONE;
+		const datum = t.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: z });
+		const uhr = t.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: z });
+		return `am ${datum} um ${uhr} Uhr`;
+	} catch (e) {
+		return '';
+	}
+}
+
+/**
+ * Kopf jeder Meldung: Titel, Vorgangsnummer, Absender, Betreff, Eingangszeit (+ Outlook-Kategorie) und Link.
+ * opts: { zone, kategorie } – kategorie ist der Name der Outlook-Kategorie, die der Vorgang jetzt trägt.
+ */
+function kopf(titel, vorgangsId, mail, opts = {}) {
+	const z = [`<b>${esc(titel)}</b>`, ''];
+	if (vorgangsId) z.push(`Vorgangsnummer: <b>${esc(vorgangsId)}</b>`);
 	if (mail) {
-		z.push(`Von: ${esc(mail.absender_name ? `${mail.absender_name} <${mail.absender_adresse}>` : mail.absender_adresse)}`);
-		z.push(`Betreff: ${esc(mail.betreff || '(leer)')}`);
-		if (mail.web_link) z.push(`<a href="${esc(mail.web_link)}">Mail in Outlook öffnen</a>`);
+		z.push(`Absender der Anfrage: ${esc(mail.absender_name ? `${mail.absender_name} <${mail.absender_adresse}>` : mail.absender_adresse)}`);
+		z.push(`<b>Betreff: ${esc(mail.betreff || '(leer)')}</b>`);
+		const erfasst = erfasstText(mail.empfangen_am, opts.zone);
+		const kat = opts.kategorie ? ` und ist mit „${esc(opts.kategorie)}“ gekennzeichnet` : '';
+		const link = mail.web_link ? ` <a href="${esc(mail.web_link)}">In Outlook öffnen</a>` : '';
+		if (erfasst || link) z.push(`${erfasst ? `E-Mail wurde ${esc(erfasst)} erfasst${kat}.` : ''}${link}`);
 	}
 	return z.join('<br>');
 }
@@ -119,32 +143,66 @@ function meldungKlassifizierung(vorgangsId, mail, auswertung) {
 		warnungen(mail, extra);
 }
 
-function feldTabelle(felder, daten) {
-	const zeilen = (felder || []).map((f) => {
-		const d = daten[f.feldname] || {};
-		const wert = d.wert === null || d.wert === undefined ? '—' : d.wert;
-		return `<tr><td>${esc(f.anzeigename)}${f.pflicht ? ' *' : ''}</td><td>${esc(wert)}</td></tr>`;
-	}).join('');
-	return `<table>${zeilen}</table>`;
+function wertText(f, d) {
+	const w = d && d.wert;
+	if (w === null || w === undefined || w === '') return '—';
+	if (f.typ === 'datum' && /^\d{4}-\d{2}-\d{2}$/.test(String(w))) {
+		const [j, m, t] = String(w).split('-');
+		return `${t}.${m}.${j}`;
+	}
+	return String(w);
 }
 
-function meldungGeprueft(vorgangsId, mail, felder, pruefung, extra = {}) {
-	const titel = pruefung.vollstaendig ? 'Anfrage vollständig – bereit zur Bearbeitung' : 'Anfrage mit Lücken erkannt';
-	let html = kopf(titel, vorgangsId, mail) + '<br>' + feldTabelle(felder, pruefung.daten);
-	if (!pruefung.vollstaendig) {
-		html += '<br>Fehlende oder ungültige Pflichtangaben:<ul>' + pruefung.fehlende.map((f) => `<li>${esc(f.anzeigename)}: ${esc(f.grund)}</li>`).join('') + '</ul>';
-		const r = extra.rueckfrage;
-		if (extra.ohneRueckfrageText) { /* Übersicht für die Freigabe-Nachricht: der Rückfrage-Teil folgt dort */ }
-		else if (r && r.ergebnis === 'freigabe_angefordert') html += `Die Rückfrage liegt als Entwurf zur Freigabe bereit (persönlicher Link an ${r.zugestellt} Freigeber per Teams-Chat${r.fallback ? '; Standardvorlage verwendet' : ''}).`;
-		else if (r && r.ergebnis === 'eskaliert_max_runden') html += 'Die maximale Anzahl Rückfragen ist erreicht: bitte manuell klären.';
-		else html += '<b>Die Rückfrage konnte nicht automatisch vorbereitet werden – bitte manuell klären.</b> Details im Fehlerlog.';
+/**
+ * Erfasste Daten in Blöcken: aufeinanderfolgende Felder mit derselben "gruppe" (Pflichtfeld-Config) stehen unter
+ * einer fetten Überschrift, beschriftet mit "kurzname" (sonst Anzeigename). Aufeinanderfolgende Felder ohne Gruppe
+ * bilden einen Block ohne Überschrift.
+ */
+function datenBlock(felder, daten) {
+	const bloecke = [];
+	for (const f of felder || []) {
+		const gruppe = typeof f.gruppe === 'string' ? f.gruppe.trim() : '';
+		const letzter = bloecke[bloecke.length - 1];
+		if (letzter && letzter.gruppe === gruppe) letzter.felder.push(f);
+		else bloecke.push({ gruppe, felder: [f] });
 	}
+	return bloecke.map((bl) => {
+		const zeilen = bl.felder.map((f) => `${esc(bl.gruppe ? (f.kurzname || f.anzeigename) : f.anzeigename)}: ${esc(wertText(f, (daten || {})[f.feldname]))}`);
+		return (bl.gruppe ? [`<b>${esc(bl.gruppe)}</b>`, ...zeilen] : zeilen).join('<br>');
+	}).join('<br><br>');
+}
+
+/**
+ * Eingangsmeldung nach der Prüfung (Teams/Telegram). extra: { zone, kategorie, besonderheiten, rueckfrage,
+ * ohneRueckfrageText, verdacht_manipulation, text_hinweise }. besonderheiten ist eine kurze, von der KI
+ * zusammengefasste Zusatzinformation aus der Mail (nur Anzeige, escaped).
+ */
+function meldungGeprueft(vorgangsId, mail, felder, pruefung, extra = {}) {
+	const titel = pruefung.vollstaendig ? 'Vollständige Anfrage – bereit zur Bearbeitung' : 'Unvollständige Anfrage erkannt';
+	const teile = [kopf(titel, vorgangsId, mail, { zone: extra.zone, kategorie: extra.kategorie }), TRENNER];
+	teile.push('<b>ERFASSTE DATEN</b><br><br>' + datenBlock(felder, pruefung.daten));
+	const bes = typeof extra.besonderheiten === 'string' ? extra.besonderheiten.trim() : '';
+	if (bes) teile.push(`<b>Wichtige Information erkannt</b><br>${esc(bes.slice(0, 400))}`);
 	const w = [];
 	for (const h of pruefung.hinweise || []) w.push(`${h.anzeigename}: ${h.grund} (verworfen)`);
 	for (const u of pruefung.unsicher || []) w.push(`${u.anzeigename}: KI unsicher (Konfidenz ${u.konfidenz}), bitte prüfen`);
 	if (extra.verdacht_manipulation) w.push('Die Mail enthält möglicherweise Anweisungen an die KI (Manipulationsversuch).');
 	for (const t of extra.text_hinweise || []) w.push(t);
-	return html + warnungen(mail, w);
+	const warn = warnungen(mail, w);
+	if (warn) teile.push(`<b>Bitte beachten</b>${warn.replace(/^<br><br>/, '<br>')}`);
+	teile.push(TRENNER);
+	if (pruefung.vollstaendig) {
+		teile.push('<b>Alle Pflichtangaben vorhanden</b><br>Der Vorgang ist bereit zur Bearbeitung.');
+	} else {
+		let t = '<b>Fehlende oder ungültige Pflichtangaben</b><br>' + pruefung.fehlende.map((f) => `• ${esc(f.anzeigename)}${f.grund && f.grund !== 'fehlt' ? ` – ${esc(f.grund)}` : ''}`).join('<br>');
+		const r = extra.rueckfrage;
+		if (extra.ohneRueckfrageText) { /* Übersicht für die Freigabe-Nachricht: der Rückfrage-Teil folgt dort */ }
+		else if (r && r.ergebnis === 'freigabe_angefordert') t += `<br><br>Die Rückfrage liegt als Entwurf zur Freigabe bereit (persönlicher Link an ${r.zugestellt} Freigeber per Teams-Chat${r.fallback ? '; Standardvorlage verwendet' : ''}).`;
+		else if (r && r.ergebnis === 'eskaliert_max_runden') t += '<br><br>Die maximale Anzahl Rückfragen ist erreicht: bitte manuell klären.';
+		else t += '<br><br><b>Die Rückfrage konnte nicht automatisch vorbereitet werden – bitte manuell klären.</b> Details im Fehlerlog.';
+		teile.push(t);
+	}
+	return teile.join('<br><br>');
 }
 
 function meldungExtraktionFehlgeschlagen(vorgangsId, mail, fehlercode) {
@@ -206,6 +264,8 @@ function meldungManipulation({ vorgangs_id: vid, mail, erkannt_bei, begruendung,
 }
 
 module.exports = {
+	TRENNER,
+	erfasstText,
 	verdaechtigeStellen,
 	meldungManipulation,
 	meldungInFreigabe,

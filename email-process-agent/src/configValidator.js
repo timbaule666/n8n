@@ -138,6 +138,9 @@ function pruefePflichtfelder(zeilen, fehler) {
 			extraktions_hinweis: typeof z.extraktions_hinweis === 'string' ? z.extraktions_hinweis.trim() : '',
 			platzhalter_muster: Array.isArray(platzhalter) ? platzhalter : [],
 			reihenfolge: reihenfolge ?? 0,
+			// Nur Darstellung der Meldungen (src/eingang.js): Block-Überschrift und kurze Beschriftung im Block.
+			gruppe: typeof z.gruppe === 'string' ? z.gruppe.trim().slice(0, 60) : '',
+			kurzname: typeof z.kurzname === 'string' ? z.kurzname.trim().slice(0, 60) : '',
 		});
 	});
 	for (const [typ, felder] of Object.entries(typen)) {

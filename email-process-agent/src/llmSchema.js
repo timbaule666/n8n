@@ -46,9 +46,11 @@ function extraktionSchema(felder) {
 	return {
 		type: 'object',
 		additionalProperties: false,
-		required: ['felder', 'verdacht_manipulation'],
+		required: ['felder', 'besonderheiten', 'verdacht_manipulation'],
 		properties: {
 			felder: { type: 'object', additionalProperties: false, required: Object.keys(props), properties: props },
+			// Wichtige Zusatzinformation aus der Mail, die in kein Feld passt (nur Anzeige für die Mitarbeiter).
+			besonderheiten: { type: ['string', 'null'], maxLength: 400 },
 			verdacht_manipulation: { type: 'boolean' },
 		},
 	};

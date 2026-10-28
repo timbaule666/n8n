@@ -38,12 +38,14 @@ test('Validator: Typen, enum, required, additionalProperties, Grenzen, nullable'
 test('Extraktionsschema wird aus der Feldliste erzeugt', () => {
 	const s = llm.extraktionSchema(FELDER);
 	assert.deepEqual(s.properties.felder.required, ['Start_PLZ', 'Gewicht_kg']);
-	const gut = { felder: { Start_PLZ: { wert: '20095', quelle: 'a.pdf', konfidenz: 0.8 }, Gewicht_kg: { wert: null, quelle: null, konfidenz: 0 } }, verdacht_manipulation: true };
+	const gut = { felder: { Start_PLZ: { wert: '20095', quelle: 'a.pdf', konfidenz: 0.8 }, Gewicht_kg: { wert: null, quelle: null, konfidenz: 0 } }, besonderheiten: 'Sonderfahrt, Abladestelle Tor 3', verdacht_manipulation: true };
 	assert.deepEqual(llm.validieren(gut, s), []);
-	const schlecht = { felder: { Start_PLZ: { wert: 20095, quelle: 'x', konfidenz: 0.8 }, Erfunden: {} }, verdacht_manipulation: false };
+	const schlecht = { felder: { Start_PLZ: { wert: 20095, quelle: 'x', konfidenz: 0.8 }, Erfunden: {} }, besonderheiten: null, verdacht_manipulation: false };
 	assert.deepEqual(llm.validieren(schlecht, s), [
 		'$.felder.Gewicht_kg: fehlt', '$.felder.Start_PLZ.wert: erwartet string|null, ist integer', '$.felder.Erfunden: nicht erlaubt',
 	]);
+	assert.deepEqual(llm.validieren({ felder: gut.felder, verdacht_manipulation: false }, s), ['$.besonderheiten: fehlt']);
+	assert.deepEqual(llm.validieren({ ...gut, besonderheiten: 'x'.repeat(401) }, s), ['$.besonderheiten: länger als 400 Zeichen']);
 });
 
 test('OpenAI-Schema enthält nur Kern-Schlüsselwörter', () => {

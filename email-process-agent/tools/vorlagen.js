@@ -67,6 +67,8 @@ const PFLICHTFELD = {
 	platzhalter_muster: '[]',
 	reihenfolge: 10,
 	aktiv: true,
+	gruppe: '<optional: Überschrift in der Teams-Meldung, z. B. Abholort; Felder mit gleicher Gruppe stehen zusammen>',
+	kurzname: '<optional: Beschriftung innerhalb der Gruppe, z. B. PLZ>',
 };
 
 function pruefeVollstaendig(tabelle, zeile) {

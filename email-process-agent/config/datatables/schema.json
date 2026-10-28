@@ -53,7 +53,9 @@
       "extraktions_hinweis": "string",
       "platzhalter_muster": "string",
       "reihenfolge": "number",
-      "aktiv": "boolean"
+      "aktiv": "boolean",
+      "gruppe": "string",
+      "kurzname": "string"
     },
     "epa_vorgaenge": {
       "vorgangs_id": "string",

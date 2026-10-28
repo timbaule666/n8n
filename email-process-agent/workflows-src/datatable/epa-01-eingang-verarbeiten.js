@@ -376,6 +376,7 @@ return [{ json: {
 	weg: p.vollstaendig ? 'bereit' : 'luecken',
 	status: p.vollstaendig ? 'Bereit zur Bearbeitung' : 'Lücken erkannt',
 	pruefung: p,
+	besonderheiten: typeof llm.ergebnis.besonderheiten === 'string' ? llm.ergebnis.besonderheiten : null,
 	verdacht_manipulation: manipulation,
 	speichern: { vorgangstyp: k.vorgangstyp, sprache: k.details.sprache || null, extrahierte_daten: p.daten, fehlende_felder: p.fehlende },
 	details: {
@@ -417,7 +418,8 @@ const k = $('Klasse auswerten').first().json;
 const p = $('Pflichtfelder prüfen').first().json;
 const v = $('Vorgang anlegen').first().json.vorgang;
 const mail = $('Mail normalisieren').first().json.mail;
-return [{ json: { kontext_html: eingang.meldungGeprueft(v.vorgangs_id, mail, config.vorgangstypen[k.vorgangstyp], p.pruefung, { verdacht_manipulation: p.verdacht_manipulation, ohneRueckfrageText: true, text_hinweise: textHinweise.alle(mail).hinweise }) } }];
+const kat = (config.outlook_kategorien || {})['Freigabe ausstehend'];
+return [{ json: { kontext_html: eingang.meldungGeprueft(v.vorgangs_id, mail, config.vorgangstypen[k.vorgangstyp], p.pruefung, { verdacht_manipulation: p.verdacht_manipulation, ohneRueckfrageText: true, text_hinweise: textHinweise.alle(mail).hinweise, zone: config.zeitzone, kategorie: kat && kat.name, besonderheiten: p.besonderheiten }) } }];
 `);
 	// Fehler in EPA-02 meldet EPA-05 selbst (Alarm, Vorgang sichern); die Mailverarbeitung läuft weiter.
 	const rueckfrage = wf.aufruf('Rückfrage anfordern', [4840, 40], 'EPA-02 Rückfrage anfordern', [
@@ -436,6 +438,9 @@ const mail = $('Mail normalisieren').first().json.mail;
 const html = p.weg === 'extraktion_fehlgeschlagen'
 	? eingang.meldungExtraktionFehlgeschlagen(v.vorgangs_id, mail, p.fehlercode)
 	: eingang.meldungGeprueft(v.vorgangs_id, mail, config.vorgangstypen[k.vorgangstyp], p.pruefung, {
+		zone: config.zeitzone,
+		kategorie: ((config.outlook_kategorien || {})[p.pruefung.vollstaendig ? 'Bereit zur Bearbeitung' : 'Freigabe ausstehend'] || {}).name,
+		besonderheiten: p.besonderheiten,
 		verdacht_manipulation: p.verdacht_manipulation,
 		text_hinweise: textHinweise.alle(mail).hinweise,
 		rueckfrage: $('Rückfrage anfordern').isExecuted ? $('Rückfrage anfordern').first().json : null,

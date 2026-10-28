@@ -134,8 +134,8 @@ const ANLASS = Object.freeze({
  * Eingangsmeldung, und die Liste der fehlenden Angaben steht nicht doppelt drin.
  */
 function nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art, anlass, kontext_html: kontext, wartet_stunden: wartet }) {
-	const liste = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}</li>`).join('');
-	const titel = art === 'erinnerung' ? 'Erinnerung an den Kunden freigeben' : 'Rückfrage an den Kunden freigeben';
+	const liste = (fehlende || []).map((f) => `• ${esc(f.anzeigename)}`).join('<br>');
+	const was = art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';
 	let hinweis = ANLASS[anlass] ? `<i>${esc(ANLASS[anlass])}</i><br>` : '';
 	if (anlass === 'freigabe_nach_fehler') {
 		hinweis = `<b>🔁 Erneut zur Freigabe: Versand war fehlgeschlagen</b><br>${freigabe.grund ? `Grund: ${esc(freigabe.grund)}<br>` : ''}${hinweis}<br>`;
@@ -146,11 +146,13 @@ function nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText
 		// freigabe.grund trägt hier den Grund der vorigen (nicht zugestellten) Freigabe.
 		hinweis = `<b>🔁 Erneut zur Freigabe: Die Nachricht kam beim Kunden nicht an</b><br>${freigabe.grund ? `${esc(freigabe.grund)}<br>` : ''}${hinweis}<br>`;
 	}
-	const link = `<a href="${esc(url)}">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Persönlicher Link, einmal verwendbar, gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;
+	const link = `<a href="${esc(url)}">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Dieser persönliche Link ist einmal verwendbar und gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;
+	const empfang = `An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br><br>`;
 	if (kontext && typeof kontext === 'string' && kontext.trim()) {
-		return `${hinweis}${kontext}<br><br><b>${esc(titel)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>` + link;
+		return `${hinweis}${kontext}<br><br><b>${was} an den Kunden wurde erstellt</b><br>${empfang}${link}`;
 	}
-	return `${hinweis}<b>${esc(titel)}: ${esc(vorgang.vorgangs_id)}</b><br>An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br>Fehlende Angaben:<ul>${liste}</ul>` + link;
+	return `${hinweis}<b>${was} an den Kunden freigeben</b><br><br>Vorgangsnummer: <b>${esc(vorgang.vorgangs_id)}</b><br>${empfang}` +
+		(liste ? `<b>Fehlende Angaben</b><br>${liste}<br><br>` : '') + link;
 }
 
 module.exports = {

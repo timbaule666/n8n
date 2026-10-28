@@ -54,7 +54,9 @@
    "extraktions_hinweis": "Postleitzahl des Ortes, an dem die Ware abgeholt wird",
    "platzhalter_muster": "[]",
    "reihenfolge": 10,
-   "aktiv": true
+   "aktiv": true,
+   "gruppe": "Abholort",
+   "kurzname": "PLZ"
   },
   {
    "kunde_id": "beispiel-transport",
@@ -68,7 +70,9 @@
    "extraktions_hinweis": "Ortsname des Abholorts",
    "platzhalter_muster": "[]",
    "reihenfolge": 20,
-   "aktiv": true
+   "aktiv": true,
+   "gruppe": "Abholort",
+   "kurzname": "Stadt"
   },
   {
    "kunde_id": "beispiel-transport",
@@ -82,7 +86,9 @@
    "extraktions_hinweis": "Postleitzahl des Lieferortes",
    "platzhalter_muster": "[]",
    "reihenfolge": 30,
-   "aktiv": true
+   "aktiv": true,
+   "gruppe": "Zielort",
+   "kurzname": "PLZ"
   },
   {
    "kunde_id": "beispiel-transport",
@@ -96,7 +102,9 @@
    "extraktions_hinweis": "Ortsname des Lieferortes",
    "platzhalter_muster": "[]",
    "reihenfolge": 40,
-   "aktiv": true
+   "aktiv": true,
+   "gruppe": "Zielort",
+   "kurzname": "Stadt"
   },
   {
    "kunde_id": "beispiel-transport",
@@ -110,7 +118,9 @@
    "extraktions_hinweis": "Gewünschtes Abholdatum als JJJJ-MM-TT, nur wenn ein konkretes Datum genannt ist",
    "platzhalter_muster": "[]",
    "reihenfolge": 50,
-   "aktiv": true
+   "aktiv": true,
+   "gruppe": "",
+   "kurzname": ""
   },
   {
    "kunde_id": "beispiel-transport",
@@ -123,8 +133,10 @@
    "resolution_textbaustein": "Bitte nennen Sie uns das ungefähre Gesamtgewicht der Sendung in Kilogramm.",
    "extraktions_hinweis": "Gesamtgewicht in kg; Tonnen umrechnen, nur wenn die Einheit genannt ist",
    "platzhalter_muster": "[]",
-   "reihenfolge": 60,
-   "aktiv": true
+   "reihenfolge": 80,
+   "aktiv": true,
+   "gruppe": "Ladung",
+   "kurzname": "Gesamtgewicht (kg)"
   },
   {
    "kunde_id": "beispiel-transport",
@@ -138,7 +150,9 @@
    "extraktions_hinweis": "Anzahl Paletten, Pakete oder Kolli",
    "platzhalter_muster": "[]",
    "reihenfolge": 70,
-   "aktiv": true
+   "aktiv": true,
+   "gruppe": "Ladung",
+   "kurzname": "Anzahl"
   },
   {
    "kunde_id": "beispiel-transport",
@@ -151,8 +165,10 @@
    "resolution_textbaustein": "Bitte beschreiben Sie kurz die Art der Ladung.",
    "extraktions_hinweis": "Einer der erlaubten Werte in der Einzahl, auch wenn die Art nur zusammen mit einer Anzahl genannt ist (z. B. „3 Paletten“ → Palette, „12 Pakete“ → Paket). Leer lassen, wenn keine Ladungsart genannt ist",
    "platzhalter_muster": "[]",
-   "reihenfolge": 80,
-   "aktiv": true
+   "reihenfolge": 60,
+   "aktiv": true,
+   "gruppe": "Ladung",
+   "kurzname": "Art der Ladung"
   },
   {
    "kunde_id": "beispiel-transport",
@@ -166,7 +182,9 @@
    "extraktions_hinweis": "Vor- und Nachname einer Person beim Kunden, ohne Anrede (Herr/Frau). Keine Firmen-, Abteilungs- oder Teamnamen; leer lassen, wenn keine Person genannt ist",
    "platzhalter_muster": "[]",
    "reihenfolge": 90,
-   "aktiv": true
+   "aktiv": true,
+   "gruppe": "Kontakt",
+   "kurzname": "Ansprechpartner"
   },
   {
    "kunde_id": "beispiel-transport",
@@ -180,7 +198,9 @@
    "extraktions_hinweis": "Telefonnummer der Kontaktperson",
    "platzhalter_muster": "[]",
    "reihenfolge": 100,
-   "aktiv": true
+   "aktiv": true,
+   "gruppe": "Kontakt",
+   "kurzname": "Telefonnummer"
   }
  ]
 }

@@ -21,5 +21,5 @@ test('Leere Vorlage: wird mit Platzhaltern abgelehnt, ausgefüllt ist sie gülti
 test('CSV: Werte mit Komma, Anführungszeichen und Zeilenumbruch werden korrekt maskiert', () => {
 	const t = csv('epa_config_pflichtfelder', [{ ...PFLICHTFELD, anzeigename: 'A, "B"\nC' }]);
 	assert.match(t, /"A, ""B""\nC"/);
-	assert.equal(t.split('\n')[0].split(',').length, 12);
+	assert.equal(t.split('\n')[0].split(',').length, 14);
 });

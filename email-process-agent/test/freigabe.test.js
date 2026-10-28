@@ -86,17 +86,21 @@ test('Teams-Nachricht an den Freigeber', () => {
 	const n = f.nachrichtFreigeber({ vorgang: { vorgangs_id: 'V-1' }, freigabe: { empfaenger: 'k@x.de', betreff: 'RE: A&B' }, fehlende: [{ anzeigename: 'Telefon' }], link: 'https://h/webhook/epa-freigabe?t=a&b', ablaufText: '15.10.2026, 12:00', art: 'rueckfrage' });
 	assert.match(n, /RE: A&amp;B/);
 	assert.match(n, /href="https:\/\/h\/webhook\/epa-freigabe\?t=a&amp;b"/);
-	assert.match(n, /<li>Telefon<\/li>/);
-	assert.match(n, /einmal verwendbar/);
+	assert.match(n, /<b>Fehlende Angaben<\/b><br>• Telefon/);
+	assert.match(n, /Vorgangsnummer: <b>V-1<\/b>/);
+	assert.match(n, /Dieser persönliche Link ist einmal verwendbar und gültig bis 15\.10\.2026, 12:00/);
 });
 
 test('Freigabe-Nachricht mit Übersicht ersetzt die zusätzliche Eingangsmeldung (eine Nachricht je Rückfrage)', () => {
 	const fg = { empfaenger: 'kunde@x.example', betreff: 'RE: Anfrage [V-2026-0001]' };
 	const ohne = f.nachrichtFreigeber({ vorgang: { vorgangs_id: 'V-2026-0001' }, freigabe: fg, fehlende: [{ anzeigename: 'Telefon' }], link: 'https://x.example/f?t=1', ablaufText: '17.10.2026, 10:00', art: 'rueckfrage' });
-	assert.match(ohne, /Fehlende Angaben:<ul><li>Telefon<\/li>/);
-	const mit = f.nachrichtFreigeber({ vorgang: { vorgangs_id: 'V-2026-0001' }, freigabe: fg, fehlende: [{ anzeigename: 'Telefon' }], link: 'https://x.example/f?t=1', ablaufText: '17.10.2026, 10:00', art: 'rueckfrage', kontext_html: '<b>Anfrage mit Lücken erkannt</b><br>Fehlende oder ungültige Pflichtangaben:<ul><li>Telefon: fehlt</li></ul>' });
-	assert.match(mit, /^<b>Anfrage mit Lücken erkannt<\/b>/);
-	assert.match(mit, /<b>Rückfrage an den Kunden freigeben<\/b><br>An: kunde@x\.example/);
+	assert.match(ohne, /<b>Fehlende Angaben<\/b><br>• Telefon/);
+	const mit = f.nachrichtFreigeber({ vorgang: { vorgangs_id: 'V-2026-0001' }, freigabe: fg, fehlende: [{ anzeigename: 'Telefon' }], link: 'https://x.example/f?t=1', ablaufText: '17.10.2026, 10:00', art: 'rueckfrage', kontext_html: '<b>Unvollständige Anfrage erkannt</b><br><b>Fehlende oder ungültige Pflichtangaben</b><br>• Telefon' });
+	assert.match(mit, /^<b>Unvollständige Anfrage erkannt<\/b>/);
+	assert.match(mit, /<b>Rückfrage an den Kunden wurde erstellt<\/b><br>An: kunde@x\.example<br>Betreff: RE: Anfrage \[V-2026-0001\]/);
 	assert.match(mit, /Entwurf ansehen, bearbeiten oder freigeben/);
-	assert.doesNotMatch(mit, /Fehlende Angaben:<ul>/, 'Liste nicht doppelt');
+	assert.doesNotMatch(mit, /<b>Fehlende Angaben<\/b>/, 'Liste nicht doppelt');
+	const er = f.nachrichtFreigeber({ vorgang: { vorgangs_id: 'V-2026-0001' }, freigabe: fg, fehlende: [], link: 'https://x.example/f?t=1', ablaufText: '17.10.2026, 10:00', art: 'erinnerung' });
+	assert.match(er, /<b>Erinnerung an den Kunden freigeben<\/b>/);
+	assert.doesNotMatch(er, /Fehlende Angaben/);
 });

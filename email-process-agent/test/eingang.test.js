@@ -68,9 +68,10 @@ test('Meldungen: HTML wird escaped, Inhalte vollständig', () => {
 	const g = e.meldungGeprueft('V-2026-0004', { ...MAIL, spoofing: { auffaellig: true, hinweise: ['SPF fail'] }, anhaenge: [{ name: 'f.jpg', status: 'nicht_ausgewertet', hinweis: 'Bild nicht automatisch ausgewertet' }] }, felder, {
 		vollstaendig: false, daten: { A: { wert: null }, B: { wert: 5 } }, fehlende: [{ anzeigename: 'Feld A', grund: 'fehlt' }], hinweise: [], unsicher: [{ anzeigename: 'Feld B', konfidenz: 0.3 }],
 	}, { verdacht_manipulation: true });
-	assert.match(g, /Anfrage mit Lücken erkannt/);
-	assert.match(g, /<tr><td>Feld A \*<\/td><td>—<\/td><\/tr><tr><td>Feld B<\/td><td>5<\/td><\/tr>/);
-	assert.match(g, /<li>Feld A: fehlt<\/li>/);
+	assert.match(g, /^<b>Unvollständige Anfrage erkannt<\/b>/);
+	assert.match(g, /Vorgangsnummer: <b>V-2026-0004<\/b>/);
+	assert.match(g, /<b>ERFASSTE DATEN<\/b><br><br>Feld A: —<br>Feld B: 5/);
+	assert.match(g, /<b>Fehlende oder ungültige Pflichtangaben<\/b><br>• Feld A(<|$)/);
 	assert.match(g, /SPF fail/);
 	assert.match(g, /Bild nicht automatisch ausgewertet/);
 	assert.match(g, /Konfidenz 0.3/);
@@ -118,4 +119,32 @@ test('Systemwarnung Prompt-Injection: Grund, auffällige Stellen, Absenderdaten,
 	assert.ok(!html.includes('<script>'), 'Mailinhalt wird escaped');
 	// Anhang wird geprüft, wenn im Text weniger als 3 Stellen sind
 	assert.equal(e.verdaechtigeStellen({ text: 'Hallo', anhaenge: mail.anhaenge })[0].wo, 'Anhang "a.pdf"');
+});
+
+test('Eingangsmeldung im neuen Layout: Kopf, Gruppen, Datum, Kategorie, wichtige Information', () => {
+	const mail = { absender_name: 'Ralf Becker', absender_adresse: 'r@x.de', betreff: 'Transport Mainz – Koblenz', empfangen_am: '2026-10-27T13:56:00Z', web_link: 'https://outlook/x' };
+	const felder = [
+		{ feldname: 'Start_PLZ', anzeigename: 'PLZ Abholort', gruppe: 'Abholort', kurzname: 'PLZ', typ: 'plz', pflicht: true },
+		{ feldname: 'Start_Ort', anzeigename: 'Abholort', gruppe: 'Abholort', kurzname: 'Stadt', typ: 'text', pflicht: true },
+		{ feldname: 'Ziel_PLZ', anzeigename: 'PLZ Zielort', gruppe: 'Zielort', kurzname: 'PLZ', typ: 'plz', pflicht: true },
+		{ feldname: 'Abholdatum', anzeigename: 'Gewünschtes Abholdatum', typ: 'datum', pflicht: true },
+		{ feldname: 'Telefon', anzeigename: 'Telefonnummer', gruppe: 'Kontakt', kurzname: 'Telefonnummer', typ: 'telefon', pflicht: true },
+	];
+	const p = { vollstaendig: false, daten: { Start_PLZ: { wert: '55116' }, Start_Ort: { wert: 'Mainz' }, Ziel_PLZ: { wert: '56068' }, Abholdatum: { wert: '2026-12-15' }, Telefon: { wert: null } }, fehlende: [{ anzeigename: 'Telefonnummer', grund: 'fehlt' }, { anzeigename: 'PLZ Zielort', grund: 'ungültig (keine 5 Ziffern)' }], hinweise: [], unsicher: [] };
+	const g = e.meldungGeprueft('V-2026-0161', mail, felder, p, { zone: 'Europe/Berlin', kategorie: 'AI Rückfragen', besonderheiten: 'Sonderfahrt <bitte> mit Hebebühne', ohneRueckfrageText: true });
+	assert.match(g, /Absender der Anfrage: Ralf Becker &lt;r@x\.de&gt;/);
+	assert.match(g, /<b>Betreff: Transport Mainz – Koblenz<\/b>/);
+	assert.match(g, /E-Mail wurde am 27\.10\.2026 um 14:56 Uhr erfasst und ist mit „AI Rückfragen“ gekennzeichnet\. <a href="https:\/\/outlook\/x">In Outlook öffnen<\/a>/);
+	assert.match(g, /<b>Abholort<\/b><br>PLZ: 55116<br>Stadt: Mainz<br><br><b>Zielort<\/b><br>PLZ: 56068<br><br>Gewünschtes Abholdatum: 15\.12\.2026<br><br><b>Kontakt<\/b><br>Telefonnummer: —/);
+	assert.match(g, /<b>Wichtige Information erkannt<\/b><br>Sonderfahrt &lt;bitte&gt; mit Hebebühne/);
+	assert.match(g, /• Telefonnummer<br>• PLZ Zielort – ungültig \(keine 5 Ziffern\)/);
+	assert.equal((g.match(new RegExp(e.TRENNER, 'g')) || []).length, 2);
+	assert.doesNotMatch(g, /Rückfrage liegt als Entwurf/);
+	// vollständig, ohne Besonderheiten und Kategorie
+	const v = e.meldungGeprueft('V-1', mail, felder, { ...p, vollstaendig: true, fehlende: [] }, {});
+	assert.match(v, /^<b>Vollständige Anfrage – bereit zur Bearbeitung<\/b>/);
+	assert.match(v, /erfasst\. <a/);
+	assert.doesNotMatch(v, /Wichtige Information|gekennzeichnet|Bitte beachten/);
+	assert.match(v, /<b>Alle Pflichtangaben vorhanden<\/b>/);
+	assert.equal(e.erfasstText('kein Datum'), '');
 });
