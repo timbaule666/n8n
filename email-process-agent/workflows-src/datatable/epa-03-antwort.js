@@ -135,10 +135,12 @@ if (ent.weg === 'keine_daten' && v.status === 'Warten auf Kunde' && Number(confi
 	if (f !== v.antwort_frist) fristNeu = f;
 }
 const manipulation = llm.ergebnis.verdacht_manipulation === true;
+// Verdacht auf Manipulation: keine neue Rückfrage und keine Freigabe – nur die Systemwarnung (EPA-01), ein Mensch prüft.
+const sperren = manipulation && ent.weg !== 'keine_daten';
 return [{ json: {
 	weg: ent.weg === 'keine_daten' ? 'keine_daten' : 'auswerten',
-	ergebnis: ent.weg,
-	zielstatus: ent.zielstatus,
+	ergebnis: sperren ? 'manipulation' : ent.weg,
+	zielstatus: sperren ? 'Eskaliert / Manuell' : ent.zielstatus,
 	freigabe_ersetzen: ent.freigabe_ersetzen,
 	merge: m,
 	frist_neu: fristNeu,
@@ -268,6 +270,8 @@ return [{ json: { kontext_html: html } }];
 const z = $('Zusammenführen').first().json;
 const v = $('Vorgang lesen').first().json.vorgang;
 const mail = $('Bei Aufruf').first().json.mail;
+// Manipulationsverdacht: Die Systemwarnung aus EPA-01 ist die einzige Nachricht.
+if (z.ergebnis === 'manipulation') return [{ json: { anlass: 'antwort_manipulation', nachricht_html: '', ergebnis: 'manipulation', stumm: true } }];
 const r = $('Rückfrage anfordern').isExecuted ? $('Rückfrage anfordern').first().json : null;
 const config = $('Config laden').first().json.config;
 const th = textHinweise.alle(mail, { antwort: true });

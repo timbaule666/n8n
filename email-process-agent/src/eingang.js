@@ -259,6 +259,7 @@ function meldungManipulation({ vorgangs_id: vid, mail, erkannt_bei, begruendung,
 	if (m.web_link) z.push(`<a href="${esc(m.web_link)}">Mail in Outlook öffnen</a>`);
 	z.push('');
 	if (behandlung) z.push(`Behandlung: ${esc(behandlung)}`);
+	z.push('<b>👉 Bitte die Mail prüfen und bei Bedarf selbst bearbeiten.</b>');
 	z.push('Die KI hat keine Werkzeuge: Es wurde nichts ausgeführt, gesendet oder gelöscht. Kundenmails gehen nur nach Freigabe raus.');
 	return z.join('<br>').replace(/(<br>){2,}/g, '<br><br>');
 }

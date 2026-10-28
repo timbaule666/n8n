@@ -116,6 +116,7 @@ test('Systemwarnung Prompt-Injection: Grund, auffällige Stellen, Absenderdaten,
 	assert.match(html, /Absender auffällig: Anzeigename wirkt intern/);
 	assert.match(html, /Eingang: 15\.10\.2026, 21:12/);
 	assert.match(html, /Behandlung: keine Anfrage/);
+	assert.match(html, /Bitte die Mail prüfen/);
 	assert.ok(!html.includes('<script>'), 'Mailinhalt wird escaped');
 	// Anhang wird geprüft, wenn im Text weniger als 3 Stellen sind
 	assert.equal(e.verdaechtigeStellen({ text: 'Hallo', anhaenge: mail.anhaenge })[0].wo, 'Anhang "a.pdf"');

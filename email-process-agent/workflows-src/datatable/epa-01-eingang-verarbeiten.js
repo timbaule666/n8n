@@ -372,9 +372,11 @@ if (!llm.ok) {
 }
 const p = pflichtfelder.pruefen(llm.ergebnis.felder, felder, { heute: n.heute, quelltext: pflichtfelder.quelltextAus(n.mail), absenderName: n.mail.absender_name });
 const manipulation = llm.ergebnis.verdacht_manipulation === true || k.details.verdacht_manipulation === true;
+// Verdacht auf Manipulation: keine Rückfrage, keine Freigabe – nur die Systemwarnung, ein Mensch prüft die Mail.
+const weg = manipulation ? 'manipulation' : p.vollstaendig ? 'bereit' : 'luecken';
 return [{ json: {
-	weg: p.vollstaendig ? 'bereit' : 'luecken',
-	status: p.vollstaendig ? 'Bereit zur Bearbeitung' : 'Lücken erkannt',
+	weg,
+	status: { manipulation: 'Eskaliert / Manuell', bereit: 'Bereit zur Bearbeitung', luecken: 'Lücken erkannt' }[weg],
 	pruefung: p,
 	besonderheiten: typeof llm.ergebnis.besonderheiten === 'string' ? llm.ergebnis.besonderheiten : null,
 	verdacht_manipulation: manipulation,
@@ -451,7 +453,8 @@ return [{ json: {
 	anlass: p.weg,
 	nachricht_html: html,
 	// Rückfrage samt Übersicht ist beim Freigeber angekommen: keine zweite Nachricht.
-	stumm: p.weg === 'luecken' && eingang.meldungInFreigabe(r),
+	// Bei Manipulationsverdacht kommt nur die Systemwarnung (Manipulation prüfen).
+	stumm: p.weg === 'manipulation' || (p.weg === 'luecken' && eingang.meldungInFreigabe(r)),
 	ergebnis: { ergebnis: p.weg, vorgangs_id: v.vorgangs_id },
 } }];
 `);
@@ -517,6 +520,8 @@ const BEHANDLUNG = {
 	ignoriert: 'keine Anfrage – nicht bearbeitet, die Mail bleibt im Posteingang',
 	bereit: 'als Anfrage bearbeitet (vollständig) – bitte die Angaben vor der Bearbeitung prüfen',
 	luecken: 'als Anfrage bearbeitet – die Rückfrage geht nur nach Freigabe raus',
+	manipulation: 'nicht automatisch bearbeitet: keine Rückfrage, kein Entwurf, keine Freigabe. Der Vorgang steht auf „Eskaliert / Manuell“.',
+	antwort_manipulation: 'Kundenantwort nicht automatisch ausgewertet: keine neue Rückfrage, keine Freigabe. Der Vorgang steht auf „Eskaliert / Manuell“.',
 	klassifizierung_unklar: 'nicht automatisch bearbeitet – bitte manuell prüfen',
 };
 const eingangText = mail.empfangen_am ? DateTime.fromISO(mail.empfangen_am).setZone(config.zeitzone).toFormat('dd.LL.yyyy, HH:mm') : null;
