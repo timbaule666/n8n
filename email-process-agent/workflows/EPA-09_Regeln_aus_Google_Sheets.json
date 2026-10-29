@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## EPA-09 Regeln aus Google Sheets\n**Zweck:** Kunden pflegen ihre Regeln (Signatur, Fristen, Geschäftszeiten, Pflichtfelder, Rückfrage-Texte …) selbst in einem Google Sheet. Alle 15 Minuten werden Änderungen geprüft und übernommen.\n**Welche Kunden:** alle mit `config_sheet` (Sheet-ID) in epa_config_allgemein, auch noch nicht aktive (Einrichtung).\n**Je Kunde:** \"EPA SW Regeln abgleichen\". Ein Fehler bei einem Kunden hält die anderen nicht auf.\n**Manuell:** Aufruf mit `kunde_id` gleicht nur diesen Kunden sofort ab.\n**Neues Sheet:** \"EPA-10 Regel-Sheet anlegen\".",
+        "content": "## EPA-09 Regeln aus Google Sheets\n**Zweck:** Kunden pflegen ihre Regeln (Signatur, Fristen, Geschäftszeiten, Pflichtfelder, Rückfrage-Texte …) selbst in einem Google Sheet. Einmal täglich um 06:20 Uhr (Europe/Berlin) werden Änderungen geprüft und übernommen; bei Bedarf manuell starten.\n**Welche Kunden:** alle mit `config_sheet` (Sheet-ID) in epa_config_allgemein, auch noch nicht aktive (Einrichtung).\n**Je Kunde:** \"EPA SW Regeln abgleichen\". Ein Fehler bei einem Kunden hält die anderen nicht auf.\n**Manuell:** Aufruf mit `kunde_id` gleicht nur diesen Kunden sofort ab.\n**Neues Sheet:** \"EPA-10 Regel-Sheet anlegen\".",
         "width": 680,
         "height": 280,
         "color": 7
@@ -22,14 +22,14 @@
         "rule": {
           "interval": [
             {
-              "field": "minutes",
-              "minutesInterval": 15
+              "field": "cronExpression",
+              "expression": "20 6 * * *"
             }
           ]
         }
       },
-      "id": "997a1f31-42c5-4028-a12a-7dfb38773fca",
-      "name": "Alle 15 Minuten",
+      "id": "6e42401d-7b6f-4a13-a9b9-f7d877345541",
+      "name": "Täglich 06:20",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -174,7 +174,7 @@
     }
   ],
   "connections": {
-    "Alle 15 Minuten": {
+    "Täglich 06:20": {
       "main": [
         [
           {
@@ -233,7 +233,8 @@
   "settings": {
     "executionOrder": "v1",
     "saveManualExecutions": true,
-    "callerPolicy": "workflowsFromSameOwner"
+    "callerPolicy": "workflowsFromSameOwner",
+    "timezone": "Europe/Berlin"
   },
   "pinData": {},
   "meta": {

@@ -1,6 +1,6 @@
 # Kunden-Regeln in Google Sheets
 
-Kunden pflegen ihre Regeln selbst in einem Google Sheet. Alle 15 Minuten prüft „EPA-09 Regeln aus Google Sheets“ das Sheet und übernimmt die Änderungen.
+Kunden pflegen ihre Regeln selbst in einem Google Sheet. Einmal täglich um 06:20 Uhr prüft „EPA-09 Regeln aus Google Sheets“ das Sheet und übernimmt die Änderungen (sparsam bei den n8n-Ausführungen). Für sofortige Übernahme den Workflow manuell starten.
 
 ## Was der Kunde ändern kann
 

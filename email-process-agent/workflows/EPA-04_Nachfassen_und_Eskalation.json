@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## EPA-04 Nachfassen und Eskalation (Phase E, Cronjob)\n**Zweck:** Stündlich überfällige Vorgänge und offene Freigaben finden und je Fall genau eine Aufgabe an \"EPA SW Nachfassen\" geben. Entschieden wird im Code (src/nachfassen.js), nicht durch die KI.\n**Fall 1:** \"Warten auf Kunde\", Frist abgelaufen, Erinnerungen < anzahl_erinnerungen → Erinnerungsentwurf mit Freigabe (EPA-02). Nach dem Versand: Frist = erinnerung_intervall_stunden, Zähler +1, Status wieder \"Warten auf Kunde\".\n**Fall 2:** Alle Erinnerungen gesendet und Frist wieder abgelaufen → \"Eskaliert / Manuell\" und Teams-Nachricht: bitte telefonisch kontaktieren.\n**Direkt in Outlook gesendet:** Jede offene Freigabe wird in jedem Lauf zuerst geprüft (versand_pruefen): Liegt ihr Entwurf schon in \"Gesendete Elemente\", vermerkt SW Nachfassen den Versand und der Vorgang wartet auf den Kunden.\n**Nicht zugestellt:** Freigaben mit Status \"unzustellbar\" (Unzustellbarkeitsmeldung, EPA-01) kommen erneut zur Freigabe, sobald der Zustelltest des Kunden (EPA-11, Zeile \"zustelltest:<kunde_id>\") NACH der Meldung erfolgreich war; höchstens 7 Tage lang. Ausführung: SW Nachfassen → EPA-02 (art = erneut).\n**Freigeber:** Nach freigabe_erinnerung_stunden Erinnerung mit neuem Link, nach freigabe_ablauf_stunden neue Links (alte ungültig). Nie automatischer Versand.\n**Geschäftszeiten:** Aufgaben eines Kunden laufen nur innerhalb seiner Geschäftszeiten (inkl. Feiertage); außerhalb wird nichts verloren, der nächste Lauf holt es nach.\n**Lauf-Lock:** Zeile \"epa04_lauf\" in epa_system_status, atomar übernommen (bedingtes Update auf lock_bis < jetzt). Überlappende Läufe brechen sofort ab. Max. 50 Aufgaben je Lauf, der Rest folgt im nächsten Lauf.\n**Trigger:** Zeitplan stündlich (Minute 5; Intervall im Node \"Stündlich\" anpassbar, 1–2 h empfohlen). Zusätzlich Aufruf mit Eingabe \"jetzt\" für Tests und manuelle Läufe.",
+        "content": "## EPA-04 Nachfassen und Eskalation (Phase E, Cronjob)\n**Zweck:** Stündlich überfällige Vorgänge und offene Freigaben finden und je Fall genau eine Aufgabe an \"EPA SW Nachfassen\" geben. Entschieden wird im Code (src/nachfassen.js), nicht durch die KI.\n**Fall 1:** \"Warten auf Kunde\", Frist abgelaufen, Erinnerungen < anzahl_erinnerungen → Erinnerungsentwurf mit Freigabe (EPA-02). Nach dem Versand: Frist = erinnerung_intervall_stunden, Zähler +1, Status wieder \"Warten auf Kunde\".\n**Fall 2:** Alle Erinnerungen gesendet und Frist wieder abgelaufen → \"Eskaliert / Manuell\" und Teams-Nachricht: bitte telefonisch kontaktieren.\n**Direkt in Outlook gesendet:** Jede offene Freigabe wird in jedem Lauf zuerst geprüft (versand_pruefen): Liegt ihr Entwurf schon in \"Gesendete Elemente\", vermerkt SW Nachfassen den Versand und der Vorgang wartet auf den Kunden.\n**Nicht zugestellt:** Freigaben mit Status \"unzustellbar\" (Unzustellbarkeitsmeldung, EPA-01) kommen erneut zur Freigabe, sobald der Zustelltest des Kunden (EPA-11, Zeile \"zustelltest:<kunde_id>\") NACH der Meldung erfolgreich war; höchstens 7 Tage lang. Ausführung: SW Nachfassen → EPA-02 (art = erneut).\n**Freigeber:** Nach freigabe_erinnerung_stunden Erinnerung mit neuem Link, nach freigabe_ablauf_stunden neue Links (alte ungültig). Nie automatischer Versand.\n**Geschäftszeiten:** Aufgaben eines Kunden laufen nur innerhalb seiner Geschäftszeiten (inkl. Feiertage); außerhalb wird nichts verloren, der nächste Lauf holt es nach.\n**Lauf-Lock:** Zeile \"epa04_lauf\" in epa_system_status, atomar übernommen (bedingtes Update auf lock_bis < jetzt). Überlappende Läufe brechen sofort ab. Max. 50 Aufgaben je Lauf, der Rest folgt im nächsten Lauf.\n**Trigger:** Zeitplan Mo–Fr stündlich von 07:05 bis 18:05 (Europe/Berlin, Node \"Werktags stündlich\"). Nachts und am Wochenende läuft nichts; was anfällt, holt der erste Lauf am Morgen nach. Zusätzlich Aufruf mit Eingabe \"jetzt\" für Tests und manuelle Läufe.",
         "width": 960,
         "height": 420,
         "color": 7
@@ -22,15 +22,14 @@
         "rule": {
           "interval": [
             {
-              "field": "hours",
-              "hoursInterval": 1,
-              "triggerAtMinute": 5
+              "field": "cronExpression",
+              "expression": "5 7-18 * * 1-5"
             }
           ]
         }
       },
-      "id": "276f7c67-2c27-488d-aea2-bbdfcdd89e4c",
-      "name": "Stündlich",
+      "id": "c1ce3211-0c3e-433e-a765-fa4aaaae521d",
+      "name": "Werktags stündlich",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -718,7 +717,7 @@
     }
   ],
   "connections": {
-    "Stündlich": {
+    "Werktags stündlich": {
       "main": [
         [
           {
@@ -986,7 +985,8 @@
     "executionOrder": "v1",
     "saveManualExecutions": true,
     "callerPolicy": "workflowsFromSameOwner",
-    "executionTimeout": 3000
+    "executionTimeout": 3000,
+    "timezone": "Europe/Berlin"
   },
   "pinData": {},
   "meta": {

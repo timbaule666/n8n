@@ -9,6 +9,8 @@ module.exports = function () {
 	// Läuft höchstens 50 Minuten. Der Lauf-Lock gilt 55 Minuten und verfällt damit vor dem nächsten Lauf,
 	// auch wenn ein Lauf abbricht, ohne ihn freizugeben.
 	wf.settings.executionTimeout = 3000;
+	// Zeitplan in deutscher Zeit (Geschäftszeiten); spart Ausführungen nachts und am Wochenende.
+	wf.settings.timezone = 'Europe/Berlin';
 
 	wf.notiz('Notiz Zweck', [-120, -620], [
 		'## EPA-04 Nachfassen und Eskalation (Phase E, Cronjob)',
@@ -20,11 +22,11 @@ module.exports = function () {
 		'**Freigeber:** Nach freigabe_erinnerung_stunden Erinnerung mit neuem Link, nach freigabe_ablauf_stunden neue Links (alte ungültig). Nie automatischer Versand.',
 		'**Geschäftszeiten:** Aufgaben eines Kunden laufen nur innerhalb seiner Geschäftszeiten (inkl. Feiertage); außerhalb wird nichts verloren, der nächste Lauf holt es nach.',
 		'**Lauf-Lock:** Zeile "' + LOCK_SCHLUESSEL + '" in epa_system_status, atomar übernommen (bedingtes Update auf lock_bis < jetzt). Überlappende Läufe brechen sofort ab. Max. 50 Aufgaben je Lauf, der Rest folgt im nächsten Lauf.',
-		'**Trigger:** Zeitplan stündlich (Minute 5; Intervall im Node "Stündlich" anpassbar, 1–2 h empfohlen). Zusätzlich Aufruf mit Eingabe "jetzt" für Tests und manuelle Läufe.',
+		'**Trigger:** Zeitplan Mo–Fr stündlich von 07:05 bis 18:05 (Europe/Berlin, Node "Werktags stündlich"). Nachts und am Wochenende läuft nichts; was anfällt, holt der erste Lauf am Morgen nach. Zusätzlich Aufruf mit Eingabe "jetzt" für Tests und manuelle Läufe.',
 	].join('\n'), { breite: 960, hoehe: 420 });
 
-	const zeitplan = wf.node('Stündlich', 'n8n-nodes-base.scheduleTrigger', [0, -100], {
-		rule: { interval: [{ field: 'hours', hoursInterval: 1, triggerAtMinute: 5 }] },
+	const zeitplan = wf.node('Werktags stündlich', 'n8n-nodes-base.scheduleTrigger', [0, -100], {
+		rule: { interval: [{ field: 'cronExpression', expression: '5 7-18 * * 1-5' }] },
 	});
 	const manuell = wf.trigger('Bei Aufruf (Test/manuell)', [0, 100], [['jetzt', 'string']]);
 
