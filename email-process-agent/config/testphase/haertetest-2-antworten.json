@@ -1,0 +1,112 @@
+[
+ {
+  "vorgang": "V-2026-0227",
+  "text": "Hallo,\n\nmeine Telefonnummer ist 09131 5557021.\n\nGruß Martin Roth",
+  "erwartet": "bereit"
+ },
+ {
+  "vorgang": "V-2026-0228",
+  "text": "Hallo,\n\nAbholung bitte am 05.12.2026.\n\nKarin Scholz",
+  "erwartet": "bereit"
+ },
+ {
+  "vorgang": "V-2026-0229",
+  "text": "Guten Tag,\n\ndas Gewicht liegt bei ca. 1.300 kg.\n\nOliver Kraus",
+  "erwartet": "bereit"
+ },
+ {
+  "vorgang": "V-2026-0230",
+  "text": "Hallo,\n\nabgeholt wird bei uns in 50667 Köln.\n\nJana Wolf",
+  "erwartet": "bereit"
+ },
+ {
+  "vorgang": "V-2026-0231",
+  "text": "Guten Tag,\n\nZiel ist 60311 Frankfurt am Main.\n\nPaul Engel",
+  "erwartet": "bereit"
+ },
+ {
+  "vorgang": "V-2026-0232",
+  "text": "Guten Tag,\n\nAnsprechpartner ist Herr Uwe Brandes.\n\nMit freundlichen Grüßen",
+  "erwartet": "bereit"
+ },
+ {
+  "vorgang": "V-2026-0233",
+  "text": "Hallo,\n\nAbholung 93047 Regensburg, Lieferung 94032 Passau.\n\nAnton Bauer",
+  "erwartet": "bereit"
+ },
+ {
+  "vorgang": "V-2026-0234",
+  "text": "Hallo,\n\nAbholung in Würzburg, Ziel ist Aschaffenburg.\n\nLena Graf",
+  "erwartet": "bereit (Orte zu PLZ)"
+ },
+ {
+  "vorgang": "V-2026-0235",
+  "text": "Hallo,\n\nAbholung bitte am Dienstag, 10.11.2026.\n\nSven Lang",
+  "erwartet": "bereit"
+ },
+ {
+  "vorgang": "V-2026-0236",
+  "text": "Hallo,\n\nam besten am Montag, 02.11.2026.\n\nRainer Kurz",
+  "erwartet": "bereit"
+ },
+ {
+  "vorgang": "V-2026-0237",
+  "text": "Hallo,\n\ndie Telefonnummer reiche ich noch nach, bin gerade unterwegs.\n\nEva Hahn",
+  "erwartet": "keine Angaben, wartet weiter"
+ },
+ {
+  "vorgang": "V-2026-0238",
+  "text": "Grüß Gott,\n\ndie Ware wird aus unserem Lager in 94036 Passau abgeholt.\n\nFranz Huber",
+  "erwartet": "bereit"
+ },
+ {
+  "vorgang": "V-2026-0239",
+  "text": "Guten Tag,\n\nTippfehler, gemeint ist der 12.12.2026.\n\nKlara Fuchs",
+  "erwartet": "bereit"
+ },
+ {
+  "vorgang": "V-2026-0240",
+  "text": "Hallo,\n\nEntschuldigung, gemeint ist der 15.12.2026.\n\nDieter Schmid",
+  "erwartet": "bereit"
+ },
+ {
+  "vorgang": "V-2026-0241",
+  "text": "Guten Tag,\n\nes sind insgesamt 24.000 kg, verteilt auf zwei Fahrzeuge.\n\nGerd Pohl",
+  "erwartet": "bereit + Hinweis zwei Fahrzeuge"
+ },
+ {
+  "vorgang": "V-2026-0242",
+  "text": "Hallo,\n\nsorry, das Paket wiegt 12 kg.\n\nIna Brück",
+  "erwartet": "bereit"
+ },
+ {
+  "vorgang": "V-2026-0244",
+  "text": "Hallo,\n\nAbholung in 41460 Neuss, Lieferung nach 47798 Krefeld. Telefon 02131 5557038. Datum und Gewicht kläre ich noch.\n\nR. Kunz",
+  "erwartet": "Teilantwort -> 2. Rückfrage (Datum, Gewicht)"
+ },
+ {
+  "vorgang": "V-2026-0245",
+  "text": "Hallo,\n\ndas Gewicht beträgt 870 kg.\n\nMia Sommer",
+  "erwartet": "bereit"
+ },
+ {
+  "vorgang": "V-2026-0246",
+  "text": "Hallo,\n\nkorrekt ist 0641 5557040.\n\nBen Albrecht",
+  "erwartet": "bereit"
+ },
+ {
+  "vorgang": "V-2026-0248",
+  "text": "Guten Tag,\n\nGewicht 760 kg, Telefon 0621 5557042.\n\nSarah Klein",
+  "erwartet": "bereit"
+ },
+ {
+  "vorgang": "V-2026-0250",
+  "text": "Hallo,\n\nZiel ist 14467 Potsdam.\n\nMarco Zimmer",
+  "erwartet": "bereit"
+ },
+ {
+  "vorgang": "V-2026-0254",
+  "text": "Hallo,\n\nich wollte eigentlich nur eine grobe Preisindikation, kein konkreter Auftrag.\n\nFelix Ernst",
+  "erwartet": "keine Angaben / kein Auftrag gemeldet"
+ }
+]
