@@ -362,9 +362,29 @@ return [{ json: {
 	ergebnis: { ergebnis: 'klassifizierung_unklar', vorgangs_id: v.vorgangs_id },
 } }];
 `);
-	const kiIgnoriert = wf.code('Ergebnis: Keine Anfrage', [3740, 460], [], `
-return [{ json: { ergebnis: 'ignoriert', vorgangs_id: $('Vorgang anlegen').first().json.vorgang.vorgangs_id } }];
+	// Keine Anfrage: still ignorieren – außer jemand muss handeln (Stornierung, Rückrufbitte, Frage zu einem Vorgang,
+	// Inhalt nur im Anhang). Dann eine Meldung; am Vorgang und an bestehenden Vorgängen ändert sich nichts.
+	const kiIgnoriert = wf.code('Ergebnis: Keine Anfrage', [3740, 460], ['eingang', 'textHinweise'], `
+const v = $('Vorgang anlegen').first().json.vorgang;
+const k = $('Klasse auswerten').first().json;
+const mail = $('Mail normalisieren').first().json.mail;
+const config = $('Config laden').first().json.config;
+const h = textHinweise.handlungKeineAnfrage(mail, k.details && k.details.begruendung);
+if (!h) return [{ json: { ergebnis: 'ignoriert', vorgangs_id: v.vorgangs_id, melden: false } }];
+const kandidaten = $('Kandidaten suchen').isExecuted ? ($('Kandidaten suchen').first().json.kandidaten || []) : [];
+const passend = ['storno', 'status'].includes(h.anlass) ? eingang.passendeVorgaenge(mail, kandidaten.filter((x) => x.vorgangs_id !== v.vorgangs_id)) : [];
+return [{ json: {
+	vorgangs_id: v.vorgangs_id,
+	melden: true,
+	anlass: 'keine_anfrage_' + h.anlass,
+	nachricht_html: eingang.meldungKeineAnfrage(v.vorgangs_id, mail, h, passend, { zone: config.zeitzone }),
+	ergebnis: { ergebnis: 'ignoriert_gemeldet', vorgangs_id: v.vorgangs_id },
+} }];
 `);
+	const kiMelden = wf.node('Keine Anfrage melden?', 'n8n-nodes-base.if', [3960, 460], {
+		conditions: bedingungen([bedingung('={{ $json.melden }}', { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: { looseTypeValidation: true },
+	});
 
 	// ---------------------------------------------------------------- Extraktion (B2), Prüfung (B3), Speichern (B4), Weiche (B5)
 	const extrahieren = wf.aufruf('Daten extrahieren', [3740, 120], 'EPA SW LLM aufrufen', [
@@ -376,7 +396,7 @@ return [{ json: { ergebnis: 'ignoriert', vorgangs_id: $('Vorgang anlegen').first
 		['kontext', 'object', `={{ { mail: ${M}, felder: ${C}.vorgangstypen[${K}.vorgangstyp], heute: ${N}.heute, hinweise: ${N}.hinweise_extraktion } }}`],
 		['fehler_als_ergebnis', 'boolean', '={{ false }}'],
 	]);
-	const pruefen = wf.code('Pflichtfelder prüfen', [3960, 120], ['pflichtfelder'], `
+	const pruefen = wf.code('Pflichtfelder prüfen', [3960, 120], ['pflichtfelder', 'eingang'], `
 const config = $('Config laden').first().json.config;
 const k = $('Klasse auswerten').first().json;
 const n = $('Mail normalisieren').first().json;
@@ -390,8 +410,11 @@ if (!llm.ok) {
 	} }];
 }
 const p = pflichtfelder.pruefen(llm.ergebnis.felder, felder, { heute: n.heute, quelltext: pflichtfelder.quelltextAus(n.mail), absenderName: n.mail.absender_name });
-const manipulation = llm.ergebnis.verdacht_manipulation === true || k.details.verdacht_manipulation === true;
-// Verdacht auf Manipulation: keine Rückfrage, keine Freigabe – nur die Systemwarnung, ein Mensch prüft die Mail.
+const kiVerdacht = llm.ergebnis.verdacht_manipulation === true || k.details.verdacht_manipulation === true;
+// KI-Einschätzung + feste Musterprüfung: Bei bestätigtem Verdacht keine Rückfrage, keine Freigabe – nur die
+// Systemwarnung, ein Mensch prüft die Mail. Meldet nur die KI etwas, läuft die Mail normal mit Hinweis weiter.
+const bewertung = eingang.manipulationBewerten(kiVerdacht, n.mail);
+const manipulation = bewertung.stufe === 'sperren';
 const weg = manipulation ? 'manipulation' : p.vollstaendig ? 'bereit' : 'luecken';
 return [{ json: {
 	weg,
@@ -399,12 +422,15 @@ return [{ json: {
 	pruefung: p,
 	besonderheiten: typeof llm.ergebnis.besonderheiten === 'string' ? llm.ergebnis.besonderheiten : null,
 	verdacht_manipulation: manipulation,
+	manipulation_hinweis: bewertung.stufe === 'hinweis',
+	manipulation_quellen: eingang.manipulationQuellen(bewertung, k.details.verdacht_manipulation === true ? 'Klassifizierung' : 'Datenauslesen'),
 	speichern: { vorgangstyp: k.vorgangstyp, sprache: k.details.sprache || null, extrahierte_daten: p.daten, fehlende_felder: p.fehlende },
 	details: {
 		fehlende: p.fehlende.map((f) => f.feldname),
 		verworfen: p.hinweise.map((f) => f.feldname),
 		unsicher: p.unsicher.map((f) => f.feldname),
 		verdacht_manipulation: manipulation,
+		manipulation: bewertung,
 		llm: { modell: llm.modell, prompt_version: llm.prompt_version, versuche: llm.versuche, korrekturen: llm.korrekturen },
 	},
 } }];
@@ -440,7 +466,7 @@ const p = $('Pflichtfelder prüfen').first().json;
 const v = $('Vorgang anlegen').first().json.vorgang;
 const mail = $('Mail normalisieren').first().json.mail;
 const kat = (config.outlook_kategorien || {})['Freigabe ausstehend'];
-return [{ json: { kontext_html: eingang.meldungGeprueft(v.vorgangs_id, mail, config.vorgangstypen[k.vorgangstyp], p.pruefung, { verdacht_manipulation: p.verdacht_manipulation, ohneRueckfrageText: true, text_hinweise: textHinweise.alle(mail).hinweise, zone: config.zeitzone, kategorie: kat && kat.name, besonderheiten: p.besonderheiten }) } }];
+return [{ json: { kontext_html: eingang.meldungGeprueft(v.vorgangs_id, mail, config.vorgangstypen[k.vorgangstyp], p.pruefung, { manipulation_hinweis: p.manipulation_hinweis, ohneRueckfrageText: true, text_hinweise: textHinweise.alle(mail).hinweise, zone: config.zeitzone, kategorie: kat && kat.name, besonderheiten: p.besonderheiten }) } }];
 `);
 	// Fehler in EPA-02 meldet EPA-05 selbst (Alarm, Vorgang sichern); die Mailverarbeitung läuft weiter.
 	const rueckfrage = wf.aufruf('Rückfrage anfordern', [4840, 40], 'EPA-02 Rückfrage anfordern', [
@@ -462,7 +488,7 @@ const html = p.weg === 'extraktion_fehlgeschlagen'
 		zone: config.zeitzone,
 		kategorie: ((config.outlook_kategorien || {})[p.pruefung.vollstaendig ? 'Bereit zur Bearbeitung' : 'Freigabe ausstehend'] || {}).name,
 		besonderheiten: p.besonderheiten,
-		verdacht_manipulation: p.verdacht_manipulation,
+		manipulation_hinweis: p.manipulation_hinweis,
 		text_hinweise: textHinweise.alle(mail).hinweise,
 		rueckfrage: $('Rückfrage anfordern').isExecuted ? $('Rückfrage anfordern').first().json : null,
 	});
@@ -483,7 +509,7 @@ return [{ json: {
 	});
 
 	// ---------------------------------------------------------------- Meldung und Abschluss
-	const MELDUNGEN = ['Meldung: Zuordnung unklar', 'Meldung: Klassifizierung unklar', 'Meldung: geprüft'];
+	const MELDUNGEN = ['Meldung: Zuordnung unklar', 'Meldung: Klassifizierung unklar', 'Meldung: geprüft', 'Ergebnis: Keine Anfrage'];
 	const informieren = wf.aufruf('Mitarbeiter informieren', [5280, 0], 'EPA SW Benachrichtigen', [
 		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
 		['vorgangs_id', 'string', '={{ $json.vorgangs_id }}'],
@@ -523,19 +549,25 @@ return [{ json: {
 	// Eigene Meldung, sobald Klassifizierung, Extraktion oder Antwort-Auswertung Anweisungen an die KI erkennt
 	// (auch bei Mails, die keine Anfrage sind). Ein Fehler beim Senden stoppt die Verarbeitung nicht.
 	const warnungPruefen = wf.code('Manipulation prüfen', [5940, 100], ['eingang'], `
-const erkannt = [];
-let begruendung = null;
-if ($('Klasse auswerten').isExecuted) {
+// Warnung nur bei bestätigtem Verdacht (KI + auffällige Stelle oder eindeutiges Muster, eingang.manipulationBewerten).
+// Die Begründung der Klassifizierung beschreibt die Mailart, nicht den Angriff: nicht als "Einschätzung" zeigen.
+const mail = $('Mail normalisieren').first().json.mail;
+let erkannt = [];
+const begruendung = null;
+if ($('Pflichtfelder prüfen').isExecuted) {
+	const p = $('Pflichtfelder prüfen').first().json;
+	if (p.verdacht_manipulation === true) erkannt = p.manipulation_quellen || ['Datenauslesen'];
+} else if ($('Antwort verarbeiten').isExecuted) {
+	const r = $('Antwort verarbeiten').first().json;
+	if (r.verdacht_manipulation === true) erkannt = eingang.manipulationQuellen(r.manipulation || { ki: true }, 'Kundenantwort');
+} else if ($('Klasse auswerten').isExecuted) {
 	const k = $('Klasse auswerten').first().json;
-	// Die Begründung der Klassifizierung beschreibt die Mailart, nicht den Angriff: nicht als "Einschätzung" zeigen.
-	if (k.details && k.details.verdacht_manipulation === true) erkannt.push('Klassifizierung');
+	const b = eingang.manipulationBewerten(Boolean(k.details && k.details.verdacht_manipulation === true), mail);
+	if (b.stufe === 'sperren') erkannt = eingang.manipulationQuellen(b, 'Klassifizierung');
 }
-if ($('Pflichtfelder prüfen').isExecuted && $('Pflichtfelder prüfen').first().json.verdacht_manipulation === true && !erkannt.length) erkannt.push('Datenauslesen');
-if ($('Antwort verarbeiten').isExecuted && $('Antwort verarbeiten').first().json.verdacht_manipulation === true) erkannt.push('Kundenantwort');
 if (!erkannt.length) return [];
 const a = $('Abschluss vorbereiten').first().json;
 const config = $('Config laden').first().json.config;
-const mail = $('Mail normalisieren').first().json.mail;
 const BEHANDLUNG = {
 	ignoriert: 'keine Anfrage – nicht bearbeitet, die Mail bleibt im Posteingang',
 	bereit: 'als Anfrage bearbeitet (vollständig) – bitte die Angaben vor der Bearbeitung prüfen',
@@ -543,6 +575,7 @@ const BEHANDLUNG = {
 	manipulation: 'nicht automatisch bearbeitet: keine Rückfrage, kein Entwurf, keine Freigabe. Der Vorgang steht auf „Eskaliert / Manuell“.',
 	antwort_manipulation: 'Kundenantwort nicht automatisch ausgewertet: keine neue Rückfrage, keine Freigabe. Der Vorgang steht auf „Eskaliert / Manuell“.',
 	klassifizierung_unklar: 'nicht automatisch bearbeitet – bitte manuell prüfen',
+	ignoriert_gemeldet: 'keine Anfrage – nicht bearbeitet, die Mail bleibt im Posteingang',
 };
 const eingangText = mail.empfangen_am ? DateTime.fromISO(mail.empfangen_am).setZone(config.zeitzone).toFormat('dd.LL.yyyy, HH:mm') : null;
 return [{ json: {
@@ -597,7 +630,9 @@ return [{ json: {
 	wf.verbinde(kWeiche, mKlasse, 1);
 	wf.verbinde(kWeiche, kiIgnoriert, 2);
 	wf.kette(mKlasse, informieren);
-	wf.kette(kiIgnoriert, abschluss);
+	wf.kette(kiIgnoriert, kiMelden);
+	wf.verbinde(kiMelden, informieren, 0);
+	wf.verbinde(kiMelden, abschluss, 1);
 	wf.kette(extrahieren, pruefen, speichern, statusPruefung, lueckenFrage);
 	wf.verbinde(lueckenFrage, uebersicht, 0);
 	wf.verbinde(lueckenFrage, mGeprueft, 1);

@@ -168,3 +168,16 @@ test('Weiterleitender unterschreibt seine Antwort: kein Widerspruch beim Ansprec
 	assert.equal(a.istAbsenderName('Jan', ['Jan Hoffmann']), true);
 	assert.equal(a.istAbsenderName('Jana', ['Jan Hoffmann']), false);
 });
+
+// Härtetest 2: "Gefahrgut" und "nur mit Hebebühne" in einer Antwort ohne neue Feldwerte gingen verloren.
+test('Meldung: Zusatzinformation aus der Antwort wird oben gezeigt', () => {
+	const leer = { uebernommen: [], konflikte_neu: [], hinweise: [], unsicher: [], fehlende: [] };
+	const html = a.meldungAntwort({ vorgangs_id: 'V-1', mail: { absender_adresse: 'x@y.de', betreff: 'AW' }, merge: leer, entscheidung: { weg: 'keine_daten' }, besonderheiten: 'Ware ist Gefahrgut (UN 1263) <Farben>' });
+	assert.match(html, /^<b>⚠️ Wichtige Information vom Kunden<\/b><br>Ware ist Gefahrgut \(UN 1263\) &lt;Farben&gt;/);
+	assert.match(html, /<b>Antwort mit Zusatzinformation<\/b>/);
+	assert.match(html, /keine neuen Transportangaben/);
+	assert.doesNotMatch(html, /keine verwertbaren Angaben/);
+	const ohne = a.meldungAntwort({ vorgangs_id: 'V-1', mail: {}, merge: leer, entscheidung: { weg: 'keine_daten' } });
+	assert.match(ohne, /Antwort ohne neue Angaben/);
+	assert.doesNotMatch(ohne, /Wichtige Information/);
+});

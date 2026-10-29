@@ -46,3 +46,28 @@ test('Meldungen: Stornierung oben und escaped, Hinweise unten, Vertröstungstext
 	const neu = eingang.meldungGeprueft('V-2', mail, [], { vollstaendig: true, daten: {}, fehlende: [] }, { text_hinweise: ['mehrere Aufträge'] });
 	assert.match(neu, /⚠️ mehrere Aufträge/);
 });
+
+test('handlungKeineAnfrage: Stornierung, Rückruf, Statusfrage, nur Anhang', () => {
+	const h = t.handlungKeineAnfrage;
+	assert.equal(h({ text: 'bitte stornieren Sie unseren Transport vom 02.12.2026. Hat sich erledigt.' }).anlass, 'storno');
+	assert.equal(h({ text: 'Hallo, bitte rufen Sie mich zurück wegen eines größeren Projekts. 0611 5557050.' }).anlass, 'rueckruf');
+	assert.equal(h({ text: 'Could you call me back tomorrow?' }).anlass, 'rueckruf');
+	const s = h({ text: 'wie ist der Stand zu Vorgang V-2026-9999?', vorgangs_ids_erwaehnt: ['V-2026-9999'] });
+	assert.equal(s.anlass, 'status');
+	assert.deepEqual(s.vorgangs_ids, ['V-2026-9999']);
+	assert.equal(h({ text: 'Guten Tag,\n\nsiehe Foto im Anhang.\n\nGrüße', anhaenge: [{ name: 'f.png' }] }).anlass, 'anhang');
+	assert.equal(h({ text: 'Grüße', anhaenge: [{ name: 'f.png' }] }, 'Mail enthält nur ein Foto ohne Anfrage').anlass, 'anhang');
+});
+
+test('handlungKeineAnfrage: normale Nicht-Anfragen bleiben still', () => {
+	const h = t.handlungKeineAnfrage;
+	for (const text of ['Newsletter Dezember', 'Vielen Dank für die schnelle Lieferung!', 'Anbei unsere Rechnung 2026-4471.', 'Ich bin bis 05.11. nicht im Büro.', 'Bitte bestätigen Sie Ihr Konto.']) {
+		assert.equal(h({ text }), null, text);
+	}
+	// Rechnung mit Anhang ist kein Fall für "nur Anhang"
+	assert.equal(h({ text: 'Anbei die Rechnung.', anhaenge: [{ name: 'r.pdf' }] }, 'Rechnung ohne Anfrage'), null);
+	// Abwesenheitsnotiz, Newsletter und eigene Mails nie melden
+	assert.equal(h({ text: 'bitte stornieren', auto_antwort: { ist: true } }), null);
+	assert.equal(h({ text: 'bitte stornieren', newsletter_hinweise: ['List-Unsubscribe'] }), null);
+	assert.equal(h({ text: 'bitte stornieren', eigene_mail: true }), null);
+});

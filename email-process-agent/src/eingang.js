@@ -174,7 +174,7 @@ function datenBlock(felder, daten) {
 
 /**
  * Eingangsmeldung nach der Prüfung (Teams/Telegram). extra: { zone, kategorie, besonderheiten, rueckfrage,
- * ohneRueckfrageText, verdacht_manipulation, text_hinweise }. besonderheiten ist eine kurze, von der KI
+ * ohneRueckfrageText, manipulation_hinweis, text_hinweise }. besonderheiten ist eine kurze, von der KI
  * zusammengefasste Zusatzinformation aus der Mail (nur Anzeige, escaped).
  */
 function meldungGeprueft(vorgangsId, mail, felder, pruefung, extra = {}) {
@@ -186,7 +186,7 @@ function meldungGeprueft(vorgangsId, mail, felder, pruefung, extra = {}) {
 	const w = [];
 	for (const h of pruefung.hinweise || []) w.push(`${h.anzeigename}: ${h.grund} (verworfen)`);
 	for (const u of pruefung.unsicher || []) w.push(`${u.anzeigename}: KI unsicher (Konfidenz ${u.konfidenz}), bitte prüfen`);
-	if (extra.verdacht_manipulation) w.push('Die Mail enthält möglicherweise Anweisungen an die KI (Manipulationsversuch).');
+	if (extra.manipulation_hinweis) w.push(MANIPULATION_HINWEIS);
 	for (const t of extra.text_hinweise || []) w.push(t);
 	const warn = warnungen(mail, w);
 	if (warn) teile.push(`<b>Bitte beachten</b>${warn.replace(/^<br><br>/, '<br>')}`);
@@ -215,11 +215,127 @@ function meldungInFreigabe(rueckfrage) {
 	return Boolean(rueckfrage && rueckfrage.ergebnis === 'freigabe_angefordert' && Number(rueckfrage.zugestellt) > 0);
 }
 
+// ---------------------------------------------------------------- Keine Anfrage, aber bitte ansehen
+
+const ANLASS_TITEL = {
+	storno: 'Mögliche Stornierung / Absage',
+	rueckruf: 'Rückrufbitte',
+	status: 'Frage zu einem Vorgang',
+	anhang: 'Inhalt nur im Anhang (nicht ausgewertet)',
+};
+
+function datumText(w) {
+	const s = String(w);
+	return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s.split('-').reverse().join('.') : s;
+}
+
+/**
+ * Offene Vorgänge des Absenders, die zur Mail passen: mindestens zwei erfasste Werte (Orte, Datum, PLZ …) stehen
+ * im Mailtext. Der Name des Absenders zählt nicht (steht in jedem seiner Vorgänge). Höchstens drei.
+ * @param {object[]} kandidaten aus kandidaten_suchen (mit werte: string[])
+ */
+function passendeVorgaenge(mail, kandidaten) {
+	const text = String((mail && mail.text) || '').toLowerCase();
+	const name = String((mail && mail.absender_name) || '').toLowerCase();
+	const treffer = [];
+	for (const k of kandidaten || []) {
+		const werte = [...new Set((k.werte || []).map((w) => String(w).toLowerCase()))]
+			.filter((w) => w.length >= 4 && w !== name && !name.includes(w));
+		const n = werte.filter((w) => text.includes(w) || (/^\d{4}-\d{2}-\d{2}$/.test(w) && text.includes(datumText(w)))).length;
+		if (n >= 2) treffer.push({ ...k, treffer: n });
+	}
+	return treffer.sort((a, b) => b.treffer - a.treffer).slice(0, 3);
+}
+
+/**
+ * Meldung für eine Mail, die keine Anfrage ist, bei der aber jemand handeln muss. Am Vorgang wird nichts geändert.
+ * @param {object} h { anlass, stelle, vorgangs_ids } aus textHinweise.handlungKeineAnfrage
+ * @param {object[]} passend aus passendeVorgaenge
+ */
+function meldungKeineAnfrage(vorgangsId, mail, h, passend = [], opts = {}) {
+	const z = [kopf('Keine Anfrage – bitte ansehen', vorgangsId, mail, { zone: opts.zone }), ''];
+	z.push(`Grund: <b>${esc(ANLASS_TITEL[h.anlass] || h.anlass)}</b>`);
+	if (h.stelle) z.push(`Kunde schreibt: „${esc(h.stelle)}“`);
+	if ((h.vorgangs_ids || []).length) z.push(`Genannte Vorgangsnummer: ${h.vorgangs_ids.map(esc).join(', ')} – im System nicht gefunden.`);
+	if (passend.length) {
+		z.push('Möglicherweise betroffen:<ul>' + passend.map((p) => `<li>${esc(p.vorgangs_id)} (${esc(p.status)}): ${esc(p.betreff || '')}</li>`).join('') + '</ul>');
+	} else if (h.anlass === 'storno') {
+		z.push('Kein passender offener Vorgang gefunden – bitte selbst zuordnen.');
+	}
+	z.push('Die Mail wurde nicht automatisch bearbeitet und liegt weiter im Posteingang. An bestehenden Vorgängen wurde nichts geändert.');
+	return z.join('<br>') + warnungen(mail);
+}
+
 // ---------------------------------------------------------------- Systemwarnung Prompt-Injection
 
-// Typische Formulierungen von Anweisungen an eine KI. Nur zur Anzeige der auffälligen Stellen in der Warnung;
-// ob ein Verdacht besteht, entscheidet die KI-Prüfung (verdacht_manipulation), nicht dieses Muster.
+// Typische Formulierungen von Anweisungen an eine KI. Breit gefasst: Ein Treffer allein sperrt nicht, er bestätigt
+// nur den Verdacht der KI (manipulationBewerten) und zeigt die auffälligen Stellen in der Warnung.
 const VERDAECHTIG = /(ignorier|vergiss|anweisung|instruction|ignore (all|previous)|system[- ]?(nachricht|hinweis|prompt|message|:)|admin[- ]?(modus|rechte|mode)|du bist (jetzt|ein)|you are now|\bki\b|\bai\b|ki[- ]?(assistent|agent)|prompt|klassifizier|ohne freigabe|leite .{0,40}weiter|lösche|setze .{0,40}(auf|als)|trage .{0,40}ein)/i;
+
+// Eindeutige Angriffsmuster: Ein Treffer reicht für die Sperre, auch wenn die KI nichts meldet (Härtetest 2:
+// Anweisung in der Signatur, "Freigabe bereits erteilt", gefälschtes JSON). Eng gefasst, damit normale Anfragen
+// (z. B. "Freigabe der Ware ist erfolgt", KI-Hinweis in einer Signatur) nicht gesperrt werden.
+const STARK = [
+	/\bignor\w*\s+(\w+\s+){0,3}(anweisung|instruktion|instruction|regel|rule|prompt|vorgabe)/i,
+	/\b(vergiss|forget|disregard)\s+(\w+\s+){0,3}(anweisung|instruction|regel|rule|vorgabe)/i,
+	/\b(an|für)\s+(die|den|das)\s+(ki|ai)\b/i,
+	/\b(to|for)\s+the\s+(ai|assistant|llm|language model)\b/i,
+	/\bsystem[- ]?(override|prompt|anweisung|instruction)/i,
+	/^\s*\[?\s*(system|developer|admin)\s*(nachricht|message)?\s*:/i,
+	/\b(admin|developer|entwickler)[- ]?(modus|mode)\b|\bjailbreak\b/i,
+	/\b(you are now|du bist (ab )?jetzt|ab (sofort|jetzt) bist du|lass uns ein spiel spielen|let'?s play a game)\b/i,
+	/verdacht_manipulation|"(klasse|konfidenz|felder|begruendung_kurz|vorgangstyp)"\s*:/i,
+	/\b(ohne|without)\s+(freigabe|prüfung|pruefung|(human\s+)?review|approval)\b/i,
+	/\bfreigabe\b.{0,60}\b(bereits|schon)\b.{0,40}\b(erteilt|gegeben)\b/i,
+	/\bfreigabe-id\b|\bmark\w*\s+(\w+\s+){0,3}as\s+approved\b|\bals\s+freigegeben\s+markier/i,
+	/\b(direkt|sofort|umgehend)\s+(ab|ver)?senden\b|\bsend\s+(\w+\s+){0,3}immediately\b/i,
+	/игнорир|инструкц|без проверки|(^|[^а-яё])ИИ([^а-яё]|$)/i,
+	/\bignorez\b|\bignora\s+(todas|las|le|tutte)\b|\binstrucciones\b|\bistruzioni\b/i,
+];
+
+function istStark(zeile) {
+	return STARK.some((r) => r.test(zeile));
+}
+
+/** Zeilen aus Betreff, Mailtext und Anhängen mit eindeutigem Angriffsmuster (gekürzt). */
+function starkeStellen(mail) {
+	const quellen = [{ wo: 'Betreff', text: (mail && mail.betreff) || '' }, { wo: 'Mailtext', text: (mail && mail.text) || '' }];
+	for (const a of (mail && mail.anhaenge) || []) if (a && a.text) quellen.push({ wo: `Anhang "${a.name}"`, text: a.text });
+	const out = [];
+	for (const q of quellen) {
+		for (const zeile of String(q.text).split(/\n+/)) {
+			const z = zeile.trim();
+			if (z && istStark(z)) out.push({ wo: q.wo, text: z.length > 200 ? z.slice(0, 200) + ' …' : z });
+		}
+	}
+	return out;
+}
+
+const MANIPULATION_HINWEIS = 'Die KI vermutet Anweisungen an die KI, die feste Prüfung hat aber keine auffällige Stelle gefunden. Die Mail wurde normal bearbeitet – bitte kurz gegenlesen.';
+
+/**
+ * Manipulationsverdacht aus KI-Einschätzung und fester Musterprüfung (Härtetest 2: die KI allein lieferte
+ * 6 Fehlalarme und übersah 3 Angriffe).
+ * - eindeutiges Muster → sperren (auch ohne KI)
+ * - KI-Verdacht und auffällige Stelle → sperren
+ * - nur KI-Verdacht → hinweis (normale Bearbeitung, Hinweis in der Meldung)
+ * @returns {{ stufe: 'sperren'|'hinweis'|'keine', ki: boolean, muster: boolean }}
+ */
+function manipulationBewerten(kiVerdacht, mail) {
+	const ki = kiVerdacht === true;
+	if (starkeStellen(mail).length) return { stufe: 'sperren', ki, muster: true };
+	if (ki && verdaechtigeStellen(mail).length) return { stufe: 'sperren', ki, muster: true };
+	if (ki) return { stufe: 'hinweis', ki, muster: false };
+	return { stufe: 'keine', ki, muster: false };
+}
+
+/** Für die Systemwarnung: wodurch der Verdacht entstand. */
+function manipulationQuellen(bewertung, kiStelle) {
+	const q = [];
+	if (bewertung && bewertung.ki) q.push(kiStelle || 'KI-Prüfung');
+	if (bewertung && bewertung.muster) q.push('feste Musterprüfung');
+	return q;
+}
 
 /** Bis zu max auffällige Stellen (Zeilen) aus Mailtext und Anhängen, gekürzt. */
 // Je Quelle (Mailtext, jeder Anhang) bis zu max Stellen, damit ein Angriff im Anhang neben dem Mailtext sichtbar bleibt.
@@ -231,7 +347,7 @@ function verdaechtigeStellen(mail, max = 3, gesamt = 6) {
 		let n = 0;
 		for (const zeile of String(q.text).split(/\n+/)) {
 			const z = zeile.trim();
-			if (!z || !VERDAECHTIG.test(z)) continue;
+			if (!z || !(VERDAECHTIG.test(z) || istStark(z))) continue;
 			out.push({ wo: q.wo, text: z.length > 200 ? z.slice(0, 200) + ' …' : z });
 			if (out.length >= gesamt) return out;
 			if (++n >= max) break;
@@ -272,6 +388,12 @@ module.exports = {
 	TRENNER,
 	erfasstText,
 	verdaechtigeStellen,
+	starkeStellen,
+	manipulationBewerten,
+	manipulationQuellen,
+	MANIPULATION_HINWEIS,
+	meldungKeineAnfrage,
+	passendeVorgaenge,
 	meldungManipulation,
 	meldungInFreigabe,
 	ARCHIVIEREN_BEI,

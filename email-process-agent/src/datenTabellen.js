@@ -117,6 +117,16 @@ function aktualisierungBerechnen(vorgang, daten) {
 }
 
 /** Filtert offene Vorgänge eines Kunden nach Zuordnungskriterien (wie die SQL-Variante). */
+/** Erfasste Werte eines Vorgangs als Texte (höchstens 15). */
+function erfassteWerte(daten) {
+	const out = [];
+	for (const d of Object.values(daten && typeof daten === 'object' ? daten : {})) {
+		const w = d && typeof d === 'object' ? d.wert : null;
+		if (w !== null && w !== undefined && w !== '') out.push(String(w));
+	}
+	return out.slice(0, 15);
+}
+
 function kandidatenFiltern(zeilen, kriterien) {
 	const k = kriterien || {};
 	const ids = new Set(k.message_ids || []);
@@ -141,6 +151,8 @@ function kandidatenFiltern(zeilen, kriterien) {
 			vorgangs_id: v.vorgangs_id, status: v.status, conversation_id: v.conversation_id,
 			bekannte_message_ids: v.bekannte_message_ids, absender_adresse: v.absender_adresse,
 			betreff_normalisiert: v.betreff_normalisiert, version: v.version, geaendert_am: v.updatedAt,
+			// Für Meldungen zu Mails ohne Bezug (z. B. Stornierung): Betreff und erfasste Werte zum Abgleich mit dem Text
+			betreff: v.betreff, werte: erfassteWerte(v.extrahierte_daten),
 		}));
 }
 

@@ -224,14 +224,16 @@ function meldungVollstaendig({ vorgangs_id: vid, mail, merge, vorgang, felder, z
 }
 
 /** Hinweise aus festen Regeln (textHinweise.alle) als Zeilen; Stornierung ganz oben, gut sichtbar. */
-function zusatz(hinweise, storno) {
-	const oben = storno ? `<b>⚠️ Mögliche Stornierung / Absage – bitte prüfen</b><br>Kunde schreibt: „${esc(storno)}“<br>Der Vorgang wurde nicht automatisch geändert.<br><br>` : '';
+function zusatz(hinweise, storno, besonderheiten) {
+	let oben = storno ? `<b>⚠️ Mögliche Stornierung / Absage – bitte prüfen</b><br>Kunde schreibt: „${esc(storno)}“<br>Der Vorgang wurde nicht automatisch geändert.<br><br>` : '';
+	// Zusatzinformation aus der Antwort (z. B. Gefahrgut, Hebebühne): oben, damit sie nicht übersehen wird
+	if (besonderheiten) oben += `<b>⚠️ Wichtige Information vom Kunden</b><br>${esc(String(besonderheiten).slice(0, 400))}<br><br>`;
 	const unten = (hinweise || []).map((h) => `<br>⚠️ ${esc(h)}`).join('');
 	return { oben, unten };
 }
 
-function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrage, alterStatus, fristNeu, ohneRueckfrageText, uebersicht, text_hinweise: textHinweise, storno }) {
-	const zu = zusatz(textHinweise, storno);
+function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrage, alterStatus, fristNeu, ohneRueckfrageText, uebersicht, text_hinweise: textHinweise, storno, besonderheiten }) {
+	const zu = zusatz(textHinweise, storno, besonderheiten);
 	if (entscheidung.weg === 'bereit' && uebersicht) {
 		let html = meldungVollstaendig({ vorgangs_id: vid, mail, merge, ...uebersicht });
 		if (entscheidung.freigabe_ersetzen) html += '<br>Die noch offene Freigabe der vorherigen Rückfrage ist damit überholt und wurde deaktiviert.';
@@ -240,7 +242,7 @@ function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrag
 	const titel = {
 		bereit: 'Antwort eingegangen – Anfrage jetzt vollständig',
 		luecken: 'Antwort eingegangen – es fehlen noch Angaben',
-		keine_daten: 'Antwort ohne neue Angaben',
+		keine_daten: besonderheiten ? 'Antwort mit Zusatzinformation' : 'Antwort ohne neue Angaben',
 		nur_melden: 'Neue Nachricht zu einem Vorgang in Bearbeitung',
 	}[entscheidung.weg];
 	const z = [`<b>${esc(titel)}</b>`, `Vorgang: <b>${esc(vid)}</b>`, `Von: ${esc(mail.absender_adresse)}`, `Betreff: ${esc(mail.betreff)}`];
@@ -256,7 +258,7 @@ function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrag
 	for (const h of merge.hinweise) z.push(`Hinweis ${esc(h.anzeigename)}: ${esc(h.grund)}`);
 	for (const u of merge.unsicher) z.push(`⚠️ ${esc(u.anzeigename)}: KI unsicher (Konfidenz ${esc(u.konfidenz)}), bitte prüfen`);
 	if (entscheidung.weg === 'keine_daten') {
-		z.push((storno ? 'Die Antwort enthält keine neuen Transportangaben. Der Vorgang bleibt unverändert.' : 'Die Antwort enthält keine verwertbaren Angaben (z. B. Vertröstung). Der Vorgang bleibt unverändert.') + (fristNeu ? ` Antwortfrist verlängert bis ${esc(fristNeu)}.` : ''));
+		z.push((storno || besonderheiten ? 'Die Antwort enthält keine neuen Transportangaben. Der Vorgang bleibt unverändert.' : 'Die Antwort enthält keine verwertbaren Angaben (z. B. Vertröstung). Der Vorgang bleibt unverändert.') + (fristNeu ? ` Antwortfrist verlängert bis ${esc(fristNeu)}.` : ''));
 	} else if (entscheidung.weg === 'luecken') {
 		z.push('Weiter offen:<ul>' + merge.fehlende.map((f) => `<li>${esc(f.anzeigename)}: ${esc(f.grund)}</li>`).join('') + '</ul>');
 		if (ohneRueckfrageText) { /* Übersicht für die Freigabe-Nachricht */ }

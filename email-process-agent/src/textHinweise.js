@@ -58,4 +58,44 @@ function alle(mail, optionen = {}) {
 	return { hinweise: h, storno: optionen.antwort ? stornoStelle(m.text) : null };
 }
 
-module.exports = { mehrereAuftraege, stornoStelle, mehrdeutigeDaten, alle };
+// Mails ohne Anfrage, bei denen trotzdem jemand handeln muss (Härtetest 2: Stornierung ohne Bezug, Rückrufbitte,
+// Frage zum Stand, nur Foto im Anhang). Diese Mails werden gemeldet statt still ignoriert.
+const RUECKRUF = /(\bbitte\s+(\w+\s+){0,3}zurückrufen|\bruf(en)?\s+(sie\s+)?(mich|uns)\s+(\w+\s+){0,3}(an|zurück)\b|\b(um|erbitte\w*)\s+(einen\s+|ihren\s+)?rückruf|\brückruf\s+(erbeten|erwünscht|gewünscht)|\bcall\s+me(\s+back)?\b|\bgive\s+(me|us)\s+a\s+call\b|\bcall\s*back\b)/i;
+const STAND = /(\bwie\s+ist\s+der\s+stand\b|\bstand\s+der\s+dinge\b|\bwie\s+weit\s+ist\b|\bgibt\s+es\s+(schon\s+)?(neuigkeiten|ein\s+update)\b|\bstatus\s+(zu|von|meiner|unserer|des|der|of)\b|\bany\s+update\b|\bwhat\s+is\s+the\s+status\b)/i;
+const ANHANG = /(\b(siehe|anbei|im|in\s+der)\s+(\w+\s+){0,2}(anhang|anlage|foto|bild|datei)\b|\b(see|find)\s+(\w+\s+){0,2}attach\w*|\battached\b)/i;
+const ANHANG_KI = /(foto|bild|anhang|attachment|ohne (text|inhalt))/i;
+const ANHANG_NEIN = /(rechnung|gutschrift|zahlung|mahnung|newsletter|werbung|bewerbung)/i;
+
+function zeileMit(text, re) {
+	for (const zeile of String(text || '').split('\n')) {
+		if (/^\s*>/.test(zeile)) continue;
+		if (re.test(zeile)) return zeile.replace(/\s+/g, ' ').trim().slice(0, 200);
+	}
+	return null;
+}
+
+/**
+ * Anlass, eine Mail ohne Anfrage trotzdem zu melden, sonst null.
+ * @param {object} mail normalisierte Mail
+ * @param {string} [begruendung] Begründung der Klassifizierung (nur Zusatzindiz für "nur Anhang")
+ * @returns {{ anlass: 'storno'|'rueckruf'|'status'|'anhang', stelle: string|null, vorgangs_ids?: string[] }|null}
+ */
+function handlungKeineAnfrage(mail, begruendung) {
+	const m = mail || {};
+	if ((m.auto_antwort && m.auto_antwort.ist) || (m.newsletter_hinweise || []).length || m.eigene_mail) return null;
+	const text = String(m.text || '');
+	const storno = stornoStelle(text);
+	if (storno) return { anlass: 'storno', stelle: storno };
+	const rueckruf = zeileMit(text, RUECKRUF);
+	if (rueckruf) return { anlass: 'rueckruf', stelle: rueckruf };
+	const ids = m.vorgangs_ids_erwaehnt || [];
+	const stand = zeileMit(text, STAND);
+	if (stand || ids.length) return { anlass: 'status', stelle: stand || zeileMit(text, /V-\d{4}-\d{3,}/), vorgangs_ids: ids };
+	const b = String(begruendung || '');
+	if ((m.anhaenge || []).length && !ANHANG_NEIN.test(b) && (zeileMit(text, ANHANG) || ANHANG_KI.test(b))) {
+		return { anlass: 'anhang', stelle: zeileMit(text, ANHANG) };
+	}
+	return null;
+}
+
+module.exports = { mehrereAuftraege, stornoStelle, mehrdeutigeDaten, alle, handlungKeineAnfrage };
