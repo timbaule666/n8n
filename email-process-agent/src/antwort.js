@@ -38,6 +38,16 @@ function nameErgaenzt(alt, neu) {
 	return a.length > 0 && n.length > a.length && a.every((w) => n.includes(w));
 }
 
+/** true, wenn der Name zu einem der Absender gehört (gleich oder Teil davon, z. B. "Jan" bzw. "Jan Hoffmann"). */
+function istAbsenderName(wert, namen) {
+	const w = String(wert || '').toLowerCase().split(/\s+/).filter(Boolean);
+	if (!w.length) return false;
+	return (namen || []).some((n) => {
+		const t = String(n || '').toLowerCase().split(/\s+/).filter(Boolean);
+		return t.length > 0 && (w.every((x) => t.includes(x)) || t.every((x) => w.includes(x)));
+	});
+}
+
 /**
  * Führt bekannte Daten und die geprüften neuen Angaben zusammen.
  * @param {object} alt extrahierte_daten des Vorgangs { Feld: { wert, roh, quelle, konfidenz } }
@@ -72,6 +82,10 @@ function zusammenfuehren(alt, neu, felder, optionen = {}) {
 				if (angegeben) hinweise.push({ feldname: f.feldname, anzeigename: f.anzeigename, grund: `neue Angabe ungültig (${ungueltig.get(f.feldname) || 'ungültig'}), bisheriger Wert bleibt` });
 			} else if (gleich(vorher.wert, neuWert)) {
 				bestaetigt.push(f.feldname);
+			} else if (f.validierungsregel && f.validierungsregel.person === true && istAbsenderName(neuWert, optionen.absenderNamen)
+				&& !istAbsenderName(vorher.wert, optionen.absenderNamen)) {
+				// Der Antwortende unterschreibt mit seinem Namen (z. B. der Kollege, der die Anfrage weitergeleitet hat):
+				// kein Wechsel des Ansprechpartners, kein Widerspruch. Der bisherige Wert bleibt.
 			} else if (f.validierungsregel && f.validierungsregel.person === true && nameErgaenzt(vorher.wert, neuWert)) {
 				// "Max" -> "Max Müller": Ergänzung, kein Widerspruch
 				daten[f.feldname] = { wert: neuWert, roh, quelle: n.quelle || null, konfidenz: n.konfidenz ?? null, nachgefordert: true, runde: optionen.runde ?? null };
@@ -254,4 +268,4 @@ function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrag
 	return zu.oben + z.join('<br>') + zu.unten;
 }
 
-module.exports = { nameErgaenzt, AUTOMATISCH, wegBestimmen, gleich, zusammenfuehren, entscheiden, fristVerlaengern, extraktionsHinweise, meldungAntwort, meldungVollstaendig, zeitText, esc };
+module.exports = { nameErgaenzt, AUTOMATISCH, wegBestimmen, gleich, zusammenfuehren, entscheiden, fristVerlaengern, extraktionsHinweise, meldungAntwort, meldungVollstaendig, zeitText, esc, istAbsenderName };

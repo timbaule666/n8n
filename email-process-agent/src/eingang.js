@@ -222,15 +222,19 @@ function meldungInFreigabe(rueckfrage) {
 const VERDAECHTIG = /(ignorier|vergiss|anweisung|instruction|ignore (all|previous)|system[- ]?(nachricht|hinweis|prompt|message|:)|admin[- ]?(modus|rechte|mode)|du bist (jetzt|ein)|you are now|\bki\b|\bai\b|ki[- ]?(assistent|agent)|prompt|klassifizier|ohne freigabe|leite .{0,40}weiter|lösche|setze .{0,40}(auf|als)|trage .{0,40}ein)/i;
 
 /** Bis zu max auffällige Stellen (Zeilen) aus Mailtext und Anhängen, gekürzt. */
-function verdaechtigeStellen(mail, max = 3) {
+// Je Quelle (Mailtext, jeder Anhang) bis zu max Stellen, damit ein Angriff im Anhang neben dem Mailtext sichtbar bleibt.
+function verdaechtigeStellen(mail, max = 3, gesamt = 6) {
 	const quellen = [{ wo: 'Mailtext', text: (mail && mail.text) || '' }];
 	for (const a of (mail && mail.anhaenge) || []) if (a && a.text) quellen.push({ wo: `Anhang "${a.name}"`, text: a.text });
 	const out = [];
 	for (const q of quellen) {
+		let n = 0;
 		for (const zeile of String(q.text).split(/\n+/)) {
 			const z = zeile.trim();
-			if (z && VERDAECHTIG.test(z)) out.push({ wo: q.wo, text: z.length > 200 ? z.slice(0, 200) + ' …' : z });
-			if (out.length >= max) return out;
+			if (!z || !VERDAECHTIG.test(z)) continue;
+			out.push({ wo: q.wo, text: z.length > 200 ? z.slice(0, 200) + ' …' : z });
+			if (out.length >= gesamt) return out;
+			if (++n >= max) break;
 		}
 	}
 	return out;

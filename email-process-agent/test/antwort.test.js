@@ -155,3 +155,16 @@ test('Abschluss-Meldung: Verlauf mit erster Mail, bisherigen und nachgeforderten
 	// Ohne Übersicht bleibt die kurze Meldung
 	assert.match(a.meldungAntwort({ vorgangs_id: 'V-1', mail, merge: m, entscheidung: { weg: 'bereit' } }), /Antwort eingegangen – Anfrage jetzt vollständig/);
 });
+
+test('Weiterleitender unterschreibt seine Antwort: kein Widerspruch beim Ansprechpartner (N08b)', () => {
+	const felder = [{ feldname: 'Ansprechpartner', anzeigename: 'Ansprechpartner', typ: 'text', pflicht: true, validierungsregel: { person: true } }];
+	const alt = { Ansprechpartner: { wert: 'Birgit Lange', roh: 'Birgit Lange', quelle: 'Mailtext', konfidenz: 0.9 } };
+	const neu = (wert) => ({ daten: { Ansprechpartner: { wert, roh: wert, quelle: 'Mailtext', konfidenz: 0.9 } }, fehlende: [], hinweise: [] });
+	const m = a.zusammenfuehren(alt, neu('Jan Hoffmann'), felder, { absenderNamen: ['Tim Baule', 'Jan Hoffmann'] });
+	assert.equal(m.konflikte_neu.length, 0);
+	assert.equal(m.daten.Ansprechpartner.wert, 'Birgit Lange');
+	// Ein dritter Name bleibt ein Widerspruch
+	assert.equal(a.zusammenfuehren(alt, neu('Karl Meier'), felder, { absenderNamen: ['Jan Hoffmann'] }).konflikte_neu.length, 1);
+	assert.equal(a.istAbsenderName('Jan', ['Jan Hoffmann']), true);
+	assert.equal(a.istAbsenderName('Jana', ['Jan Hoffmann']), false);
+});

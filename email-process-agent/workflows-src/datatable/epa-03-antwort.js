@@ -126,6 +126,8 @@ const heute = DateTime.now().setZone(config.zeitzone).toISODate();
 const neu = pflichtfelder.pruefen(llm.ergebnis.felder, felder, { heute, quelltext: pflichtfelder.quelltextAus(mail), absenderName: mail.absender_name });
 const m = antwort.zusammenfuehren(v.extrahierte_daten, neu, felder, {
 	istPlatzhalter: pflichtfelder.istPlatzhalter, konflikteBisher: v.konflikte, message_id: mail.message_id, runde: Number(v.rundenzaehler || 0),
+	// Name des Antwortenden bzw. des ursprünglichen Absenders (z. B. Weiterleitender) ist kein neuer Ansprechpartner
+	absenderNamen: [mail.absender_name, v.absender_name],
 });
 const ent = antwort.entscheiden(m, v);
 let fristNeu = null;

@@ -527,7 +527,8 @@ const erkannt = [];
 let begruendung = null;
 if ($('Klasse auswerten').isExecuted) {
 	const k = $('Klasse auswerten').first().json;
-	if (k.details && k.details.verdacht_manipulation === true) { erkannt.push('Klassifizierung'); begruendung = k.details.begruendung || null; }
+	// Die Begründung der Klassifizierung beschreibt die Mailart, nicht den Angriff: nicht als "Einschätzung" zeigen.
+	if (k.details && k.details.verdacht_manipulation === true) erkannt.push('Klassifizierung');
 }
 if ($('Pflichtfelder prüfen').isExecuted && $('Pflichtfelder prüfen').first().json.verdacht_manipulation === true && !erkannt.length) erkannt.push('Datenauslesen');
 if ($('Antwort verarbeiten').isExecuted && $('Antwort verarbeiten').first().json.verdacht_manipulation === true) erkannt.push('Kundenantwort');
