@@ -23,6 +23,7 @@ const ALLGEMEIN = {
 	ki_hinweistext: 'Diese Nachricht wurde KI-gestützt vorbereitet und von einem Mitarbeiter geprüft und freigegeben.',
 	frist_stunden: 48,
 	frist_nur_geschaeftszeit: true,
+	vorgangsnummer_im_betreff: false,
 	max_runden: 3,
 	erinnerung_intervall_stunden: 24,
 	anzahl_erinnerungen: 2,

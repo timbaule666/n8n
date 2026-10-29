@@ -27,6 +27,20 @@ test('Keine NDR: Kundenmail, fremder Absender oder ohne Vorgangs-ID', () => {
 	assert.match(g.grund, /^550 5\.1\.1/);
 });
 
+test('NDR ohne Vorgangs-ID im Betreff: Vorgang über Nummer im Text oder Message-ID', () => {
+	const ohne = { ...NDR, betreff: 'Undeliverable: RE: Abholung nächste Woche Bielefeld' };
+	// Nummer im zurückgekommenen Mailtext
+	const t = u.erkennen({ ...ohne, text: NDR.text + '\nIhre Vorgangsnummer: V-2026-0132 – bitte bei Rückfragen angeben.' });
+	assert.deepEqual([t.ist, t.vorgangs_id, t.message_ids], [true, 'V-2026-0132', []]);
+	// "Original Message Headers" im Text und Bezug im Header
+	const h = u.erkennen({ ...ohne, bezug_message_ids: ['<a1@prod.outlook.com>'], text: NDR.text + '\nOriginal message headers:\nMessage-ID: <FR3P281MB2527ABC@FR3P281MB2527.DEUP281.PROD.OUTLOOK.COM>\nSubject: RE: Abholung' });
+	assert.equal(h.ist, true);
+	assert.equal(h.vorgangs_id, null);
+	assert.deepEqual(h.message_ids, ['<a1@prod.outlook.com>', '<FR3P281MB2527ABC@FR3P281MB2527.DEUP281.PROD.OUTLOOK.COM>']);
+	// Adressen in spitzen Klammern sind keine Message-IDs
+	assert.equal(u.erkennen(ohne).ist, false);
+});
+
 test('Meldung: escaped, mit Grund und Status-Hinweis', () => {
 	const html = u.meldung({ vorgangs_id: 'V-1', empfaenger: 'a@b.de', grund: '550 <x>', betreff: 'RE: Test', eskaliert: true });
 	assert.match(html, /^<b>📭 Nachricht nicht zugestellt<\/b>/);

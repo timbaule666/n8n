@@ -258,6 +258,8 @@ function validiereConfig(allgemein, pflichtfelder, optionen = {}) {
 		ki_hinweistext: kiHinweis,
 		frist_stunden: zahl(a.frist_stunden, 'frist_stunden', fehler, { min: 1, max: 2000 }),
 		frist_nur_geschaeftszeit: a.frist_nur_geschaeftszeit === true,
+		// Vorgangsnummer zusätzlich im Betreff der Rückfrage (Standard: nur im Mailtext, damit der Verlauf beim Kunden zusammenbleibt)
+		vorgangsnummer_im_betreff: a.vorgangsnummer_im_betreff === true,
 		max_runden: zahl(a.max_runden, 'max_runden', fehler, { min: 1, max: 20, ganz: true }),
 		erinnerung_intervall_stunden: zahl(a.erinnerung_intervall_stunden, 'erinnerung_intervall_stunden', fehler, { min: 1, max: 2000 }),
 		anzahl_erinnerungen: zahl(a.anzahl_erinnerungen, 'anzahl_erinnerungen', fehler, { min: 0, max: 10, ganz: true }),

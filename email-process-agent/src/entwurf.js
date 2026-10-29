@@ -185,10 +185,27 @@ function abschlussTeile(abschluss) {
 	return { signatur: t.slice(0, i).trim(), ki_hinweistext: t.slice(i + 5).trim() };
 }
 
+// Vorgangsnummer im Mailtext (fest, nicht im Formular änderbar). Steht sie nicht im Betreff, bleibt die Antwort des
+// Kunden in seinem Mailprogramm im selben Verlauf; schreibt er eine neue Mail und nennt die Nummer, ordnet der Agent
+// sie trotzdem zu.
+const REFERENZ = Object.freeze({
+	de: 'Ihre Vorgangsnummer: {id} – bitte bei Rückfragen angeben.',
+	en: 'Your reference number: {id} – please quote it in any reply.',
+});
+
+/** Zeile mit der Vorgangsnummer in der Sprache des Entwurfs (sprachConfig). Leer ohne gültige Vorgangs-ID. */
+function referenzZeile(vorgangsId, config, erkannteSprache) {
+	const id = String(vorgangsId || '').trim();
+	if (!/^V-\d{4}-\d{4,}$/.test(id)) return '';
+	const s = sprachConfig(config, erkannteSprache).sprache;
+	return (REFERENZ[s] || (s === 'de' || !s ? REFERENZ.de : REFERENZ.en)).replace('{id}', id);
+}
+
 /** Text (bearbeitbarer Teil) -> HTML-Mail mit festem Abschluss. Text wird vollständig escaped. */
-function zuHtml(text, config) {
+function zuHtml(text, config, referenz) {
 	const absatz = (t) => esc(t).replace(/\r\n?/g, '\n').replace(/\n/g, '<br>');
-	return `<div style="font-family:Arial,sans-serif;font-size:11pt">${absatz(text)}<br><br>${absatz(String(config.signatur || '').trim())}<br><br><span style="color:#666;font-size:9pt">${esc(String(config.ki_hinweistext || '').trim())}</span></div>`;
+	const ref = referenz ? `${esc(referenz)}<br><br>` : '';
+	return `<div style="font-family:Arial,sans-serif;font-size:11pt">${absatz(text)}<br><br>${ref}${absatz(String(config.signatur || '').trim())}<br><br><span style="color:#666;font-size:9pt">${esc(String(config.ki_hinweistext || '').trim())}</span></div>`;
 }
 
 /**
@@ -196,22 +213,22 @@ function zuHtml(text, config) {
  * @param {object|null} llmHuelle { anrede, einleitung, schluss } oder null (LLM fehlgeschlagen)
  * @returns {{ text, html, abschluss, bausteine, fallback, pruefung }}
  */
-function entwurfBauen(llmHuelle, { config, felder, fehlende, name }) {
+function entwurfBauen(llmHuelle, { config, felder, fehlende, name, referenz }) {
 	const bs = bausteine(fehlende, felder, config.textbausteine);
 	if (!bs.length) throw new Error('Keine fehlenden Felder: keine Rückfrage nötig');
 	const pruefung = llmHuelle ? huellePruefen(llmHuelle, config) : ['LLM-Entwurf nicht verfügbar'];
 	const fallback = pruefung.length > 0;
 	const huelle = fallback ? vorlage(config, name) : llmHuelle;
 	const text = bearbeitbarerText(huelle, bs);
-	return { text, html: zuHtml(text, config), abschluss: abschlussText(config), bausteine: bs, fallback, pruefung };
+	return { text, html: zuHtml(text, config, referenz), abschluss: abschlussText(config), bausteine: bs, fallback, pruefung };
 }
 
 /** Erinnerungs-Entwurf: Template-Hülle, feste Bausteine der noch offenen Felder, fester Abschluss. */
-function erinnerungBauen({ config, felder, fehlende, name }) {
+function erinnerungBauen({ config, felder, fehlende, name, referenz }) {
 	const bs = bausteine(fehlende, felder, config.textbausteine);
 	if (!bs.length) throw new Error('Keine fehlenden Felder: keine Erinnerung nötig');
 	const text = bearbeitbarerText(vorlageErinnerung(config, name), bs);
-	return { text, html: zuHtml(text, config), abschluss: abschlussText(config), bausteine: bs, fallback: false, pruefung: [] };
+	return { text, html: zuHtml(text, config, referenz), abschluss: abschlussText(config), bausteine: bs, fallback: false, pruefung: [] };
 }
 
 /**
@@ -227,4 +244,4 @@ function bearbeitungPruefen(text, bs) {
 	return { ok: true, text: t, bausteine_entfernt: fehlend };
 }
 
-module.exports = { MAX, VERBOTEN, sichererName, sprachConfig, ansprechpartner, abschlussTeile, bausteine, vorlage, vorlageErinnerung, erinnerungBauen, huellePruefen, bearbeitbarerText, abschlussText, zuHtml, entwurfBauen, bearbeitungPruefen, esc };
+module.exports = { MAX, VERBOTEN, sichererName, sprachConfig, ansprechpartner, abschlussTeile, bausteine, vorlage, vorlageErinnerung, erinnerungBauen, huellePruefen, bearbeitbarerText, abschlussText, REFERENZ, referenzZeile, zuHtml, entwurfBauen, bearbeitungPruefen, esc };

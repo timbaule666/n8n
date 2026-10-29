@@ -11,6 +11,7 @@
       "ki_hinweistext": "string",
       "frist_stunden": "number",
       "frist_nur_geschaeftszeit": "boolean",
+      "vorgangsnummer_im_betreff": "boolean",
       "max_runden": "number",
       "erinnerung_intervall_stunden": "number",
       "anzahl_erinnerungen": "number",

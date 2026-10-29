@@ -1,13 +1,24 @@
 'use strict';
 // Unzustellbarkeitsmeldungen (NDR) zu gesendeten Rückfragen erkennen (Testlauf 17.10.2026: Microsoft hat drei
 // Rückfragen mit "550 5.7.708" abgewiesen, der Agent hielt sie für zugestellt). Feste Regeln, keine KI: Absender
-// ist ein Mailsystem, Betreff bzw. Text sind die einer Unzustellbarkeitsmeldung, und der Betreff trägt eine Vorgangs-ID.
+// ist ein Mailsystem, Betreff bzw. Text sind die einer Unzustellbarkeitsmeldung. Der Vorgang ergibt sich aus der
+// Vorgangs-ID (Betreff oder Text) oder, wenn die Rückfrage die Nummer nur im Mailtext trug, aus der Message-ID der
+// zurückgekommenen Nachricht (Header In-Reply-To/References bzw. "Original Message Headers" im Text).
 
 const SYSTEM = /^(mailer-daemon|postmaster|microsoftexchange[0-9a-f]*)@/i;
 const BETREFF = /^\s*(undeliverable|unzustellbar|nicht zustellbar|delivery status notification \(failure\)|mail delivery failed|returned mail|undelivered mail returned|delivery has failed|zustellung fehlgeschlagen)\b/i;
 const TEXT = /(delivery has failed|wasn't delivered|could not be delivered|konnte nicht zugestellt werden|unzustellbar|delivery to the following recipient)/i;
 const VORGANGS_ID = /V-\d{4}-\d{4,}/;
 const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+// Nur Message-IDs aus Header-Zeilen ("Message-ID: <…>"), nicht jede Adresse in spitzen Klammern ("Tim <a@b.de>").
+const HEADER_IDS = /^\s*(?:message-id|in-reply-to|references)\s*:\s*((?:<[^<>\s"]{1,400}>\s*)+)/gim;
+const ID = /<[^<>\s"]{1,400}>/g;
+
+function messageIdsAusText(text) {
+	const out = [];
+	for (const z of String(text || '').matchAll(HEADER_IDS)) out.push(...(z[1].match(ID) || []));
+	return out;
+}
 // Empfängeradresse abgelehnt (5.1.x, "user unknown" usw.): Ein neuer Versuch an dieselbe Adresse scheitert wieder.
 const ADRESSFEHLER = /\b5\.1\.\d{1,3}\b|user unknown|recipient (address )?rejected|address couldn't be found|wasn't found at|does(n't| not) exist|no such user/i;
 
@@ -23,7 +34,8 @@ const ERNEUT_GRUND = 'Erneut nach Unzustellbarkeit';
 /**
  * @param {object} mail normalisierte Mail (absender_adresse, betreff, text)
  * @param {string} postfach eigene Postfachadresse (kommt nie als Empfänger in Frage)
- * @returns {{ ist: boolean, vorgangs_id?: string, empfaenger?: string|null, grund?: string }}
+ * @returns {{ ist: boolean, vorgangs_id?: string|null, message_ids?: string[], empfaenger?: string|null, grund?: string }}
+ *   vorgangs_id null: über message_ids den Vorgang suchen (bekannte_message_ids enthält die gesendeten Rückfragen).
  */
 function erkennen(mail, postfach) {
 	const m = mail || {};
@@ -31,14 +43,15 @@ function erkennen(mail, postfach) {
 	const text = String(m.text || '');
 	if (!SYSTEM.test(String(m.absender_adresse || ''))) return { ist: false };
 	if (!BETREFF.test(betreff) && !TEXT.test(text)) return { ist: false };
-	const id = (betreff.match(VORGANGS_ID) || [])[0];
-	if (!id) return { ist: false };
+	const id = (betreff.match(VORGANGS_ID) || text.match(VORGANGS_ID) || [])[0] || null;
+	const messageIds = id ? [] : [...new Set([...(m.bezug_message_ids || []), ...messageIdsAusText(text)])].slice(0, 20);
+	if (!id && !messageIds.length) return { ist: false };
 	const eigen = String(postfach || '').toLowerCase();
 	const empfaenger = (text.match(EMAIL) || []).map((a) => a.toLowerCase())
 		.find((a) => a !== eigen && !SYSTEM.test(a) && !/\.prod\.outlook\.com$/.test(a)) || null;
 	const smtp = text.match(/Remote server returned '([^']{1,240})'/i) || text.match(/\b([45]\d\d[ -][45]\.\d{1,3}\.\d{1,3}\b[^\n]{0,160})/);
 	const grund = smtp ? smtp[1].replace(/\s+/g, ' ').trim().slice(0, 200) : 'Unzustellbarkeitsmeldung ohne genauen Grund';
-	return { ist: true, vorgangs_id: id, empfaenger, grund };
+	return { ist: true, vorgangs_id: id, message_ids: messageIds, empfaenger, grund };
 }
 
 function esc(s) {

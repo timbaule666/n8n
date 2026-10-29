@@ -135,10 +135,29 @@ return [{ json: { ergebnis: 'ignoriert_' + $('Mail normalisieren').first().json.
 	// Der Kunde hat die Nachricht nicht bekommen: Vorgang auf "Eskaliert / Manuell" (keine Erinnerungen ins Leere)
 	// und Warnung im Kanal mit dem Grund des Mailservers. Nur für Vorgänge dieses Kunden.
 	const NDR = `${N}.ndr`;
+	// Vorgangs-ID der zurückgekommenen Rückfrage: aus Betreff/Text oder über ihre Message-ID (bekannte_message_ids).
+	const NDRV = "$('Unzustellbarkeit zuordnen').first().json.vorgangs_id";
+	const uSuchen = wf.aufruf('Vorgang zur Unzustellbarkeit suchen', [1650, -240], 'EPA SW Vorgang verwalten', [
+		['aktion', 'string', 'kandidaten_suchen'],
+		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
+		['vorgangs_id', 'string', ''],
+		['daten', 'object', `={{ { message_ids: ${NDR}.message_ids || [] } }}`],
+		['erwartete_version', 'number', '={{ null }}'],
+		['referenz', 'string', `={{ ${MID} || '' }}`],
+		['lock_sekunden', 'number', '={{ null }}'],
+	], { onError: 'continueRegularOutput', alwaysOutputData: true });
+	const uZuordnen = wf.code('Unzustellbarkeit zuordnen', [1705, -160], [], `
+const ndr = $('Mail normalisieren').first().json.ndr;
+if (ndr.vorgangs_id) return [{ json: { vorgangs_id: ndr.vorgangs_id } }];
+const ids = new Set(ndr.message_ids || []);
+const treffer = (($input.first().json || {}).kandidaten || []).filter((k) => (k.bekannte_message_ids || []).some((m) => ids.has(m)));
+// Nur eindeutig: sonst bleibt der Vorgang unbekannt (Meldung ohne Statusänderung).
+return [{ json: { vorgangs_id: treffer.length === 1 ? treffer[0].vorgangs_id : '' } }];
+`);
 	const uLesen = wf.aufruf('Vorgang zur Unzustellbarkeit lesen', [1760, -240], 'EPA SW Vorgang verwalten', [
 		['aktion', 'string', 'lesen'],
 		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
-		['vorgangs_id', 'string', `={{ ${NDR}.vorgangs_id }}`],
+		['vorgangs_id', 'string', `={{ ${NDRV} }}`],
 		['daten', 'object', '={{ {} }}'],
 		['erwartete_version', 'number', '={{ null }}'],
 		['referenz', 'string', `={{ ${MID} || '' }}`],
@@ -150,7 +169,7 @@ return [{ json: { ergebnis: 'ignoriert_' + $('Mail normalisieren').first().json.
 	});
 	const uStatus = wf.aufruf('Status: Eskaliert (unzustellbar)', [2200, -300], 'EPA SW Status setzen', [
 		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
-		['vorgangs_id', 'string', `={{ ${NDR}.vorgangs_id }}`],
+		['vorgangs_id', 'string', `={{ ${NDRV} }}`],
 		['neuer_status', 'string', 'Eskaliert / Manuell'],
 		['ausloeser', 'string', 'System'],
 		['details', 'object', `={{ { grund: 'Nachricht nicht zugestellt', smtp: ${NDR}.grund, empfaenger: ${NDR}.empfaenger } }}`],
@@ -189,11 +208,11 @@ const s = $('Status: Eskaliert (unzustellbar)').first().json;
 const v = $('Vorgang zur Unzustellbarkeit lesen').first().json.vorgang;
 const a = $('Unzustellbarkeit auswerten').first().json;
 const vermerkt = $('Freigabe als nicht zugestellt vermerken').isExecuted && $('Freigabe als nicht zugestellt vermerken').first().json.id !== undefined;
-return [{ json: { nachricht_html: unzustellbar.meldung({ ...n.ndr, betreff: v.betreff, eskaliert: s.ok === true || v.status === 'Eskaliert / Manuell', erneut: vermerkt ? a.erneut : undefined }) } }];
+return [{ json: { nachricht_html: unzustellbar.meldung({ ...n.ndr, vorgangs_id: $('Unzustellbarkeit zuordnen').first().json.vorgangs_id, betreff: v.betreff, eskaliert: s.ok === true || v.status === 'Eskaliert / Manuell', erneut: vermerkt ? a.erneut : undefined }) } }];
 `, { executeOnce: true });
 	const uInfo = wf.aufruf('Kanal warnen (unzustellbar)', [3740, -300], 'EPA SW Benachrichtigen', [
 		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
-		['vorgangs_id', 'string', `={{ ${NDR}.vorgangs_id }}`],
+		['vorgangs_id', 'string', `={{ ${NDRV} }}`],
 		['team_id', 'string', `={{ ${C}.benachrichtigung.team_id }}`],
 		['channel_id', 'string', `={{ ${C}.benachrichtigung.channel_id }}`],
 		['kanal', 'string', `={{ ${C}.benachrichtigung.kanal }}`],
@@ -222,7 +241,7 @@ return [{ json: { senden: ok, chat_id: ok ? String(z.telegram_chat_id).trim() : 
 	], { onError: 'continueRegularOutput' });
 	const uErg = wf.code('Ergebnis: unzustellbar', [4840, -300], [], `
 const a = $('Unzustellbarkeit auswerten').first().json;
-return [{ json: { ergebnis: 'unzustellbar', vorgangs_id: $('Mail normalisieren').first().json.ndr.vorgangs_id, erneut_zur_freigabe: a.ok ? a.erneut : false } }];
+return [{ json: { ergebnis: 'unzustellbar', vorgangs_id: $('Unzustellbarkeit zuordnen').first().json.vorgangs_id || null, erneut_zur_freigabe: a.ok ? a.erneut : false } }];
 `, { executeOnce: true });
 	const uErgNein = wf.code('Ergebnis: Unzustellbar ohne Vorgang', [2200, -160], [], `
 return [{ json: { ergebnis: 'ignoriert_' + $('Mail normalisieren').first().json.vor.ergebnis, vorgangs_id: null } }];
@@ -548,8 +567,8 @@ return [{ json: {
 	wf.verbinde(wegWeiche, dupAudit, 0);
 	wf.verbinde(wegWeiche, ignAudit, 1);
 	wf.verbinde(wegWeiche, kandidaten, 2);
-	wf.verbinde(wegWeiche, uLesen, 3);
-	wf.kette(uLesen, uBekannt);
+	wf.verbinde(wegWeiche, uSuchen, 3);
+	wf.kette(uSuchen, uZuordnen, uLesen, uBekannt);
 	wf.verbinde(uBekannt, uStatus, 0);
 	wf.verbinde(uBekannt, uErgNein, 1);
 	wf.kette(uStatus, uFgLesen, uFgAuswerten, uFgBetroffen);

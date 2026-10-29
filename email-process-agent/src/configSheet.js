@@ -20,6 +20,7 @@ const EINSTELLUNGEN = Object.freeze([
 	['ki_hinweistext', 'KI-Hinweis', 'text', 'Hinweis unter jeder Rückfrage, dass die Mail KI-gestützt vorbereitet wurde'],
 	['frist_stunden', 'Antwortfrist Kunde (Stunden)', 'zahl', 'So lange wartet der Agent auf die Antwort des Kunden'],
 	['frist_nur_geschaeftszeit', 'Frist nur in Geschäftszeiten', 'janein', '"ja": Nur Stunden innerhalb der Geschäftszeiten zählen'],
+	['vorgangsnummer_im_betreff', 'Vorgangsnummer im Betreff', 'janein', '"nein" (empfohlen): Nummer nur im Mailtext, die Antwort bleibt beim Kunden im selben Verlauf'],
 	['max_runden', 'Maximale Rückfrage-Runden', 'zahl', 'Danach übernimmt ein Mitarbeiter'],
 	['erinnerung_intervall_stunden', 'Erinnerung nach (Stunden)', 'zahl', 'Abstand der Erinnerungen an den Kunden'],
 	['anzahl_erinnerungen', 'Anzahl Erinnerungen', 'zahl', '0 = keine Erinnerung'],

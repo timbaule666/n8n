@@ -101,7 +101,7 @@ if (bearbeitet) {
 	if (!c.ok) return antwort(400, c.meldung || c.grund);
 	text = c.text;
 }
-return [{ json: { ...basis, weg: 'senden', bearbeitet, text, html_mail: bearbeitet ? entwurf.zuHtml(text, entwurf.abschlussTeile(fg.abschluss) || { signatur: kunde.signatur, ki_hinweistext: kunde.ki_hinweistext }) : null, postfach: kunde.postfach, postfach_workflow_id: kunde.postfach_workflow_id } }];
+return [{ json: { ...basis, weg: 'senden', bearbeitet, text, html_mail: bearbeitet ? entwurf.zuHtml(text, entwurf.abschlussTeile(fg.abschluss) || { signatur: kunde.signatur, ki_hinweistext: kunde.ki_hinweistext }, entwurf.referenzZeile(fg.vorgangs_id, { sprache: kunde.sprache, uebersetzungen: (() => { try { return JSON.parse(kunde.uebersetzungen || '{}'); } catch (e) { return {}; } })() }, v.sprache)) : null, postfach: kunde.postfach, postfach_workflow_id: kunde.postfach_workflow_id } }];
 `);
 	const weiche = wf.node('Weiter', 'n8n-nodes-base.switch', [1540, 0], {
 		mode: 'rules',

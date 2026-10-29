@@ -159,14 +159,15 @@ const l = erinnerung || erneut ? {} : $input.first().json || {};
 const huelle = l.ok === true ? l.ergebnis : null;
 const felder = config.vorgangstypen[v.vorgangstyp];
 const cfg = entwurf.sprachConfig(config, v.sprache);
+const referenz = entwurf.referenzZeile(v.vorgangs_id, config, v.sprache);
 // Erneut: wortgleich der zuletzt freigegebene Text mit seinem Abschluss (Signatur, KI-Hinweis).
 const erneutBauen = () => {
 	const teile = entwurf.abschlussTeile(r.vorige.abschluss) || cfg;
-	return { text: r.vorige.entwurf_text, html: entwurf.zuHtml(r.vorige.entwurf_text, teile), abschluss: r.vorige.abschluss || entwurf.abschlussText(cfg), fallback: false, pruefung: [] };
+	return { text: r.vorige.entwurf_text, html: entwurf.zuHtml(r.vorige.entwurf_text, teile, referenz), abschluss: r.vorige.abschluss || entwurf.abschlussText(cfg), fallback: false, pruefung: [] };
 };
 const e = erneut ? erneutBauen() : erinnerung
-	? entwurf.erinnerungBauen({ config: cfg, felder, fehlende: r.fehlende, name: r.name })
-	: entwurf.entwurfBauen(huelle, { config: cfg, felder, fehlende: r.fehlende, name: r.name });
+	? entwurf.erinnerungBauen({ config: cfg, felder, fehlende: r.fehlende, name: r.name, referenz })
+	: entwurf.entwurfBauen(huelle, { config: cfg, felder, fehlende: r.fehlende, name: r.name, referenz });
 const tokens = config.freigeber.map((f) => ({ freigeber: f, ...freigabe.tokenErzeugen(crypto) }));
 return [{ json: {
 	...e,
@@ -186,6 +187,7 @@ return [{ json: {
 		['freigabe_id', 'string', `={{ ${Z}.freigabe_id }}`],
 		['vorgangs_id', 'string', `={{ ${V}.vorgangs_id }}`],
 		['html', 'string', `={{ ${Z}.html }}`],
+		['betreff_mit_id', 'boolean', `={{ ${C}.vorgangsnummer_im_betreff === true }}`],
 	]);
 
 	const freigabeZeile = wf.code('Freigabe vorbereiten', [1980, 120], [], `

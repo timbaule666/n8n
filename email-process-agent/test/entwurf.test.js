@@ -141,3 +141,16 @@ test('KI-Hülle in der falschen Sprache fällt auf die Vorlage zurück (Live-Tes
 	assert.ok(e.huellePruefen(englisch, CONFIG).some((f) => /Antwortsprache \(de\)/.test(f)), 'englische Hülle in deutscher Rückfrage');
 	assert.deepEqual(e.huellePruefen({ anrede: 'Guten Tag Frau Muster,', einleitung: 'vielen Dank für Ihre Anfrage. Damit wir sie bearbeiten können, benötigen wir noch folgende Angaben:', schluss: 'Vielen Dank für Ihre Rückmeldung.' }, CONFIG), []);
 });
+
+test('Vorgangsnummer im Mailtext: Sprache des Entwurfs, fest vor der Signatur', () => {
+	const e = require('../src/entwurf');
+	const cfg = { sprache: 'de', signatur: 'Gruß', ki_hinweistext: 'KI', uebersetzungen: { en: { signatur: 'Regards', ki_hinweistext: 'AI' } } };
+	assert.equal(e.referenzZeile('V-2026-0185', cfg, 'de'), 'Ihre Vorgangsnummer: V-2026-0185 – bitte bei Rückfragen angeben.');
+	assert.equal(e.referenzZeile('V-2026-0185', cfg, 'en'), 'Your reference number: V-2026-0185 – please quote it in any reply.');
+	// Sprache ohne Übersetzung: Entwurf ist deutsch, also auch die Zeile
+	assert.match(e.referenzZeile('V-2026-0185', cfg, 'fr'), /^Ihre Vorgangsnummer/);
+	assert.equal(e.referenzZeile('', cfg, 'de'), '');
+	const html = e.zuHtml('Text', cfg, e.referenzZeile('V-2026-0185', cfg, 'de'));
+	assert.ok(html.indexOf('V-2026-0185') > html.indexOf('Text') && html.indexOf('V-2026-0185') < html.indexOf('Gruß'));
+	assert.ok(!e.zuHtml('Text', cfg).includes('Vorgangsnummer'));
+});
