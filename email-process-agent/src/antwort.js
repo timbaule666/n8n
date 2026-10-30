@@ -55,6 +55,9 @@ function istAbsenderName(wert, namen) {
  * @param {object[]} felder Feldliste aus der Config
  * @param {{ istPlatzhalter: function, konflikteBisher?: object[], message_id?: string, runde?: number }} optionen
  */
+// Auffangwert einer Werteliste (Härtetest-2-Nachtest: "Gefahrgut" → "Sonstiges" galt als Widerspruch zu "Palette")
+const SAMMELWERT = /^(sonstige?s?|andere?s?|other|others|misc\w*|diverse?s?)$/i;
+
 function zusammenfuehren(alt, neu, felder, optionen = {}) {
 	const a = alt && typeof alt === 'object' ? alt : {};
 	const nd = (neu && neu.daten) || {};
@@ -86,6 +89,9 @@ function zusammenfuehren(alt, neu, felder, optionen = {}) {
 				&& !istAbsenderName(vorher.wert, optionen.absenderNamen)) {
 				// Der Antwortende unterschreibt mit seinem Namen (z. B. der Kollege, der die Anfrage weitergeleitet hat):
 				// kein Wechsel des Ansprechpartners, kein Widerspruch. Der bisherige Wert bleibt.
+			} else if (f.typ === 'enum' && SAMMELWERT.test(String(neuWert).trim()) && !SAMMELWERT.test(String(vorher.wert).trim())) {
+				// Sammelwert ("Sonstiges") gegen einen konkreten Wert ("Palette"): die KI hat aus einer Zusatzinfo
+				// (z. B. "Gefahrgut") eine Kategorie geraten. Kein Widerspruch, der bisherige Wert bleibt.
 			} else if (f.validierungsregel && f.validierungsregel.person === true && nameErgaenzt(vorher.wert, neuWert)) {
 				// "Max" -> "Max Müller": Ergänzung, kein Widerspruch
 				daten[f.feldname] = { wert: neuWert, roh, quelle: n.quelle || null, konfidenz: n.konfidenz ?? null, nachgefordert: true, runde: optionen.runde ?? null };

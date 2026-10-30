@@ -4,7 +4,8 @@
 // Ergebnis sind nur Hinweise an die Mitarbeiter; an Daten und Status ändert sich nichts.
 
 // Fünfstellige Zahl, nicht Teil einer längeren Ziffernfolge (Telefon-, Rechnungs-, Auftragsnummern).
-const PLZ = /(?<![\d.,+/-])\b\d{5}\b(?![\d.,/-])/g;
+// Folgt eine weitere Zahlengruppe ("02302 5557037"), ist es eine Telefonvorwahl, keine PLZ (Härtetest 2, X037).
+const PLZ = /(?<![\d.,+/-])\b\d{5}\b(?![\d.,/-])(?![ \t]*[/-]?[ \t]*\d{3})/g;
 const MEHRERE_WORTE = /\b(zwei|drei|vier|mehrere|2|3|4)\s+(transporte|aufträge|auftraege|touren|sendungen|fahrten|abholungen|lieferungen|shipments|orders)\b/i;
 const PLZ_EINZELN = new RegExp(PLZ.source);
 const NUMMERIERT = /^\s*(\d)[.)]\s+\S/;
@@ -40,6 +41,73 @@ function mehrdeutigeDaten(text) {
 	return [...new Set(treffer)];
 }
 
+// ---------------------------------------------------------------- Widersprüche und Alternativen (Härtetest 2)
+
+const DATUM_DE = /(?<!\d)(\d{1,2})\.(\d{1,2})\.(\d{4})(?!\d)/g;
+const DATUM_ISO = /(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)/g;
+const GEWICHT = /(?<![\d.,])(\d{1,3}(?:[.\s]\d{3})+|\d+(?:,\d+)?)\s*(kg|kilo\w*|t|to|tonnen?)(?![\p{L}])/giu;
+const ALTERNATIV = /\b(oder|or|bzw\.?|beziehungsweise|alternativ)\b/i;
+
+function iso(j, m, t) {
+	const d = [Number(j), Number(m), Number(t)];
+	if (d[1] < 1 || d[1] > 12 || d[2] < 1 || d[2] > 31) return null;
+	return `${d[0]}-${String(d[1]).padStart(2, '0')}-${String(d[2]).padStart(2, '0')}`;
+}
+
+/** Alle vollständigen Daten (TT.MM.JJJJ oder JJJJ-MM-TT) eines Textes als ISO, ohne Doppelte. */
+function datenIn(text) {
+	const s = String(text || '');
+	const out = [...s.matchAll(DATUM_DE)].map((m) => iso(m[3], m[2], m[1]));
+	out.push(...[...s.matchAll(DATUM_ISO)].map((m) => iso(m[1], m[2], m[3])));
+	return [...new Set(out.filter(Boolean))];
+}
+
+/** Alle Gewichtsangaben eines Textes in kg ("1.200 kg", "2,5 t" → 2500), ohne Doppelte. */
+function gewichteIn(text) {
+	const out = [];
+	for (const m of String(text || '').matchAll(GEWICHT)) {
+		const zahl = /^\d{1,3}([.\s]\d{3})+$/.test(m[1]) ? Number(m[1].replace(/[.\s]/g, '')) : Number(m[1].replace(',', '.'));
+		if (!Number.isFinite(zahl)) continue;
+		out.push(Math.round(/^(t|to|tonne|tonnen)$/i.test(m[2]) ? zahl * 1000 : zahl));
+	}
+	return [...new Set(out)];
+}
+
+const datumText = (d) => d.split('-').reverse().join('.');
+
+/**
+ * Mailtext und Anhang nennen unterschiedliche Gewichte bzw. Daten (beide nennen eins, keins stimmt überein).
+ * Die KI übernimmt still einen der Werte; der Mitarbeiter soll den Widerspruch sehen.
+ */
+function widerspruecheAnhang(mail) {
+	const m = mail || {};
+	const h = [];
+	const textGewicht = gewichteIn(m.text);
+	const textDatum = datenIn(m.text);
+	for (const a of m.anhaenge || []) {
+		if (!a || typeof a.text !== 'string' || !a.text.trim()) continue;
+		const g = gewichteIn(a.text);
+		if (textGewicht.length && g.length && !g.some((x) => textGewicht.includes(x))) {
+			h.push(`Mailtext und Anhang „${a.name}“ nennen unterschiedliche Gewichte: Mailtext ${textGewicht.join(' / ')} kg, Anhang ${g.join(' / ')} kg – bitte prüfen.`);
+		}
+		const d = datenIn(a.text);
+		if (textDatum.length && d.length && !d.some((x) => textDatum.includes(x))) {
+			h.push(`Mailtext und Anhang „${a.name}“ nennen unterschiedliche Daten: Mailtext ${textDatum.map(datumText).join(' / ')}, Anhang ${d.map(datumText).join(' / ')} – bitte prüfen.`);
+		}
+	}
+	return h;
+}
+
+/** Mehrere Daten in einer Zeile, verbunden mit "oder", "bzw." …: der Kunde lässt die Wahl, erfasst wird nur eins. */
+function alternativeDaten(text) {
+	for (const zeile of String(text || '').split('\n')) {
+		if (/^\s*>/.test(zeile) || !ALTERNATIV.test(zeile)) continue;
+		const d = datenIn(zeile);
+		if (d.length >= 2) return d;
+	}
+	return [];
+}
+
 /**
  * Alle Hinweise zu einer Mail als Texte (unescaped; der Aufrufer escaped).
  * @param {object} mail normalisierte Mail (betreff, text)
@@ -55,6 +123,9 @@ function alle(mail, optionen = {}) {
 	}
 	const daten = mehrdeutigeDaten(text);
 	if (daten.length) h.push(`Datum ${daten.join(', ')} ist mehrdeutig (Tag/Monat vertauschbar) – bitte beim Kunden bestätigen.`);
+	const alternativen = alternativeDaten(m.text);
+	if (alternativen.length) h.push(`Mehrere mögliche Daten genannt (${alternativen.map(datumText).join(' oder ')}). Erfasst wurde nur eines – bitte beim Kunden klären.`);
+	h.push(...widerspruecheAnhang(m));
 	return { hinweise: h, storno: optionen.antwort ? stornoStelle(m.text) : null };
 }
 
@@ -98,4 +169,4 @@ function handlungKeineAnfrage(mail, begruendung) {
 	return null;
 }
 
-module.exports = { mehrereAuftraege, stornoStelle, mehrdeutigeDaten, alle, handlungKeineAnfrage };
+module.exports = { mehrereAuftraege, stornoStelle, mehrdeutigeDaten, alternativeDaten, widerspruecheAnhang, datenIn, gewichteIn, alle, handlungKeineAnfrage };

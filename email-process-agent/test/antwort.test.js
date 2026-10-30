@@ -181,3 +181,13 @@ test('Meldung: Zusatzinformation aus der Antwort wird oben gezeigt', () => {
 	assert.match(ohne, /Antwort ohne neue Angaben/);
 	assert.doesNotMatch(ohne, /Wichtige Information/);
 });
+
+// Härtetest-2-Nachtest: "Gefahrgut (Farben)" → Ladungsart "Sonstiges" galt als Widerspruch zu "Palette".
+test('Merge: Sammelwert "Sonstiges" gegen konkreten Wert ist kein Widerspruch', () => {
+	const alt = pruefe({ Start_PLZ: '50667', Start_Ort: 'Köln', Ziel_PLZ: '04109', Ziel_Ort: 'Leipzig', Abholdatum: '2026-10-30', Gewicht_kg: '1200', Ansprechpartner: 'Max Muster', Ladungsart: 'Palette' }).daten;
+	const m = merge({ Ladungsart: 'Sonstiges' }, alt);
+	assert.equal(m.daten.Ladungsart.wert, 'Palette');
+	assert.deepEqual(m.konflikte_neu, []);
+	// ein anderer konkreter Wert bleibt ein Widerspruch
+	assert.equal(merge({ Ladungsart: 'Paket' }, alt).konflikte_neu[0].feldname, 'Ladungsart');
+});

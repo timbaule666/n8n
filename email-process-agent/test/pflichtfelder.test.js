@@ -186,3 +186,11 @@ test('PLZ und Telefon müssen in der Mail stehen (Live-Test M22: PLZ aus Ortsnam
 	assert.equal(p('45127', '0201 5552022', undefined).daten.Start_PLZ.wert, '45127', 'ohne Quelltext keine Prüfung');
 	assert.equal(pf.wertImText('plz', '45127', 'PLZ 451270'), false);
 });
+
+// Härtetest 2 (X014): "+49 (0) 381 …" wurde als +490381… gespeichert.
+test('Telefon: (0) nach der Ländervorwahl wird entfernt', () => {
+	assert.deepEqual(pf.feldPruefen(feld('Telefon'), '+49 (0) 381 / 555 70 14'), { ok: true, wert: '+493815557014' });
+	assert.deepEqual(pf.feldPruefen(feld('Telefon'), '+49(0)40 123456'), { ok: true, wert: '+4940123456' });
+	assert.deepEqual(pf.feldPruefen(feld('Telefon'), '+43 662 5557061'), { ok: true, wert: '+436625557061' });
+	assert.equal(pf.wertImText('telefon', '+493815557014', 'Tel. +49 (0) 381 / 555 70 14'), true);
+});

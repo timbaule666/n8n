@@ -71,3 +71,28 @@ test('handlungKeineAnfrage: normale Nicht-Anfragen bleiben still', () => {
 	assert.equal(h({ text: 'bitte stornieren', newsletter_hinweise: ['List-Unsubscribe'] }), null);
 	assert.equal(h({ text: 'bitte stornieren', eigene_mail: true }), null);
 });
+
+// Härtetest 2: X045 (Text 600 kg, PDF 900 kg) und X037 (zwei Abholdaten, Vorwahl als PLZ gezählt)
+test('Widerspruch Mailtext und Anhang: Gewicht und Datum', () => {
+	const mail = { text: 'Abholung bitte am 03.12.2026, 2 Paletten mit 600 kg von 99084 Erfurt nach 98527 Suhl.', anhaenge: [{ name: 'Auftrag.pdf', text: 'Abholung: 99084 Erfurt, 04.12.2026\n2 Paletten, 900 kg' }] };
+	const h = t.widerspruecheAnhang(mail);
+	assert.equal(h.length, 2);
+	assert.match(h[0], /Mailtext 600 kg, Anhang 900 kg/);
+	assert.match(h[1], /Mailtext 03\.12\.2026, Anhang 04\.12\.2026/);
+	// gleiche Werte (auch anders geschrieben) sind kein Widerspruch
+	assert.deepEqual(t.widerspruecheAnhang({ text: '1,2 t am 2026-12-03', anhaenge: [{ name: 'a.pdf', text: '1.200 kg, 03.12.2026' }] }), []);
+	// nur eine Seite nennt etwas: kein Widerspruch
+	assert.deepEqual(t.widerspruecheAnhang({ text: 'Details im Anhang', anhaenge: [{ name: 'a.pdf', text: '900 kg, 03.12.2026' }] }), []);
+	assert.deepEqual(t.gewichteIn('ca. 1.200 kg, 2,5 t, 24.000 kg, 1 300 kg'), [1200, 2500, 24000, 1300]);
+});
+
+test('Alternative Daten und Vorwahl statt PLZ', () => {
+	const text = 'Abholung am 03.12.2026 oder am 05.12.2026 (je nachdem was passt) in 58452 Witten, Ziel 58095 Hagen.\nUlf Raab, 02302 5557037';
+	assert.deepEqual(t.alternativeDaten(text), ['2026-12-03', '2026-12-05']);
+	const h = t.alle({ text }).hinweise;
+	assert.equal(h.length, 1);
+	assert.match(h[0], /Mehrere mögliche Daten genannt \(03\.12\.2026 oder 05\.12\.2026\)/);
+	// Abholung und Lieferung an verschiedenen Tagen ist keine Alternative
+	assert.deepEqual(t.alternativeDaten('Abholung 03.12.2026, Lieferung 05.12.2026'), []);
+	assert.deepEqual(t.mehrereAuftraege('Von 58452 Witten nach 58095 Hagen. Tel. 02302 5557037').plz, ['58452', '58095']);
+});

@@ -137,7 +137,8 @@ function feldPruefen(feld, roh, { heute } = {}) {
 		case 'telefon': {
 			const s = String(roh).trim();
 			if (!/^[+\d][\d\s()/.\-–]*$/.test(s)) return fehler('keine gültige Telefonnummer');
-			const ziffern = s.replace(/\D/g, '');
+			// "+49 (0) 381 …": die (0) ist die nationale Vorwahl-Null und gehört nicht in die internationale Nummer
+			const ziffern = s.replace(/^(\+\d{1,3})[\s/.\-–]*\(0\)/, '$1').replace(/\D/g, '');
 			if (ziffern.length < regel.min_ziffern || ziffern.length > regel.max_ziffern) return fehler('keine gültige Telefonnummer (Anzahl Ziffern)');
 			return { ok: true, wert: (s.startsWith('+') ? '+' : '') + ziffern };
 		}
