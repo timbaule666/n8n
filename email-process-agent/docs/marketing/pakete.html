@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<style>
+:root{--bg:#0f172a;--card:#ffffff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--accent:#2563eb;--accent2:#1d4ed8;--soft:#eff6ff;--ok:#16a34a}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1600px;font-family:"Segoe UI",Inter,Helvetica,Arial,sans-serif;background:linear-gradient(160deg,#0f172a 0%,#1e293b 100%);color:var(--ink);padding:64px 64px 56px}
+.kopf{text-align:center;color:#fff;margin-bottom:44px}
+.kopf .tag{display:inline-block;font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:#93c5fd;border:1px solid #334155;border-radius:999px;padding:6px 16px;margin-bottom:18px}
+.kopf h1{font-size:52px;font-weight:800;letter-spacing:-.02em}
+.kopf p{font-size:21px;color:#cbd5e1;margin-top:12px}
+.pakete{display:grid;grid-template-columns:repeat(4,1fr);gap:22px;align-items:stretch}
+.p{background:var(--card);border-radius:20px;padding:30px 26px 26px;position:relative;display:flex;flex-direction:column}
+.p.top{outline:4px solid var(--accent);transform:translateY(-10px)}
+.badge{position:absolute;top:-16px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;font-size:14px;font-weight:700;padding:6px 16px;border-radius:999px;white-space:nowrap}
+.stufe{font-size:14px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.1em}
+.name{font-size:30px;font-weight:800;margin-top:4px}
+.fuer{font-size:15px;color:var(--muted);margin-top:6px;min-height:42px}
+.preis{margin-top:18px;border-top:1px solid var(--line);padding-top:16px}
+.zeile{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.zeile .l{font-size:14px;color:var(--muted)}
+.mon{font-size:38px;font-weight:800;color:var(--ink)}
+.mon small{font-size:16px;font-weight:600;color:var(--muted)}
+.ein{font-size:20px;font-weight:700}
+.menge{margin-top:14px;background:var(--soft);border-radius:12px;padding:12px 14px;font-size:16px;font-weight:600;color:var(--accent2)}
+ul{list-style:none;margin-top:16px;flex:1}
+li{font-size:15px;line-height:1.35;padding:6px 0 6px 26px;position:relative;border-bottom:1px dashed var(--line)}
+li:last-child{border-bottom:0}
+li::before{content:"✓";position:absolute;left:0;top:5px;color:var(--ok);font-weight:800}
+.p.ind{background:#f8fafc}
+.netto{text-align:center;color:#94a3b8;font-size:15px;margin-top:22px}
+.vorteile{margin-top:48px;background:#fff;border-radius:22px;padding:40px 44px}
+.vorteile h2{font-size:32px;font-weight:800;margin-bottom:6px}
+.vorteile .sub{font-size:18px;color:var(--muted);margin-bottom:28px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+.v{border:1px solid var(--line);border-radius:16px;padding:22px}
+.v .ic{width:44px;height:44px;border-radius:12px;background:var(--soft);display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:12px}
+.v h3{font-size:19px;font-weight:700;margin-bottom:6px}
+.v p{font-size:15.5px;color:#334155;line-height:1.45}
+.fuss{text-align:center;color:#cbd5e1;font-size:17px;margin-top:30px}
+.fuss b{color:#fff}
+</style></head><body>
+<div class="kopf">
+  <div class="tag">Email Process Agent</div>
+  <h1>Jede Anfrage erfasst. Kein Kunde wartet.</h1>
+  <p>Der KI-Assistent für Ihr Anfrage-Postfach – Ihr Team gibt nur noch frei.</p>
+</div>
+
+<div class="pakete">
+  <div class="p">
+    <div class="stufe">Stufe 1</div><div class="name">Basis</div>
+    <div class="fuer">Für den Einstieg mit einem Postfach</div>
+    <div class="preis">
+      <div class="zeile"><span class="mon">349 €<small> / Monat</small></span></div>
+      <div class="zeile"><span class="l">Einrichtung einmalig</span><span class="ein">1.490 €</span></div>
+    </div>
+    <div class="menge">150 neue Anfragen / Monat (+15 Puffer)</div>
+    <ul>
+      <li>1 Postfach, bis 3 Freigeber</li>
+      <li>Rückfragen auf Deutsch</li>
+      <li>Standard-Pflichtfelder (Transport)</li>
+      <li>1 Anpassung pro Jahr</li>
+      <li>Support per Mail in 2 Werktagen</li>
+      <li>Testlauf mit 10 Mails, 2 Wochen Begleitung</li>
+    </ul>
+  </div>
+
+  <div class="p top">
+    <div class="badge">Empfohlen</div>
+    <div class="stufe">Stufe 2</div><div class="name">Business</div>
+    <div class="fuer">Für die meisten Betriebe</div>
+    <div class="preis">
+      <div class="zeile"><span class="mon">649 €<small> / Monat</small></span></div>
+      <div class="zeile"><span class="l">Einrichtung einmalig</span><span class="ein">2.490 €</span></div>
+    </div>
+    <div class="menge">400 neue Anfragen / Monat (+40 Puffer)</div>
+    <ul>
+      <li>1 Postfach, bis 10 Freigeber</li>
+      <li>Rückfragen auf Deutsch und Englisch</li>
+      <li>Bis 15 eigene Pflichtfelder</li>
+      <li>Regeln selbst pflegen (Google Sheet)</li>
+      <li>Tägliche Übersicht + Monatsbericht</li>
+      <li>4 Anpassungen pro Jahr</li>
+      <li>Support per Mail in 1 Werktag</li>
+    </ul>
+  </div>
+
+  <div class="p">
+    <div class="stufe">Stufe 3</div><div class="name">Premium</div>
+    <div class="fuer">Für hohes Volumen und mehrere Postfächer</div>
+    <div class="preis">
+      <div class="zeile"><span class="mon">1.090 €<small> / Monat</small></span></div>
+      <div class="zeile"><span class="l">Einrichtung einmalig</span><span class="ein">3.990 €</span></div>
+    </div>
+    <div class="menge">1.000 neue Anfragen / Monat (+100 Puffer)</div>
+    <ul>
+      <li>Bis 3 Postfächer, Freigeber unbegrenzt</li>
+      <li>Deutsch, Englisch + 1 weitere Sprache</li>
+      <li>Beliebige Felder und Vorgangsarten</li>
+      <li>Anpassungen unbegrenzt (fair use)</li>
+      <li>Monatsbericht + Gespräch pro Quartal</li>
+      <li>Support per Mail und Telefon, am selben Werktag</li>
+    </ul>
+  </div>
+
+  <div class="p ind">
+    <div class="stufe">Individuell</div><div class="name">Enterprise</div>
+    <div class="fuer">Für mehr Volumen, eigene Abläufe und Anbindungen</div>
+    <div class="preis">
+      <div class="zeile"><span class="mon">ab 1.090 €<small> / Monat</small></span></div>
+      <div class="zeile"><span class="l">Einrichtung einmalig</span><span class="ein">ab 3.990 €</span></div>
+    </div>
+    <div class="menge">Volumen nach Bedarf</div>
+    <ul>
+      <li>Alles aus Premium</li>
+      <li>Mehr Postfächer und Anfragen</li>
+      <li>Anbindung an Ihre Software (z. B. Speditionsprogramm, CRM)</li>
+      <li>Eigene Vorgangsarten und Abläufe</li>
+      <li>Individuelle Reaktionszeiten</li>
+      <li>Preis nach Aufwand – Angebot auf Anfrage</li>
+    </ul>
+  </div>
+</div>
+<div class="netto">Alle Preise netto zzgl. MwSt. · Jahresvertrag: 12 Monate zum Preis von 10 · Pilot: 4 Wochen zum halben Monatspreis</div>
+
+<div class="vorteile">
+  <h2>Warum der Email Process Agent?</h2>
+  <div class="sub">Ihr Postfach wird rund um die Uhr gelesen, sortiert und vorbereitet – die Entscheidung bleibt bei Ihrem Team.</div>
+  <div class="grid">
+    <div class="v"><div class="ic">📥</div><h3>Keine Anfrage geht verloren</h3><p>Jede Mail wird sofort erfasst und sortiert. Werbung, Rechnungen und Abwesenheitsnotizen werden aussortiert.</p></div>
+    <div class="v"><div class="ic">🧠</div><h3>Daten automatisch erfasst</h3><p>Orte, Termine, Gewicht und Kontakt werden aus Mailtext und PDF-Anhängen ausgelesen – auch auf Englisch, Französisch oder Niederländisch.</p></div>
+    <div class="v"><div class="ic">✍️</div><h3>Rückfragen fertig vorbereitet</h3><p>Fehlt etwas, liegt die passende Rückfrage als Entwurf bereit. Ein Klick zum Freigeben, Bearbeiten oder Ablehnen.</p></div>
+    <div class="v"><div class="ic">🔁</div><h3>Antworten werden ausgewertet</h3><p>Kundenantworten werden dem richtigen Vorgang zugeordnet. Widersprüche, Stornierungen und wichtige Hinweise wie Gefahrgut werden gemeldet.</p></div>
+    <div class="v"><div class="ic">🛡️</div><h3>Sie behalten die Kontrolle</h3><p>Keine Mail geht ohne Freigabe raus. Manipulationsversuche in Mails werden erkannt und gemeldet – die KI hat keinen Zugriff auf Ihre Systeme.</p></div>
+    <div class="v"><div class="ic">💬</div><h3>Alles in Teams und Outlook</h3><p>Übersichtliche Meldungen im Teams-Kanal, farbige Markierungen in Outlook, Erinnerungen bei liegengebliebenen Vorgängen und Überwachung mit Alarm.</p></div>
+  </div>
+</div>
+<div class="fuss"><b>Ihr Team spart Zeit beim Abtippen und Nachfragen</b> – und konzentriert sich auf Angebote und Kunden.</div>
+</body></html>
