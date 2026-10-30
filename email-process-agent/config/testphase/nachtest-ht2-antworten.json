@@ -1,0 +1,17 @@
+[
+ {
+  "vorgang": "V-2026-0292",
+  "text": "Hi,\n\ndelivery postcode is 28195 Bremen, pickup on 2026-12-08, about 750 kg in total. Phone +44 20 5557043.\n\nThanks\nGeorge Smith",
+  "erwartet": "bereit (en)"
+ },
+ {
+  "vorgang": "V-2026-0295",
+  "text": "Grüß Gott,\n\ndie Postleitzahl ist 5020 Salzburg, das liegt in Österreich.\n\nGeorg Mayr",
+  "erwartet": "österreichische PLZ bleibt ungültig: 2. Rückfrage oder Eskalation, kein Fehlalarm"
+ },
+ {
+  "vorgang": "V-2026-0237",
+  "text": "Hallo,\n\nmeine Telefonnummer ist 0271 5557031.\n\nEva Hahn",
+  "erwartet": "bereit"
+ }
+]
