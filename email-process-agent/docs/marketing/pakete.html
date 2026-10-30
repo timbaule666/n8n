@@ -38,6 +38,8 @@ li::before{content:"✓";position:absolute;left:0;top:5px;color:var(--ok);font-w
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
 .v{border:1px solid var(--line);border-radius:16px;padding:22px}
 .v .ic{width:44px;height:44px;border-radius:12px;background:var(--soft);display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:12px}
+.v.breit{grid-column:1 / -1;display:flex;gap:18px;align-items:flex-start;background:var(--soft);border-color:#bfdbfe}
+.v.breit .ic{background:#fff;flex:none;margin-bottom:0}
 .v h3{font-size:19px;font-weight:700;margin-bottom:6px}
 .v p{font-size:15.5px;color:#334155;line-height:1.45}
 .fuss{text-align:center;color:#cbd5e1;font-size:17px;margin-top:30px}
@@ -127,12 +129,13 @@ li::before{content:"✓";position:absolute;left:0;top:5px;color:var(--ok);font-w
   <h2>Warum der Email Process Agent?</h2>
   <div class="sub">Ihr Postfach wird rund um die Uhr gelesen, sortiert und vorbereitet – die Entscheidung bleibt bei Ihrem Team.</div>
   <div class="grid">
-    <div class="v"><div class="ic">📥</div><h3>Keine Anfrage geht verloren</h3><p>Jede Mail wird sofort erfasst und sortiert. Werbung, Rechnungen und Abwesenheitsnotizen werden aussortiert.</p></div>
+    <div class="v"><div class="ic">📥</div><h3>Keine Anfrage geht verloren</h3><p>Jede Mail wird sofort geprüft. Bearbeitet werden nur echte Anfragen – alles andere bleibt unverändert in Ihrem Postfach.</p></div>
     <div class="v"><div class="ic">🧠</div><h3>Daten automatisch erfasst</h3><p>Orte, Termine, Gewicht und Kontakt werden aus Mailtext und PDF-Anhängen ausgelesen – auch auf Englisch, Französisch oder Niederländisch.</p></div>
     <div class="v"><div class="ic">✍️</div><h3>Rückfragen fertig vorbereitet</h3><p>Fehlt etwas, liegt die passende Rückfrage als Entwurf bereit. Ein Klick zum Freigeben, Bearbeiten oder Ablehnen.</p></div>
     <div class="v"><div class="ic">🔁</div><h3>Antworten werden ausgewertet</h3><p>Kundenantworten werden dem richtigen Vorgang zugeordnet. Widersprüche, Stornierungen und wichtige Hinweise wie Gefahrgut werden gemeldet.</p></div>
     <div class="v"><div class="ic">🛡️</div><h3>Sie behalten die Kontrolle</h3><p>Keine Mail geht ohne Freigabe raus. Manipulationsversuche in Mails werden erkannt und gemeldet – die KI hat keinen Zugriff auf Ihre Systeme.</p></div>
     <div class="v"><div class="ic">💬</div><h3>Alles in Teams und Outlook</h3><p>Übersichtliche Meldungen im Teams-Kanal, farbige Markierungen in Outlook, Erinnerungen bei liegengebliebenen Vorgängen und Überwachung mit Alarm.</p></div>
+    <div class="v breit"><div class="ic">📊</div><div><h3>Ganz einfach selbst steuern</h3><p>Pflichtfelder, Texte, Fristen und Regeln pflegen Sie bequem in einem Google Sheet – ohne Programmierkenntnisse. Der Agent übernimmt Ihre Änderungen automatisch und meldet, was er geändert hat. (ab Business)</p></div></div>
   </div>
 </div>
 
