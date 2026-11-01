@@ -94,6 +94,20 @@ Stand 2026-10-14 (M6). Für die Person, die das System betreut: Was läuft wann,
 - **Link holen:** „EPA-14 Betrieb-Dashboard“ in n8n öffnen und manuell starten. Alle bisherigen Dashboard-Links werden gesperrt; der neue (90 Tage gültig) kommt per Telegram. Als Lesezeichen speichern, nicht weitergeben – er zeigt alle Kunden.
 - Kunden-Links (Tagesübersicht) öffnen das Dashboard nicht und umgekehrt.
 
+## 5c. Terminanfragen: Kalender prüfen und eintragen (EPA-15)
+
+**Was passiert:** Ist eine Terminanfrage vollständig, prüft „EPA SW Kalender prüfen“ im Outlook-Kalender des Postfachs, ob der Wunschtermin frei ist. Im Teams-Kanal kommt eine Meldung „📅 Terminanfrage – Kalender geprüft“:
+- genaue Uhrzeit („10 Uhr“): frei oder belegt; wenn belegt, bis zu drei freie Zeiten am selben Tag,
+- Zeitraum („vormittags“, „zwischen 9 und 11“) oder keine Uhrzeit: bis zu drei freie Zeiten im Zeitraum bzw. in der Geschäftszeit,
+- Hinweise bei Wochenende, Vergangenheit oder außerhalb der Geschäftszeit.
+
+**Eintragen:** Link „Termin in den Kalender eintragen“ → Zeit auswählen → „In den Kalender eintragen“. Erst dann wird der Termin im Kalender des Postfachs angelegt (Betreff = Anlass + Ansprechpartner, Ort, Kontaktdaten und Vorgangsnummer im Text). „Nicht eintragen“ verwirft den Vorschlag. Der Link ist einmal verwendbar und gilt `kalender.gueltig_stunden` (Standard 72 h). **Der Kunde bekommt dadurch keine Nachricht** – die Bestätigung an den Kunden schreibt das Team wie gewohnt.
+
+**Einrichten (je Kunde):** Spalte `kalender` in `epa_config_allgemein`, z. B.
+`{"aktiv":true,"vorgangstyp":"termin","datum_feld":"Wunschtermin","uhrzeit_feld":"Uhrzeit","titel_feld":"Terminanlass","ort_feld":"Terminort","dauer_minuten":60,"gueltig_stunden":72}`. Leer = aus. Das Outlook-Credential der Postfach-Kopie braucht Kalenderzugriff (beim Testkunden vorhanden). Kann der Kalender nicht gelesen werden, kommt die Meldung ohne Link mit „bitte selbst prüfen“.
+
+**Grenzen:** Geprüft wird nur der Kalender des überwachten Postfachs, nicht die Kalender einzelner Mitarbeiter. Der Link steht im Teams-Kanal; wer den Kanal sieht, kann eintragen (Audit: „Mitarbeiter:Teams-Kanal“). Gelesen werden nur Zeiten und Status, keine Betreffe.
+
 ## 6. Datenschutzanfragen (Auskunft, Löschung)
 1. In `epa_vorgaenge` nach `absender_adresse` filtern und die `vorgangs_id`s notieren.
 2. **Auskunft:** Zeilen aus `epa_vorgaenge`, `epa_audit_log` (Filter `vorgangs_id`) und `epa_freigaben` exportieren. Die Mails selbst liegen im Postfach.
