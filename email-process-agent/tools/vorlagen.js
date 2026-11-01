@@ -53,6 +53,7 @@ const ALLGEMEIN = {
 	uebersetzungen: '',
 	outlook_kategorien: '',
 	vorgangsarten: '',
+	kalender: '',
 	config_sheet: '',
 };
 

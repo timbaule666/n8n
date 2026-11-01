@@ -37,6 +37,9 @@ const M2 = [
 	['epa-12-uebersicht', 'EPA-12_Uebersicht-Seite.json'],
 	['epa-13-tagesuebersicht', 'EPA-13_Tagesuebersicht.json'],
 	['epa-14-betrieb', 'EPA-14_Betrieb-Dashboard.json'],
+	// Terminanfragen: Kalender prüfen und nach Klick eintragen
+	['sw-kalender-pruefen', 'EPA_SW_Kalender_pruefen.json'],
+	['epa-15-kalender', 'EPA-15_Kalender-Endpunkt.json'],
 	// Testphase: KI-Qualitäts-Prüfstand (keine Nebenwirkungen)
 	['epa-t1-ki-qualitaet', 'EPA-T1_KI-Qualitaet_pruefen.json'],
 	// Nur interne Tests ohne Microsoft-365-Lizenz (Kunden nutzen Teams)

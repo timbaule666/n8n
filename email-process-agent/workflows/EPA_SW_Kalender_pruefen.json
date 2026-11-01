@@ -1,0 +1,727 @@
+{
+  "name": "EPA SW Kalender prüfen",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## EPA SW Kalender prüfen\n**Zweck:** Ist eine Terminanfrage vollständig, prüft dieser Workflow im Outlook-Kalender des Postfachs, ob der Wunschtermin frei ist, und schickt dem Team eine Meldung mit Link \"Termin in den Kalender eintragen\" (EPA-15). Eingetragen wird erst nach dem Klick; der Kunde bekommt keine Nachricht.\n**Trigger:** Aufruf durch EPA-01 und EPA-03, wenn ein Vorgang \"Bereit zur Bearbeitung\" ist.\n**Eingaben:** kunde_id, vorgangs_id.\n**Config:** epa_config_allgemein.kalender (aktiv, vorgangstyp, datum_feld, uhrzeit_feld, titel_feld, ort_feld, dauer_minuten, gueltig_stunden). Leer = nichts passiert.\n**Datenschutz:** Aus dem Kalender werden nur Zeiten und Status gelesen, keine Betreffe oder Teilnehmer. In epa_kalender_termine stehen nur Zeiten und der Hash des Links.\n**Fehler:** Kann der Kalender nicht gelesen werden, kommt eine Meldung ohne Link (\"bitte selbst prüfen\"). Die Mailverarbeitung wird nie gestört.",
+        "width": 760,
+        "height": 340,
+        "color": 7
+      },
+      "id": "a24ffd19-7c5c-43c1-a3a3-63015100813a",
+      "name": "Notiz Zweck",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -420
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "kunde_id",
+              "type": "string"
+            },
+            {
+              "name": "vorgangs_id",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "3e04f667-0342-4a92-ac22-f63bd2bfb136",
+      "name": "Bei Aufruf",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Config laden",
+          "cachedResultName": "EPA SW Config laden"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $json.kunde_id }}",
+            "postfach": ""
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "postfach",
+              "displayName": "postfach",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "cee8a2ff-3fad-45df-a6f4-fd3e1a6faf3f",
+      "name": "Config laden",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Vorgang verwalten",
+          "cachedResultName": "EPA SW Vorgang verwalten"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "aktion": "lesen",
+            "kunde_id": "={{ $('Bei Aufruf').first().json.kunde_id }}",
+            "vorgangs_id": "={{ $('Bei Aufruf').first().json.vorgangs_id }}",
+            "daten": "={{ {} }}",
+            "erwartete_version": "={{ null }}",
+            "referenz": "kalender",
+            "lock_sekunden": "={{ null }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "aktion",
+              "displayName": "aktion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "daten",
+              "displayName": "daten",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object",
+              "removed": false
+            },
+            {
+              "id": "erwartete_version",
+              "displayName": "erwartete_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "referenz",
+              "displayName": "referenz",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "lock_sekunden",
+              "displayName": "lock_sekunden",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "a9b4b806-aff8-4e7f-a380-4ab6785e213d",
+      "name": "Vorgang lesen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/kalender.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst kalender = (() => {\nconst module = { exports: {} };\n// Kalenderprüfung für Terminanfragen (Config \"kalender\"): Ist der Wunschtermin im Outlook-Kalender des Kunden frei?\n// Das Team bekommt eine Meldung mit Link; eingetragen wird erst nach Klick (EPA-15). Der Agent trägt nie selbst ein\n// und schreibt dem Kunden nichts. Reine Funktionen, keine Abhängigkeiten (Zeitzonen über Intl).\n\nconst STANDARD = Object.freeze({ dauer_minuten: 60, gueltig_stunden: 72 });\nconst ZEITRAEUME = Object.freeze({\n\tvormittag: ['08:00', '12:00'],\n\tmittag: ['11:00', '14:00'],\n\tnachmittag: ['13:00', '17:00'],\n\tabend: ['17:00', '20:00'],\n});\nconst MAX_VORSCHLAEGE = 3;\nconst RASTER_MINUTEN = 30;\nconst TAGE = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];\n\nfunction zwei(n) {\n\treturn String(n).padStart(2, '0');\n}\n\nfunction zeitOk(h, m) {\n\treturn Number.isInteger(h) && Number.isInteger(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59;\n}\n\nfunction hhmm(h, m) {\n\treturn `${zwei(h)}:${zwei(m)}`;\n}\n\nfunction minuten(zeit) {\n\tconst [h, m] = String(zeit).split(':').map(Number);\n\treturn h * 60 + m;\n}\n\nfunction ausMinuten(n) {\n\treturn hhmm(Math.floor(n / 60), n % 60);\n}\n\nfunction mitAmPm(h, ampm) {\n\tif (!ampm) return h;\n\tconst a = ampm.toLowerCase().replace(/\\./g, '');\n\tif (a === 'pm' && h < 12) return h + 12;\n\tif (a === 'am' && h === 12) return 0;\n\treturn h;\n}\n\n/**\n * Liest eine frei geschriebene Uhrzeit (\"10 Uhr\", \"10:30\", \"14.00\", \"2 pm\", \"zwischen 9 und 11\", \"vormittags\").\n * @returns {{ art: 'exakt', von: string } | { art: 'zeitraum', von: string, bis: string } | null}\n */\nfunction uhrzeitLesen(text) {\n\tconst t = String(text ?? '').toLowerCase().trim();\n\tif (!t) return null;\n\tconst AP = '\\\\s*(a\\\\.?m\\\\.?|p\\\\.?m\\\\.?)?';\n\t// Spanne: \"9-11 Uhr\", \"9:30 – 11\", \"zwischen 9 und 11 Uhr\", \"from 9 to 11 am\"\n\tconst spanne = t.match(new RegExp(`(\\\\d{1,2})(?:[:.](\\\\d{2}))?${AP}\\\\s*(?:-|–|bis|und|to)\\\\s*(\\\\d{1,2})(?:[:.](\\\\d{2}))?${AP}\\\\s*(?:uhr|h\\\\b)?`));\n\tif (spanne && (/zwischen|between|from|von|uhr|h\\b|[:.]\\d{2}|am|pm/.test(t))) {\n\t\tconst h1 = mitAmPm(Number(spanne[1]), spanne[3] || spanne[6]);\n\t\tconst m1 = Number(spanne[2] || 0);\n\t\tconst h2 = mitAmPm(Number(spanne[4]), spanne[6]);\n\t\tconst m2 = Number(spanne[5] || 0);\n\t\tif (zeitOk(h1, m1) && zeitOk(h2, m2) && h2 * 60 + m2 > h1 * 60 + m1) return { art: 'zeitraum', von: hhmm(h1, m1), bis: hhmm(h2, m2) };\n\t}\n\tconst mitMinuten = t.match(new RegExp(`(\\\\d{1,2})[:.](\\\\d{2})${AP}`));\n\tif (mitMinuten) {\n\t\tconst h = mitAmPm(Number(mitMinuten[1]), mitMinuten[3]);\n\t\tconst m = Number(mitMinuten[2]);\n\t\tif (zeitOk(h, m)) return { art: 'exakt', von: hhmm(h, m) };\n\t}\n\tconst volle = t.match(/(\\d{1,2})\\s*(uhr|h\\b|a\\.?m\\.?|p\\.?m\\.?|o'?clock)/) || t.match(/(?:^|\\b)(?:um|ab|gegen|at|around)\\s+(\\d{1,2})\\b/) || t.match(/^(\\d{1,2})$/);\n\tif (volle) {\n\t\tconst h = mitAmPm(Number(volle[1]), /^[ap]/.test(volle[2] || '') ? volle[2] : null);\n\t\tif (zeitOk(h, 0)) return { art: 'exakt', von: hhmm(h, 0) };\n\t}\n\tconst WOERTER = [\n\t\t[/vormittag|morgens|morning/, 'vormittag'],\n\t\t[/nachmittag|afternoon/, 'nachmittag'],\n\t\t[/mittag|noon|lunch/, 'mittag'],\n\t\t[/abend|evening/, 'abend'],\n\t];\n\tfor (const [re, name] of WOERTER) if (re.test(t)) return { art: 'zeitraum', von: ZEITRAEUME[name][0], bis: ZEITRAEUME[name][1], name };\n\treturn null;\n}\n\n/** Abstand der Zeitzone zu UTC in Minuten an diesem Tag und dieser Uhrzeit (Sommerzeit beachtet). */\nfunction offsetMinuten(datum, zeit, zone) {\n\tconst [j, mo, t] = datum.split('-').map(Number);\n\tconst [h, mi] = zeit.split(':').map(Number);\n\tlet utc = Date.UTC(j, mo - 1, t, h, mi);\n\t// Zweimal annähern, damit auch Zeiten kurz nach der Umstellung stimmen.\n\tfor (let i = 0; i < 2; i++) {\n\t\tconst teile = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })\n\t\t\t.formatToParts(new Date(utc)).reduce((o, p) => ({ ...o, [p.type]: p.value }), {});\n\t\tconst lokal = Date.UTC(Number(teile.year), Number(teile.month) - 1, Number(teile.day), Number(teile.hour), Number(teile.minute));\n\t\tconst off = Math.round((lokal - utc) / 60000);\n\t\tutc = Date.UTC(j, mo - 1, t, h, mi) - off * 60000;\n\t\tif (i === 1) return off;\n\t}\n\treturn 0;\n}\n\n/** Lokale Zeit -> ISO mit Offset, z. B. 2026-12-03T10:00:00+01:00 */\nfunction zuIso(datum, zeit, zone) {\n\tconst off = offsetMinuten(datum, zeit, zone);\n\tconst v = off < 0 ? '-' : '+';\n\tconst a = Math.abs(off);\n\treturn `${datum}T${zeit}:00${v}${zwei(Math.floor(a / 60))}:${zwei(a % 60)}`;\n}\n\n/** Zeitpunkt (ms) -> lokale \"HH:MM\" bzw. \"JJJJ-MM-TT\" in der Zone */\nfunction lokal(ms, zone) {\n\tconst p = new Intl.DateTimeFormat('en-CA', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })\n\t\t.formatToParts(new Date(ms)).reduce((o, x) => ({ ...o, [x.type]: x.value }), {});\n\treturn { datum: `${p.year}-${p.month}-${p.day}`, zeit: `${p.hour}:${p.minute}` };\n}\n\nfunction wochentag(datum) {\n\tconst [j, m, t] = datum.split('-').map(Number);\n\treturn new Date(Date.UTC(j, m - 1, t)).getUTCDay();\n}\n\nfunction datumText(datum) {\n\tconst [j, m, t] = datum.split('-');\n\treturn `${TAGE[wochentag(datum)]} ${t}.${m}.${j}`;\n}\n\nfunction wert(vorgang, feld) {\n\tif (!feld) return null;\n\tconst d = vorgang && vorgang.extrahierte_daten && vorgang.extrahierte_daten[feld];\n\tconst w = d && typeof d === 'object' ? d.wert : d;\n\treturn w === null || w === undefined || w === '' ? null : String(w).trim();\n}\n\n/** Config \"kalender\" (bereits geprüft) mit Standardwerten. */\nfunction einstellungen(config) {\n\tconst k = (config && config.kalender) || null;\n\tif (!k || k.aktiv !== true) return null;\n\treturn { ...STANDARD, ...k };\n}\n\n/**\n * Was soll geprüft werden? Liefert { relevant: false, grund } oder den Plan mit Prüffenster (ISO mit Offset).\n * @param {object} config geprüfte Kunden-Config (kalender, zeitzone, geschaeftszeiten)\n * @param {object} vorgang Vorgang mit vorgangstyp und extrahierte_daten\n * @param {string} jetztIso aktueller Zeitpunkt\n */\nfunction plan(config, vorgang, jetztIso) {\n\tconst k = einstellungen(config);\n\tif (!k) return { relevant: false, grund: 'Kalender nicht eingerichtet' };\n\tif (!vorgang || vorgang.vorgangstyp !== k.vorgangstyp) return { relevant: false, grund: 'andere Vorgangsart' };\n\tconst datum = wert(vorgang, k.datum_feld);\n\tif (!datum || !/^\\d{4}-\\d{2}-\\d{2}$/.test(datum)) return { relevant: false, grund: 'kein Datum' };\n\tconst zone = config.zeitzone || 'Europe/Berlin';\n\tconst gz = config.geschaeftszeiten || { tage: [1, 2, 3, 4, 5], von: '08:00', bis: '17:00' };\n\tconst uhr = uhrzeitLesen(wert(vorgang, k.uhrzeit_feld));\n\tconst dauer = Number(k.dauer_minuten);\n\tconst hinweise = [];\n\tlet art;\n\tlet von;\n\tlet bis;\n\tif (uhr && uhr.art === 'exakt') {\n\t\tart = 'exakt';\n\t\tvon = uhr.von;\n\t\tbis = ausMinuten(Math.min(minuten(von) + dauer, 23 * 60 + 59));\n\t} else {\n\t\tart = 'zeitraum';\n\t\tvon = uhr ? uhr.von : gz.von;\n\t\tbis = uhr ? uhr.bis : gz.bis;\n\t\tif (!uhr) hinweise.push('Keine genaue Uhrzeit genannt – geprüft wurde die Geschäftszeit an diesem Tag.');\n\t\tif (minuten(bis) - minuten(von) < dauer) bis = ausMinuten(Math.min(minuten(von) + dauer, 23 * 60 + 59));\n\t}\n\tconst startIso = zuIso(datum, von, zone);\n\tconst endeIso = zuIso(datum, bis, zone);\n\tif (new Date(endeIso).getTime() <= new Date(jetztIso).getTime()) hinweise.push('Der Wunschtermin liegt in der Vergangenheit.');\n\tif (Array.isArray(gz.tage) && !gz.tage.includes(wochentag(datum) === 0 ? 7 : wochentag(datum))) hinweise.push('Der Wunschtermin liegt außerhalb Ihrer Geschäftstage.');\n\telse if (art === 'exakt' && (minuten(von) < minuten(gz.von) || minuten(bis) > minuten(gz.bis))) hinweise.push('Der Wunschtermin liegt außerhalb Ihrer Geschäftszeit.');\n\treturn {\n\t\trelevant: true,\n\t\tart,\n\t\tdatum,\n\t\tvon,\n\t\tbis,\n\t\tdauer_minuten: dauer,\n\t\tzone,\n\t\tstart_iso: startIso,\n\t\tende_iso: endeIso,\n\t\ttitel: wert(vorgang, k.titel_feld) || 'Termin',\n\t\tort: wert(vorgang, k.ort_feld),\n\t\tuhrzeit_text: wert(vorgang, k.uhrzeit_feld),\n\t\thinweise,\n\t};\n}\n\n/** Graph-Zeitangabe ({ dateTime, timeZone }) -> ms. Ohne Prefer-Header liefert Graph UTC. */\nfunction graphZeit(z) {\n\tif (!z || !z.dateTime) return NaN;\n\tconst s = String(z.dateTime).replace(/(\\.\\d{3})\\d*$/, '$1');\n\tconst utc = !z.timeZone || /^(utc|etc\\/utc|gmt)$/i.test(z.timeZone);\n\treturn new Date(utc && !/[zZ]|[+-]\\d{2}:\\d{2}$/.test(s) ? `${s}Z` : s).getTime();\n}\n\n/** Belegte Zeiten aus der Graph-Antwort (calendarView). \"Frei\" markierte und abgesagte Termine zählen nicht. */\nfunction belegt(ereignisse) {\n\treturn (Array.isArray(ereignisse) ? ereignisse : [])\n\t\t.filter((e) => e && e.isCancelled !== true && String(e.showAs || 'busy').toLowerCase() !== 'free')\n\t\t.map((e) => ({ von: graphZeit(e.start), bis: graphZeit(e.end), ganztags: e.isAllDay === true }))\n\t\t.filter((e) => Number.isFinite(e.von) && Number.isFinite(e.bis) && e.bis > e.von)\n\t\t.sort((a, b) => a.von - b.von);\n}\n\n/**\n * Bewertet die Kalenderdaten zum Plan.\n * @returns {{ frei: boolean, konflikte: Array<{von: string, bis: string, ganztags: boolean}>, vorschlaege: Array<{start_iso: string, ende_iso: string, text: string}> }}\n */\nfunction bewerten(p, ereignisse) {\n\tconst zone = p.zone;\n\tconst b = belegt(ereignisse);\n\tconst ueberschneidet = (s, e) => b.some((x) => x.von < e && x.bis > s);\n\tconst start = new Date(p.start_iso).getTime();\n\tconst ende = new Date(p.ende_iso).getTime();\n\tconst dauer = p.dauer_minuten * 60000;\n\tconst konflikte = b.filter((x) => x.von < ende && x.bis > start).map((x) => ({ von: lokal(x.von, zone).zeit, bis: lokal(x.bis, zone).zeit, ganztags: x.ganztags }));\n\tconst vorschlaege = [];\n\tconst slot = (s) => {\n\t\tconst e = s + dauer;\n\t\tvorschlaege.push({ start_iso: new Date(s).toISOString(), ende_iso: new Date(e).toISOString(), text: `${datumText(p.datum)}, ${lokal(s, zone).zeit}–${lokal(e, zone).zeit} Uhr` });\n\t};\n\tif (p.art === 'exakt') {\n\t\tconst frei = !ueberschneidet(start, start + dauer);\n\t\tif (frei) slot(start);\n\t\treturn { frei, konflikte, vorschlaege };\n\t}\n\tfor (let s = start; s + dauer <= ende && vorschlaege.length < MAX_VORSCHLAEGE; s += RASTER_MINUTEN * 60000) {\n\t\tif (!ueberschneidet(s, s + dauer)) slot(s);\n\t}\n\treturn { frei: vorschlaege.length > 0, konflikte, vorschlaege };\n}\n\n/** Freie Zeiten außerhalb des Wunschfensters am selben Tag (nur wenn der Wunsch belegt ist). */\nfunction ausweichen(p, ereignisse, gz) {\n\tconst zone = p.zone;\n\tconst g = gz || { von: '08:00', bis: '17:00' };\n\tconst b = belegt(ereignisse);\n\tconst dauer = p.dauer_minuten * 60000;\n\tconst anfang = new Date(zuIso(p.datum, g.von, zone)).getTime();\n\tconst schluss = new Date(zuIso(p.datum, g.bis, zone)).getTime();\n\tconst out = [];\n\tfor (let s = anfang; s + dauer <= schluss && out.length < MAX_VORSCHLAEGE; s += RASTER_MINUTEN * 60000) {\n\t\tif (!b.some((x) => x.von < s + dauer && x.bis > s)) {\n\t\t\tout.push({ start_iso: new Date(s).toISOString(), ende_iso: new Date(s + dauer).toISOString(), text: `${datumText(p.datum)}, ${lokal(s, zone).zeit}–${lokal(s + dauer, zone).zeit} Uhr` });\n\t\t}\n\t}\n\treturn out;\n}\n\n/** Graph-Body zum Anlegen des Termins (POST /users/{postfach}/events). transactionId verhindert Doppelanlage. */\nfunction ereignis({ termin, slot, zone }) {\n\tconst s = lokal(new Date(slot.start_iso).getTime(), zone);\n\tconst e = lokal(new Date(slot.ende_iso).getTime(), zone);\n\tconst zeilen = [\n\t\t`Vorgang: ${termin.vorgangs_id}`,\n\t\ttermin.kontakt ? `Ansprechpartner: ${termin.kontakt}` : null,\n\t\ttermin.telefon ? `Telefon: ${termin.telefon}` : null,\n\t\ttermin.absender ? `E-Mail: ${termin.absender}` : null,\n\t\t'',\n\t\t'Eingetragen über den Email Process Agent nach Bestätigung im Team.',\n\t].filter((z) => z !== null);\n\tconst body = {\n\t\tsubject: `${termin.titel}${termin.kontakt ? ` – ${termin.kontakt}` : ''}`.slice(0, 250),\n\t\tstart: { dateTime: `${s.datum}T${s.zeit}:00`, timeZone: zone },\n\t\tend: { dateTime: `${e.datum}T${e.zeit}:00`, timeZone: zone },\n\t\tbody: { contentType: 'text', content: zeilen.join('\\n') },\n\t\tshowAs: 'busy',\n\t\ttransactionId: termin.termin_id,\n\t};\n\tif (termin.ort) body.location = { displayName: String(termin.ort).slice(0, 250) };\n\treturn body;\n}\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction wunschText(p) {\n\tconst zeit = p.art === 'exakt' ? `${p.von}–${p.bis} Uhr` : `zwischen ${p.von} und ${p.bis} Uhr`;\n\treturn `${datumText(p.datum)}, ${zeit}`;\n}\n\n/** Teams-Meldung zur Kalenderprüfung (bereits escaped). */\nfunction meldung({ vorgangs_id: vid, plan: p, ergebnis: r, link, ablaufText, fehler }) {\n\tconst z = [`<b>📅 Terminanfrage – Kalender geprüft</b>`, `Vorgang: <b>${esc(vid)}</b>`, `Anlass: ${esc(p.titel)}`, `Wunsch: ${esc(wunschText(p))}`];\n\tif (p.ort) z.push(`Ort: ${esc(p.ort)}`);\n\tif (fehler) {\n\t\tz.push('', `⚠️ <b>Der Kalender konnte nicht gelesen werden.</b> Bitte den Termin selbst prüfen.`, `<i>${esc(fehler)}</i>`);\n\t\treturn z.join('<br>');\n\t}\n\tz.push('');\n\tif (p.art === 'exakt' && r.frei) z.push('✅ <b>Der Termin ist frei.</b>');\n\telse if (p.art === 'exakt') z.push(`❌ <b>Der Termin ist belegt</b> (${r.konflikte.map((k) => (k.ganztags ? 'ganztägig' : `${esc(k.von)}–${esc(k.bis)}`)).join(', ')}).`);\n\telse if (r.frei) z.push('✅ <b>Freie Zeiten im Wunschzeitraum:</b>');\n\telse z.push('❌ <b>Im Wunschzeitraum ist nichts frei.</b>');\n\tconst vor = r.vorschlaege || [];\n\tconst alt = r.ausweichen || [];\n\tif (p.art !== 'exakt' && vor.length) z.push(...vor.map((v) => `• ${esc(v.text)}`));\n\tif (!r.frei && alt.length) z.push('', 'Freie Zeiten am selben Tag:', ...alt.map((v) => `• ${esc(v.text)}`));\n\tfor (const h of p.hinweise || []) z.push(`ℹ️ ${esc(h)}`);\n\tif (link) {\n\t\tz.push('', `<a href=\"${esc(link)}\">Termin in den Kalender eintragen</a>`, `<i>Erst nach Ihrem Klick wird eingetragen. Der Kunde bekommt dadurch keine Nachricht. Gültig bis ${esc(ablaufText)}.</i>`);\n\t}\n\treturn z.join('<br>');\n}\n\n/** Auswahlmöglichkeiten für die Eintragen-Seite: Wunschtermin (falls frei), Vorschläge, Ausweichzeiten. */\nfunction optionen(termin) {\n\tconst liste = [];\n\tconst gesehen = new Set();\n\tfor (const v of [...(termin.vorschlaege || []), ...(termin.ausweichen || [])]) {\n\t\tif (gesehen.has(v.start_iso)) continue;\n\t\tgesehen.add(v.start_iso);\n\t\tliste.push(v);\n\t}\n\treturn liste.slice(0, 6);\n}\n\n/** Formular hinter dem Link (EPA-15). seite = freigabe.seite */\nfunction seiteFormular(seite, { token, termin }) {\n\tconst opt = optionen(termin);\n\tconst auswahl = opt.length\n\t\t? opt.map((v, i) => `<label style=\"display:block;margin:6px 0\"><input type=\"radio\" name=\"slot\" value=\"${i}\"${i === 0 ? ' checked' : ''}> ${esc(v.text)}</label>`).join('')\n\t\t: '<p class=\"hinweis\">Es wurde keine freie Zeit gefunden. Bitte den Termin direkt in Outlook planen.</p>';\n\treturn seite(`Termin ${termin.vorgangs_id}`, `\n<div class=\"karte\"><h1>Termin eintragen – ${esc(termin.vorgangs_id)}</h1>\n<dl><dt>Anlass</dt><dd>${esc(termin.titel)}</dd><dt>Wunsch</dt><dd>${esc(termin.wunsch_text)}</dd>${termin.ort ? `<dt>Ort</dt><dd>${esc(termin.ort)}</dd>` : ''}${termin.kontakt ? `<dt>Kontakt</dt><dd>${esc(termin.kontakt)}</dd>` : ''}</dl></div>\n<form class=\"karte\" method=\"post\" onsubmit=\"var f=this;setTimeout(function(){var b=f.querySelectorAll('button');for(var i=0;i<b.length;i++)b[i].disabled=true},0)\">\n<input type=\"hidden\" name=\"t\" value=\"${esc(token)}\">\n<p><b>Zeit auswählen</b></p>${auswahl}\n<div class=\"knoepfe\">${opt.length ? '<button class=\"senden\" name=\"aktion\" value=\"eintragen\">In den Kalender eintragen</button>' : ''}\n<button class=\"ablehnen\" name=\"aktion\" value=\"verwerfen\">Nicht eintragen</button></div>\n<p class=\"hinweis\">Der Termin wird nur im Kalender des Postfachs angelegt. Der Kunde bekommt dadurch keine Nachricht.</p></form>`);\n}\n\nconst AKTIONEN = ['eintragen', 'verwerfen'];\n\nfunction formularLesen(body, anzahl) {\n\tconst b = body && typeof body === 'object' ? body : {};\n\tconst aktion = String(b.aktion || '');\n\tif (!AKTIONEN.includes(aktion)) return { ok: false, meldung: 'Unbekannte Aktion.' };\n\tif (aktion === 'verwerfen') return { ok: true, aktion };\n\tconst i = Number(b.slot);\n\tif (!Number.isInteger(i) || i < 0 || i >= anzahl) return { ok: false, meldung: 'Bitte eine Zeit auswählen.' };\n\treturn { ok: true, aktion, slot: i };\n}\n\n/** Prüft die Termin-Zeile vor Anzeige bzw. Entscheidung. */\nfunction terminPruefen(termin, jetztIso) {\n\tconst nein = (status, meldung) => ({ ok: false, status, meldung });\n\tif (!termin || termin.id === undefined) return nein(404, 'Dieser Link ist ungültig.');\n\tif (termin.status === 'eingetragen') return nein(409, 'Dieser Termin wurde bereits eingetragen.');\n\tif (termin.status === 'verworfen') return nein(409, 'Dieser Termin wurde bereits verworfen.');\n\tif (termin.status === 'in_arbeit') return nein(409, 'Dieser Termin wird gerade eingetragen.');\n\tif (termin.status === 'fehler') return nein(409, 'Das Eintragen ist fehlgeschlagen. Bitte den Termin direkt in Outlook anlegen.');\n\tif (termin.status !== 'offen') return nein(409, 'Dieser Link ist nicht mehr gültig.');\n\tif (new Date(termin.ablauf).getTime() <= new Date(jetztIso).getTime()) return nein(410, 'Dieser Link ist abgelaufen. Bitte den Termin direkt in Outlook anlegen.');\n\treturn { ok: true };\n}\n\nmodule.exports = {\n\tSTANDARD, ZEITRAEUME, uhrzeitLesen, offsetMinuten, zuIso, lokal, datumText, einstellungen, plan, belegt, bewerten, ausweichen,\n\tereignis, meldung, wunschText, optionen, seiteFormular, formularLesen, terminPruefen, AKTIONEN,\n};\nreturn module.exports;\n})();\n// ===== Ende src/kalender.js =====\n\n// ----- Node-Logik -----\nconst config = $('Config laden').first().json.config;\nconst v = $input.first().json.vorgang;\nconst p = kalender.plan(config, v, new Date().toISOString());\nif (!p.relevant) return [{ json: { weiter: false, grund: p.grund } }];\nif (!config.postfach_workflow_id) return [{ json: { weiter: false, grund: 'kein Postfach-Workflow' } }];\n// Ganzer Tag, damit auch freie Ausweichzeiten am selben Tag gefunden werden.\nconst daten = JSON.stringify({ von: kalender.zuIso(p.datum, '00:00', p.zone), bis: kalender.zuIso(p.datum, '23:59', p.zone) });\nreturn [{ json: { weiter: true, plan: p, daten, postfach: config.postfach, postfach_workflow_id: config.postfach_workflow_id } }];\n"
+      },
+      "id": "e45ce46c-7ffc-4367-a017-c0dbae525770",
+      "name": "Plan erstellen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c846106c-f835-479c-ab14-bc74199e9fbc",
+              "leftValue": "={{ $json.weiter }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "8c574804-4a7c-4544-a43c-a4d4c1de0478",
+      "name": "Kalender prüfen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.postfach_workflow_id }}"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "aktion": "kalender_pruefen",
+            "postfach": "={{ $json.postfach }}",
+            "daten": "={{ $json.daten }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "aktion",
+              "displayName": "aktion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "postfach",
+              "displayName": "postfach",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "daten",
+              "displayName": "daten",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "2c599d8a-78c3-44fb-aebb-ed5c3c067d1d",
+      "name": "Kalender lesen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1100,
+        -80
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== eingebettet aus src/kalender.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst kalender = (() => {\nconst module = { exports: {} };\n// Kalenderprüfung für Terminanfragen (Config \"kalender\"): Ist der Wunschtermin im Outlook-Kalender des Kunden frei?\n// Das Team bekommt eine Meldung mit Link; eingetragen wird erst nach Klick (EPA-15). Der Agent trägt nie selbst ein\n// und schreibt dem Kunden nichts. Reine Funktionen, keine Abhängigkeiten (Zeitzonen über Intl).\n\nconst STANDARD = Object.freeze({ dauer_minuten: 60, gueltig_stunden: 72 });\nconst ZEITRAEUME = Object.freeze({\n\tvormittag: ['08:00', '12:00'],\n\tmittag: ['11:00', '14:00'],\n\tnachmittag: ['13:00', '17:00'],\n\tabend: ['17:00', '20:00'],\n});\nconst MAX_VORSCHLAEGE = 3;\nconst RASTER_MINUTEN = 30;\nconst TAGE = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];\n\nfunction zwei(n) {\n\treturn String(n).padStart(2, '0');\n}\n\nfunction zeitOk(h, m) {\n\treturn Number.isInteger(h) && Number.isInteger(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59;\n}\n\nfunction hhmm(h, m) {\n\treturn `${zwei(h)}:${zwei(m)}`;\n}\n\nfunction minuten(zeit) {\n\tconst [h, m] = String(zeit).split(':').map(Number);\n\treturn h * 60 + m;\n}\n\nfunction ausMinuten(n) {\n\treturn hhmm(Math.floor(n / 60), n % 60);\n}\n\nfunction mitAmPm(h, ampm) {\n\tif (!ampm) return h;\n\tconst a = ampm.toLowerCase().replace(/\\./g, '');\n\tif (a === 'pm' && h < 12) return h + 12;\n\tif (a === 'am' && h === 12) return 0;\n\treturn h;\n}\n\n/**\n * Liest eine frei geschriebene Uhrzeit (\"10 Uhr\", \"10:30\", \"14.00\", \"2 pm\", \"zwischen 9 und 11\", \"vormittags\").\n * @returns {{ art: 'exakt', von: string } | { art: 'zeitraum', von: string, bis: string } | null}\n */\nfunction uhrzeitLesen(text) {\n\tconst t = String(text ?? '').toLowerCase().trim();\n\tif (!t) return null;\n\tconst AP = '\\\\s*(a\\\\.?m\\\\.?|p\\\\.?m\\\\.?)?';\n\t// Spanne: \"9-11 Uhr\", \"9:30 – 11\", \"zwischen 9 und 11 Uhr\", \"from 9 to 11 am\"\n\tconst spanne = t.match(new RegExp(`(\\\\d{1,2})(?:[:.](\\\\d{2}))?${AP}\\\\s*(?:-|–|bis|und|to)\\\\s*(\\\\d{1,2})(?:[:.](\\\\d{2}))?${AP}\\\\s*(?:uhr|h\\\\b)?`));\n\tif (spanne && (/zwischen|between|from|von|uhr|h\\b|[:.]\\d{2}|am|pm/.test(t))) {\n\t\tconst h1 = mitAmPm(Number(spanne[1]), spanne[3] || spanne[6]);\n\t\tconst m1 = Number(spanne[2] || 0);\n\t\tconst h2 = mitAmPm(Number(spanne[4]), spanne[6]);\n\t\tconst m2 = Number(spanne[5] || 0);\n\t\tif (zeitOk(h1, m1) && zeitOk(h2, m2) && h2 * 60 + m2 > h1 * 60 + m1) return { art: 'zeitraum', von: hhmm(h1, m1), bis: hhmm(h2, m2) };\n\t}\n\tconst mitMinuten = t.match(new RegExp(`(\\\\d{1,2})[:.](\\\\d{2})${AP}`));\n\tif (mitMinuten) {\n\t\tconst h = mitAmPm(Number(mitMinuten[1]), mitMinuten[3]);\n\t\tconst m = Number(mitMinuten[2]);\n\t\tif (zeitOk(h, m)) return { art: 'exakt', von: hhmm(h, m) };\n\t}\n\tconst volle = t.match(/(\\d{1,2})\\s*(uhr|h\\b|a\\.?m\\.?|p\\.?m\\.?|o'?clock)/) || t.match(/(?:^|\\b)(?:um|ab|gegen|at|around)\\s+(\\d{1,2})\\b/) || t.match(/^(\\d{1,2})$/);\n\tif (volle) {\n\t\tconst h = mitAmPm(Number(volle[1]), /^[ap]/.test(volle[2] || '') ? volle[2] : null);\n\t\tif (zeitOk(h, 0)) return { art: 'exakt', von: hhmm(h, 0) };\n\t}\n\tconst WOERTER = [\n\t\t[/vormittag|morgens|morning/, 'vormittag'],\n\t\t[/nachmittag|afternoon/, 'nachmittag'],\n\t\t[/mittag|noon|lunch/, 'mittag'],\n\t\t[/abend|evening/, 'abend'],\n\t];\n\tfor (const [re, name] of WOERTER) if (re.test(t)) return { art: 'zeitraum', von: ZEITRAEUME[name][0], bis: ZEITRAEUME[name][1], name };\n\treturn null;\n}\n\n/** Abstand der Zeitzone zu UTC in Minuten an diesem Tag und dieser Uhrzeit (Sommerzeit beachtet). */\nfunction offsetMinuten(datum, zeit, zone) {\n\tconst [j, mo, t] = datum.split('-').map(Number);\n\tconst [h, mi] = zeit.split(':').map(Number);\n\tlet utc = Date.UTC(j, mo - 1, t, h, mi);\n\t// Zweimal annähern, damit auch Zeiten kurz nach der Umstellung stimmen.\n\tfor (let i = 0; i < 2; i++) {\n\t\tconst teile = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })\n\t\t\t.formatToParts(new Date(utc)).reduce((o, p) => ({ ...o, [p.type]: p.value }), {});\n\t\tconst lokal = Date.UTC(Number(teile.year), Number(teile.month) - 1, Number(teile.day), Number(teile.hour), Number(teile.minute));\n\t\tconst off = Math.round((lokal - utc) / 60000);\n\t\tutc = Date.UTC(j, mo - 1, t, h, mi) - off * 60000;\n\t\tif (i === 1) return off;\n\t}\n\treturn 0;\n}\n\n/** Lokale Zeit -> ISO mit Offset, z. B. 2026-12-03T10:00:00+01:00 */\nfunction zuIso(datum, zeit, zone) {\n\tconst off = offsetMinuten(datum, zeit, zone);\n\tconst v = off < 0 ? '-' : '+';\n\tconst a = Math.abs(off);\n\treturn `${datum}T${zeit}:00${v}${zwei(Math.floor(a / 60))}:${zwei(a % 60)}`;\n}\n\n/** Zeitpunkt (ms) -> lokale \"HH:MM\" bzw. \"JJJJ-MM-TT\" in der Zone */\nfunction lokal(ms, zone) {\n\tconst p = new Intl.DateTimeFormat('en-CA', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })\n\t\t.formatToParts(new Date(ms)).reduce((o, x) => ({ ...o, [x.type]: x.value }), {});\n\treturn { datum: `${p.year}-${p.month}-${p.day}`, zeit: `${p.hour}:${p.minute}` };\n}\n\nfunction wochentag(datum) {\n\tconst [j, m, t] = datum.split('-').map(Number);\n\treturn new Date(Date.UTC(j, m - 1, t)).getUTCDay();\n}\n\nfunction datumText(datum) {\n\tconst [j, m, t] = datum.split('-');\n\treturn `${TAGE[wochentag(datum)]} ${t}.${m}.${j}`;\n}\n\nfunction wert(vorgang, feld) {\n\tif (!feld) return null;\n\tconst d = vorgang && vorgang.extrahierte_daten && vorgang.extrahierte_daten[feld];\n\tconst w = d && typeof d === 'object' ? d.wert : d;\n\treturn w === null || w === undefined || w === '' ? null : String(w).trim();\n}\n\n/** Config \"kalender\" (bereits geprüft) mit Standardwerten. */\nfunction einstellungen(config) {\n\tconst k = (config && config.kalender) || null;\n\tif (!k || k.aktiv !== true) return null;\n\treturn { ...STANDARD, ...k };\n}\n\n/**\n * Was soll geprüft werden? Liefert { relevant: false, grund } oder den Plan mit Prüffenster (ISO mit Offset).\n * @param {object} config geprüfte Kunden-Config (kalender, zeitzone, geschaeftszeiten)\n * @param {object} vorgang Vorgang mit vorgangstyp und extrahierte_daten\n * @param {string} jetztIso aktueller Zeitpunkt\n */\nfunction plan(config, vorgang, jetztIso) {\n\tconst k = einstellungen(config);\n\tif (!k) return { relevant: false, grund: 'Kalender nicht eingerichtet' };\n\tif (!vorgang || vorgang.vorgangstyp !== k.vorgangstyp) return { relevant: false, grund: 'andere Vorgangsart' };\n\tconst datum = wert(vorgang, k.datum_feld);\n\tif (!datum || !/^\\d{4}-\\d{2}-\\d{2}$/.test(datum)) return { relevant: false, grund: 'kein Datum' };\n\tconst zone = config.zeitzone || 'Europe/Berlin';\n\tconst gz = config.geschaeftszeiten || { tage: [1, 2, 3, 4, 5], von: '08:00', bis: '17:00' };\n\tconst uhr = uhrzeitLesen(wert(vorgang, k.uhrzeit_feld));\n\tconst dauer = Number(k.dauer_minuten);\n\tconst hinweise = [];\n\tlet art;\n\tlet von;\n\tlet bis;\n\tif (uhr && uhr.art === 'exakt') {\n\t\tart = 'exakt';\n\t\tvon = uhr.von;\n\t\tbis = ausMinuten(Math.min(minuten(von) + dauer, 23 * 60 + 59));\n\t} else {\n\t\tart = 'zeitraum';\n\t\tvon = uhr ? uhr.von : gz.von;\n\t\tbis = uhr ? uhr.bis : gz.bis;\n\t\tif (!uhr) hinweise.push('Keine genaue Uhrzeit genannt – geprüft wurde die Geschäftszeit an diesem Tag.');\n\t\tif (minuten(bis) - minuten(von) < dauer) bis = ausMinuten(Math.min(minuten(von) + dauer, 23 * 60 + 59));\n\t}\n\tconst startIso = zuIso(datum, von, zone);\n\tconst endeIso = zuIso(datum, bis, zone);\n\tif (new Date(endeIso).getTime() <= new Date(jetztIso).getTime()) hinweise.push('Der Wunschtermin liegt in der Vergangenheit.');\n\tif (Array.isArray(gz.tage) && !gz.tage.includes(wochentag(datum) === 0 ? 7 : wochentag(datum))) hinweise.push('Der Wunschtermin liegt außerhalb Ihrer Geschäftstage.');\n\telse if (art === 'exakt' && (minuten(von) < minuten(gz.von) || minuten(bis) > minuten(gz.bis))) hinweise.push('Der Wunschtermin liegt außerhalb Ihrer Geschäftszeit.');\n\treturn {\n\t\trelevant: true,\n\t\tart,\n\t\tdatum,\n\t\tvon,\n\t\tbis,\n\t\tdauer_minuten: dauer,\n\t\tzone,\n\t\tstart_iso: startIso,\n\t\tende_iso: endeIso,\n\t\ttitel: wert(vorgang, k.titel_feld) || 'Termin',\n\t\tort: wert(vorgang, k.ort_feld),\n\t\tuhrzeit_text: wert(vorgang, k.uhrzeit_feld),\n\t\thinweise,\n\t};\n}\n\n/** Graph-Zeitangabe ({ dateTime, timeZone }) -> ms. Ohne Prefer-Header liefert Graph UTC. */\nfunction graphZeit(z) {\n\tif (!z || !z.dateTime) return NaN;\n\tconst s = String(z.dateTime).replace(/(\\.\\d{3})\\d*$/, '$1');\n\tconst utc = !z.timeZone || /^(utc|etc\\/utc|gmt)$/i.test(z.timeZone);\n\treturn new Date(utc && !/[zZ]|[+-]\\d{2}:\\d{2}$/.test(s) ? `${s}Z` : s).getTime();\n}\n\n/** Belegte Zeiten aus der Graph-Antwort (calendarView). \"Frei\" markierte und abgesagte Termine zählen nicht. */\nfunction belegt(ereignisse) {\n\treturn (Array.isArray(ereignisse) ? ereignisse : [])\n\t\t.filter((e) => e && e.isCancelled !== true && String(e.showAs || 'busy').toLowerCase() !== 'free')\n\t\t.map((e) => ({ von: graphZeit(e.start), bis: graphZeit(e.end), ganztags: e.isAllDay === true }))\n\t\t.filter((e) => Number.isFinite(e.von) && Number.isFinite(e.bis) && e.bis > e.von)\n\t\t.sort((a, b) => a.von - b.von);\n}\n\n/**\n * Bewertet die Kalenderdaten zum Plan.\n * @returns {{ frei: boolean, konflikte: Array<{von: string, bis: string, ganztags: boolean}>, vorschlaege: Array<{start_iso: string, ende_iso: string, text: string}> }}\n */\nfunction bewerten(p, ereignisse) {\n\tconst zone = p.zone;\n\tconst b = belegt(ereignisse);\n\tconst ueberschneidet = (s, e) => b.some((x) => x.von < e && x.bis > s);\n\tconst start = new Date(p.start_iso).getTime();\n\tconst ende = new Date(p.ende_iso).getTime();\n\tconst dauer = p.dauer_minuten * 60000;\n\tconst konflikte = b.filter((x) => x.von < ende && x.bis > start).map((x) => ({ von: lokal(x.von, zone).zeit, bis: lokal(x.bis, zone).zeit, ganztags: x.ganztags }));\n\tconst vorschlaege = [];\n\tconst slot = (s) => {\n\t\tconst e = s + dauer;\n\t\tvorschlaege.push({ start_iso: new Date(s).toISOString(), ende_iso: new Date(e).toISOString(), text: `${datumText(p.datum)}, ${lokal(s, zone).zeit}–${lokal(e, zone).zeit} Uhr` });\n\t};\n\tif (p.art === 'exakt') {\n\t\tconst frei = !ueberschneidet(start, start + dauer);\n\t\tif (frei) slot(start);\n\t\treturn { frei, konflikte, vorschlaege };\n\t}\n\tfor (let s = start; s + dauer <= ende && vorschlaege.length < MAX_VORSCHLAEGE; s += RASTER_MINUTEN * 60000) {\n\t\tif (!ueberschneidet(s, s + dauer)) slot(s);\n\t}\n\treturn { frei: vorschlaege.length > 0, konflikte, vorschlaege };\n}\n\n/** Freie Zeiten außerhalb des Wunschfensters am selben Tag (nur wenn der Wunsch belegt ist). */\nfunction ausweichen(p, ereignisse, gz) {\n\tconst zone = p.zone;\n\tconst g = gz || { von: '08:00', bis: '17:00' };\n\tconst b = belegt(ereignisse);\n\tconst dauer = p.dauer_minuten * 60000;\n\tconst anfang = new Date(zuIso(p.datum, g.von, zone)).getTime();\n\tconst schluss = new Date(zuIso(p.datum, g.bis, zone)).getTime();\n\tconst out = [];\n\tfor (let s = anfang; s + dauer <= schluss && out.length < MAX_VORSCHLAEGE; s += RASTER_MINUTEN * 60000) {\n\t\tif (!b.some((x) => x.von < s + dauer && x.bis > s)) {\n\t\t\tout.push({ start_iso: new Date(s).toISOString(), ende_iso: new Date(s + dauer).toISOString(), text: `${datumText(p.datum)}, ${lokal(s, zone).zeit}–${lokal(s + dauer, zone).zeit} Uhr` });\n\t\t}\n\t}\n\treturn out;\n}\n\n/** Graph-Body zum Anlegen des Termins (POST /users/{postfach}/events). transactionId verhindert Doppelanlage. */\nfunction ereignis({ termin, slot, zone }) {\n\tconst s = lokal(new Date(slot.start_iso).getTime(), zone);\n\tconst e = lokal(new Date(slot.ende_iso).getTime(), zone);\n\tconst zeilen = [\n\t\t`Vorgang: ${termin.vorgangs_id}`,\n\t\ttermin.kontakt ? `Ansprechpartner: ${termin.kontakt}` : null,\n\t\ttermin.telefon ? `Telefon: ${termin.telefon}` : null,\n\t\ttermin.absender ? `E-Mail: ${termin.absender}` : null,\n\t\t'',\n\t\t'Eingetragen über den Email Process Agent nach Bestätigung im Team.',\n\t].filter((z) => z !== null);\n\tconst body = {\n\t\tsubject: `${termin.titel}${termin.kontakt ? ` – ${termin.kontakt}` : ''}`.slice(0, 250),\n\t\tstart: { dateTime: `${s.datum}T${s.zeit}:00`, timeZone: zone },\n\t\tend: { dateTime: `${e.datum}T${e.zeit}:00`, timeZone: zone },\n\t\tbody: { contentType: 'text', content: zeilen.join('\\n') },\n\t\tshowAs: 'busy',\n\t\ttransactionId: termin.termin_id,\n\t};\n\tif (termin.ort) body.location = { displayName: String(termin.ort).slice(0, 250) };\n\treturn body;\n}\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nfunction wunschText(p) {\n\tconst zeit = p.art === 'exakt' ? `${p.von}–${p.bis} Uhr` : `zwischen ${p.von} und ${p.bis} Uhr`;\n\treturn `${datumText(p.datum)}, ${zeit}`;\n}\n\n/** Teams-Meldung zur Kalenderprüfung (bereits escaped). */\nfunction meldung({ vorgangs_id: vid, plan: p, ergebnis: r, link, ablaufText, fehler }) {\n\tconst z = [`<b>📅 Terminanfrage – Kalender geprüft</b>`, `Vorgang: <b>${esc(vid)}</b>`, `Anlass: ${esc(p.titel)}`, `Wunsch: ${esc(wunschText(p))}`];\n\tif (p.ort) z.push(`Ort: ${esc(p.ort)}`);\n\tif (fehler) {\n\t\tz.push('', `⚠️ <b>Der Kalender konnte nicht gelesen werden.</b> Bitte den Termin selbst prüfen.`, `<i>${esc(fehler)}</i>`);\n\t\treturn z.join('<br>');\n\t}\n\tz.push('');\n\tif (p.art === 'exakt' && r.frei) z.push('✅ <b>Der Termin ist frei.</b>');\n\telse if (p.art === 'exakt') z.push(`❌ <b>Der Termin ist belegt</b> (${r.konflikte.map((k) => (k.ganztags ? 'ganztägig' : `${esc(k.von)}–${esc(k.bis)}`)).join(', ')}).`);\n\telse if (r.frei) z.push('✅ <b>Freie Zeiten im Wunschzeitraum:</b>');\n\telse z.push('❌ <b>Im Wunschzeitraum ist nichts frei.</b>');\n\tconst vor = r.vorschlaege || [];\n\tconst alt = r.ausweichen || [];\n\tif (p.art !== 'exakt' && vor.length) z.push(...vor.map((v) => `• ${esc(v.text)}`));\n\tif (!r.frei && alt.length) z.push('', 'Freie Zeiten am selben Tag:', ...alt.map((v) => `• ${esc(v.text)}`));\n\tfor (const h of p.hinweise || []) z.push(`ℹ️ ${esc(h)}`);\n\tif (link) {\n\t\tz.push('', `<a href=\"${esc(link)}\">Termin in den Kalender eintragen</a>`, `<i>Erst nach Ihrem Klick wird eingetragen. Der Kunde bekommt dadurch keine Nachricht. Gültig bis ${esc(ablaufText)}.</i>`);\n\t}\n\treturn z.join('<br>');\n}\n\n/** Auswahlmöglichkeiten für die Eintragen-Seite: Wunschtermin (falls frei), Vorschläge, Ausweichzeiten. */\nfunction optionen(termin) {\n\tconst liste = [];\n\tconst gesehen = new Set();\n\tfor (const v of [...(termin.vorschlaege || []), ...(termin.ausweichen || [])]) {\n\t\tif (gesehen.has(v.start_iso)) continue;\n\t\tgesehen.add(v.start_iso);\n\t\tliste.push(v);\n\t}\n\treturn liste.slice(0, 6);\n}\n\n/** Formular hinter dem Link (EPA-15). seite = freigabe.seite */\nfunction seiteFormular(seite, { token, termin }) {\n\tconst opt = optionen(termin);\n\tconst auswahl = opt.length\n\t\t? opt.map((v, i) => `<label style=\"display:block;margin:6px 0\"><input type=\"radio\" name=\"slot\" value=\"${i}\"${i === 0 ? ' checked' : ''}> ${esc(v.text)}</label>`).join('')\n\t\t: '<p class=\"hinweis\">Es wurde keine freie Zeit gefunden. Bitte den Termin direkt in Outlook planen.</p>';\n\treturn seite(`Termin ${termin.vorgangs_id}`, `\n<div class=\"karte\"><h1>Termin eintragen – ${esc(termin.vorgangs_id)}</h1>\n<dl><dt>Anlass</dt><dd>${esc(termin.titel)}</dd><dt>Wunsch</dt><dd>${esc(termin.wunsch_text)}</dd>${termin.ort ? `<dt>Ort</dt><dd>${esc(termin.ort)}</dd>` : ''}${termin.kontakt ? `<dt>Kontakt</dt><dd>${esc(termin.kontakt)}</dd>` : ''}</dl></div>\n<form class=\"karte\" method=\"post\" onsubmit=\"var f=this;setTimeout(function(){var b=f.querySelectorAll('button');for(var i=0;i<b.length;i++)b[i].disabled=true},0)\">\n<input type=\"hidden\" name=\"t\" value=\"${esc(token)}\">\n<p><b>Zeit auswählen</b></p>${auswahl}\n<div class=\"knoepfe\">${opt.length ? '<button class=\"senden\" name=\"aktion\" value=\"eintragen\">In den Kalender eintragen</button>' : ''}\n<button class=\"ablehnen\" name=\"aktion\" value=\"verwerfen\">Nicht eintragen</button></div>\n<p class=\"hinweis\">Der Termin wird nur im Kalender des Postfachs angelegt. Der Kunde bekommt dadurch keine Nachricht.</p></form>`);\n}\n\nconst AKTIONEN = ['eintragen', 'verwerfen'];\n\nfunction formularLesen(body, anzahl) {\n\tconst b = body && typeof body === 'object' ? body : {};\n\tconst aktion = String(b.aktion || '');\n\tif (!AKTIONEN.includes(aktion)) return { ok: false, meldung: 'Unbekannte Aktion.' };\n\tif (aktion === 'verwerfen') return { ok: true, aktion };\n\tconst i = Number(b.slot);\n\tif (!Number.isInteger(i) || i < 0 || i >= anzahl) return { ok: false, meldung: 'Bitte eine Zeit auswählen.' };\n\treturn { ok: true, aktion, slot: i };\n}\n\n/** Prüft die Termin-Zeile vor Anzeige bzw. Entscheidung. */\nfunction terminPruefen(termin, jetztIso) {\n\tconst nein = (status, meldung) => ({ ok: false, status, meldung });\n\tif (!termin || termin.id === undefined) return nein(404, 'Dieser Link ist ungültig.');\n\tif (termin.status === 'eingetragen') return nein(409, 'Dieser Termin wurde bereits eingetragen.');\n\tif (termin.status === 'verworfen') return nein(409, 'Dieser Termin wurde bereits verworfen.');\n\tif (termin.status === 'in_arbeit') return nein(409, 'Dieser Termin wird gerade eingetragen.');\n\tif (termin.status === 'fehler') return nein(409, 'Das Eintragen ist fehlgeschlagen. Bitte den Termin direkt in Outlook anlegen.');\n\tif (termin.status !== 'offen') return nein(409, 'Dieser Link ist nicht mehr gültig.');\n\tif (new Date(termin.ablauf).getTime() <= new Date(jetztIso).getTime()) return nein(410, 'Dieser Link ist abgelaufen. Bitte den Termin direkt in Outlook anlegen.');\n\treturn { ok: true };\n}\n\nmodule.exports = {\n\tSTANDARD, ZEITRAEUME, uhrzeitLesen, offsetMinuten, zuIso, lokal, datumText, einstellungen, plan, belegt, bewerten, ausweichen,\n\tereignis, meldung, wunschText, optionen, seiteFormular, formularLesen, terminPruefen, AKTIONEN,\n};\nreturn module.exports;\n})();\n// ===== Ende src/kalender.js =====\n// ===== eingebettet aus src/freigabe.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst freigabe = (() => {\nconst module = { exports: {} };\n// Freigabe Variante B (Bauplan 6): einmaliges, ablaufendes Token je Freigeber. Gespeichert wird nur der\n// SHA-256-Hash. Der Endpunkt EPA-07 zeigt ein Formular (Vorschau, Text bearbeitbar, Senden/Ablehnen) und\n// verbraucht die Freigabe atomar (bedingtes Update auf status = 'offen').\n\nconst TOKEN_MUSTER = /^[A-Za-z0-9_-]{43}$/; // 32 Byte base64url\nconst AKTIONEN = ['senden', 'ablehnen'];\n\n/** @param {object} c Node-Modul \"crypto\" (im Code-Node per require('crypto')) */\nfunction tokenErzeugen(c) {\n\tconst token = c.randomBytes(32).toString('base64url');\n\treturn { token, hash: tokenHash(c, token) };\n}\n\nfunction tokenHash(c, token) {\n\treturn c.createHash('sha256').update(String(token), 'utf8').digest('hex');\n}\n\nfunction freigabeIdErzeugen(c) {\n\treturn 'F-' + c.randomUUID();\n}\n\nfunction istGueltigesToken(t) {\n\treturn typeof t === 'string' && TOKEN_MUSTER.test(t);\n}\n\n/** Basis-URL der Instanz aus $execution.resumeUrl (…/webhook-waiting/<id>) bzw. einem Override. */\nfunction basisUrl(resumeUrl, override) {\n\tif (override) return String(override).replace(/\\/+$/, '');\n\tconst m = String(resumeUrl || '').match(/^(https?:\\/\\/[^/]+(?:\\/[^/]+)*?)\\/webhook-waiting\\//);\n\tif (!m) throw new Error('Basis-URL der Instanz nicht ermittelbar');\n\treturn m[1];\n}\n\nfunction link(basis, token) {\n\treturn `${basis}/webhook/epa-freigabe?t=${encodeURIComponent(token)}`;\n}\n\n/**\n * Prüft Token und Freigabe vor Anzeige bzw. Entscheidung.\n * @returns {{ ok: true } | { ok: false, status: number, code: string, meldung: string }}\n */\nfunction freigabePruefen({ token, freigabe, freigeberErlaubt, jetzt }) {\n\tconst nein = (status, code, meldung) => ({ ok: false, status, code, meldung });\n\tif (!token || token.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Dieser Freigabe-Link ist ungültig.');\n\tif (!freigabe || freigabe.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Die Freigabe existiert nicht mehr.');\n\tif (freigabe.status !== 'offen') {\n\t\tconst wer = freigabe.entscheider ? ` von ${freigabe.entscheider}` : '';\n\t\tconst was = { in_versand: 'wird gerade versendet', gesendet: 'wurde bereits freigegeben und gesendet', abgelehnt: 'wurde bereits abgelehnt', abgelaufen: 'ist abgelaufen', ersetzt: 'wurde durch eine neuere Freigabe ersetzt', fehler: 'ist beim Versand fehlgeschlagen', unzustellbar: 'wurde gesendet, kam beim Kunden aber nicht an', nicht_zugestellt: 'wurde gesendet, kam beim Kunden aber nicht an' }[freigabe.status] || `hat den Status \"${freigabe.status}\"`;\n\t\t// Betreff nennen, damit klar ist, um welche Anfrage es geht (mehrere Links in einem Chat).\n\t\tconst betrifft = freigabe.betreff ? ` Betrifft: ${String(freigabe.betreff).slice(0, 150)}` : '';\n\t\treturn nein(freigabe.status === 'abgelaufen' ? 410 : 409, freigabe.status === 'abgelaufen' ? 'FREIGABE_ABGELAUFEN' : 'DUPLIKAT', `Diese ${freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage'} ${was}${freigabe.status === 'gesendet' || freigabe.status === 'abgelehnt' ? wer : ''}.${betrifft}`);\n\t}\n\tif (token.verbraucht_am) return nein(409, 'DUPLIKAT', 'Dieser Link wurde bereits verwendet.');\n\tif (new Date(freigabe.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Ein neuer Link wird automatisch verschickt.');\n\t// Ab M5: Links haben eine eigene Ablaufzeit. Bei der Erneuerung einer abgelaufenen Freigabe werden alle alten Links gesperrt.\n\tif (token.ablauf && new Date(token.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Sie haben inzwischen einen neuen Link erhalten.');\n\tif (!freigeberErlaubt) return nein(403, 'KEINE_BERECHTIGUNG', 'Sie sind für diesen Kunden nicht (mehr) als Freigeber eingetragen.');\n\treturn { ok: true };\n}\n\n/** Formulardaten aus EPA-07 (POST, application/x-www-form-urlencoded). */\nfunction formularLesen(body) {\n\tconst b = body && typeof body === 'object' ? body : {};\n\tconst aktion = String(b.aktion || '');\n\tif (!AKTIONEN.includes(aktion)) return { ok: false, meldung: 'Unbekannte Aktion.' };\n\tif (!istGueltigesToken(b.t)) return { ok: false, meldung: 'Ungültiger Link.' };\n\tconst grund = String(b.grund || '').trim().slice(0, 500);\n\tif (aktion === 'ablehnen' && !grund) return { ok: false, meldung: 'Bitte einen Grund für die Ablehnung angeben.' };\n\treturn { ok: true, aktion, token: b.t, text: typeof b.text === 'string' ? b.text : '', grund };\n}\n\nfunction istBearbeitet(original, neu) {\n\tconst n = (s) => String(s ?? '').replace(/\\r\\n?/g, '\\n').replace(/[ \\t]+/g, ' ').replace(/\\s+$/gm, '').trim();\n\treturn n(original) !== n(neu);\n}\n\n// ---------------------------------------------------------------- HTML\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nconst STIL = `body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;margin:0;background:#f4f5f7;color:#1d2433}\nmain{max-width:760px;margin:0 auto;padding:16px}\n.karte{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}\nh1{font-size:1.3rem;margin:0 0 12px}dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0}\ndt{color:#5b6475}dd{margin:0;overflow-wrap:anywhere}textarea{width:100%;box-sizing:border-box;min-height:260px;font:inherit;padding:8px}\npre{white-space:pre-wrap;font:inherit;color:#5b6475;margin:8px 0 0}.knoepfe{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}\nbutton{font:inherit;padding:10px 16px;border-radius:6px;border:0;cursor:pointer}.senden{background:#1f6f43;color:#fff}.ablehnen{background:#a3222b;color:#fff}\ninput[type=text]{width:100%;box-sizing:border-box;font:inherit;padding:8px}.hinweis{color:#5b6475;font-size:.9rem}\n.ok{border-left:4px solid #1f6f43}.fehler{border-left:4px solid #a3222b}`;\n\nfunction seite(titel, inhalt) {\n\treturn `<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><title>${esc(titel)}</title><style>${STIL}</style></head><body><main>${inhalt}</main></body></html>`;\n}\n\nfunction seiteFormular({ token, freigabe, vorgang, fehlende, text, abschluss }) {\n\tconst luecken = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}${f.grund ? ` <span class=\"hinweis\">(${esc(f.grund)})</span>` : ''}</li>`).join('');\n\tconst was = freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';\n\treturn seite(`${was} ${vorgang.vorgangs_id}`, `\n<div class=\"karte\"><h1>${was} freigeben – ${esc(vorgang.vorgangs_id)}</h1>\n<dl><dt>An</dt><dd>${esc(freigabe.empfaenger)}</dd><dt>Betreff</dt><dd>${esc(freigabe.betreff)}</dd>\n<dt>Runde</dt><dd>${esc(Number(vorgang.rundenzaehler || 0) + 1)}</dd><dt>Gültig bis</dt><dd>${esc(new Date(freigabe.ablauf).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }))}</dd></dl>\n<p>Fehlende Angaben:</p><ul>${luecken}</ul>${freigabe.fallback ? '<p class=\"hinweis\">Hinweis: Die KI-Formulierung hat die Prüfung nicht bestanden, es wird die Standardvorlage verwendet.</p>' : ''}</div>\n<form class=\"karte\" method=\"post\" onsubmit=\"var f=this;setTimeout(function(){var b=f.querySelectorAll('button');for(var i=0;i<b.length;i++)b[i].disabled=true},0)\">\n<input type=\"hidden\" name=\"t\" value=\"${esc(token)}\">\n<label for=\"text\"><b>Text der Mail</b> (bearbeitbar)</label>\n<textarea id=\"text\" name=\"text\">${esc(text)}</textarea>\n<pre>${esc(abschluss)}</pre>\n<p class=\"hinweis\">Signatur und KI-Hinweis werden immer automatisch angehängt.</p>\n<label for=\"grund\">Grund (nur bei Ablehnung)</label><input type=\"text\" id=\"grund\" name=\"grund\" maxlength=\"500\">\n<div class=\"knoepfe\"><button class=\"senden\" name=\"aktion\" value=\"senden\">Freigeben und senden</button>\n<button class=\"ablehnen\" name=\"aktion\" value=\"ablehnen\">Ablehnen (manuell bearbeiten)</button></div>\n<p class=\"hinweis\">Der Link ist nur einmal verwendbar. Nichts wird ohne Ihren Klick versendet.</p></form>`);\n}\n\nfunction seiteMeldung(titel, text, art = 'ok') {\n\treturn seite(titel, `<div class=\"karte ${art === 'ok' ? 'ok' : 'fehler'}\"><h1>${esc(titel)}</h1><p>${esc(text)}</p></div>`);\n}\n\n/** Teams-Nachricht an den Freigeber (1:1-Chat). */\nconst ANLASS = Object.freeze({\n\tfreigabe_erinnerung: 'Erinnerung: Diese Freigabe ist noch offen. Hier ist ein neuer persönlicher Link.',\n\tfreigabe_erneuern: 'Der bisherige Link ist abgelaufen und gilt nicht mehr. Hier ist ein neuer persönlicher Link.',\n\tfreigabe_nach_fehler: 'Diese Nachricht wurde wegen eines Fehlers NICHT gesendet. Das Postfach ist wieder erreichbar, bitte erneut freigeben. Die bisherigen Links gelten nicht mehr.',\n\tfreigabe_eskalation: 'Bitte jetzt entscheiden: freigeben, bearbeiten oder ablehnen. Hier ist ein neuer persönlicher Link; alle bisherigen Links gelten nicht mehr.',\n\tfreigabe_nach_unzustellbar: 'Der Zustelltest war wieder erfolgreich, der Versand funktioniert. Bitte prüfen und erneut freigeben; gesendet wird eine neue Mail mit demselben Text.',\n});\n\n/**\n * Nachricht an einen Freigeber. kontext_html (optional, vom Aufrufer erzeugt, bereits escaped) ist die Übersicht\n * zur Mail (erkannte und fehlende Angaben, Warnhinweise). Dann ersetzt diese eine Nachricht die sonst zusätzliche\n * Eingangsmeldung, und die Liste der fehlenden Angaben steht nicht doppelt drin.\n */\nfunction nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art, anlass, kontext_html: kontext, wartet_stunden: wartet }) {\n\tconst liste = (fehlende || []).map((f) => `• ${esc(f.anzeigename)}`).join('<br>');\n\tconst was = art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';\n\tlet hinweis = ANLASS[anlass] ? `<i>${esc(ANLASS[anlass])}</i><br>` : '';\n\tif (anlass === 'freigabe_nach_fehler') {\n\t\thinweis = `<b>🔁 Erneut zur Freigabe: Versand war fehlgeschlagen</b><br>${freigabe.grund ? `Grund: ${esc(freigabe.grund)}<br>` : ''}${hinweis}<br>`;\n\t} else if (anlass === 'freigabe_eskalation') {\n\t\tconst dauer = Number.isFinite(Number(wartet)) && wartet !== null ? `seit ${Number(wartet)} Stunden` : 'seit längerer Zeit';\n\t\thinweis = `<b>⏰ Eskalation: Diese Freigabe wartet ${esc(dauer)}</b><br>Der Kunde hat noch keine Antwort bekommen.<br>${hinweis}<br>`;\n\t} else if (anlass === 'freigabe_nach_unzustellbar') {\n\t\t// freigabe.grund trägt hier den Grund der vorigen (nicht zugestellten) Freigabe.\n\t\thinweis = `<b>🔁 Erneut zur Freigabe: Die Nachricht kam beim Kunden nicht an</b><br>${freigabe.grund ? `${esc(freigabe.grund)}<br>` : ''}${hinweis}<br>`;\n\t}\n\tconst link = `<a href=\"${esc(url)}\">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Dieser persönliche Link ist einmal verwendbar und gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;\n\tconst empfang = `An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br><br>`;\n\tif (kontext && typeof kontext === 'string' && kontext.trim()) {\n\t\treturn `${hinweis}${kontext}<br><br><b>${was} an den Kunden wurde erstellt</b><br>${empfang}${link}`;\n\t}\n\treturn `${hinweis}<b>${was} an den Kunden freigeben</b><br><br>Vorgangsnummer: <b>${esc(vorgang.vorgangs_id)}</b><br>${empfang}` +\n\t\t(liste ? `<b>Fehlende Angaben</b><br>${liste}<br><br>` : '') + link;\n}\n\nmodule.exports = {\n\tTOKEN_MUSTER, AKTIONEN, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,\n\tfreigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber, ANLASS,\n};\nreturn module.exports;\n})();\n// ===== Ende src/freigabe.js =====\n\n// ----- Node-Logik -----\nconst crypto = require('crypto');\nconst config = $('Config laden').first().json.config;\nconst v = $('Vorgang lesen').first().json.vorgang;\nconst p = $('Plan erstellen').first().json.plan;\nconst r = $input.first().json || {};\nif (r.ok !== true) {\n\tconst fehler = r.meldung || (r.error && (r.error.message || r.error)) || 'keine Antwort vom Postfach';\n\treturn [{ json: { mit_link: false, nachricht_html: kalender.meldung({ vorgangs_id: v.vorgangs_id, plan: p, fehler: String(fehler).replace(/\\[EPA:[^\\]]*\\]\\s*/g, '').slice(0, 160) }), ergebnis: 'kalender_fehler' } }];\n}\nconst e = kalender.bewerten(p, r.ereignisse);\nif (!e.frei) e.ausweichen = kalender.ausweichen(p, r.ereignisse, config.geschaeftszeiten);\nconst termin = { vorgangs_id: v.vorgangs_id, vorschlaege: e.vorschlaege, ausweichen: e.ausweichen || [] };\nconst optionen = kalender.optionen(termin);\nif (!optionen.length) {\n\treturn [{ json: { mit_link: false, nachricht_html: kalender.meldung({ vorgangs_id: v.vorgangs_id, plan: p, ergebnis: e }), ergebnis: 'keine_freie_zeit' } }];\n}\nconst t = freigabe.tokenErzeugen(crypto);\nconst gueltig = Number(config.kalender.gueltig_stunden) || 72;\nconst ablauf = new Date(Date.now() + gueltig * 3600000).toISOString();\nconst link = freigabe.basisUrl($execution.resumeUrl, config.freigabe_basis_url) + '/webhook/epa-kalender?t=' + encodeURIComponent(t.token);\nconst ablaufText = new Date(ablauf).toLocaleString('de-DE', { timeZone: p.zone, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });\nreturn [{ json: {\n\tmit_link: true,\n\tnachricht_html: kalender.meldung({ vorgangs_id: v.vorgangs_id, plan: p, ergebnis: e, link, ablaufText }),\n\tergebnis: e.frei ? 'frei' : 'belegt',\n\tzeile: {\n\t\ttermin_id: 'K-' + crypto.randomUUID(),\n\t\tkunde_id: config.kunde_id,\n\t\tvorgangs_id: v.vorgangs_id,\n\t\ttoken_hash: t.hash,\n\t\tstatus: 'offen',\n\t\tablauf,\n\t\tdaten: JSON.stringify({ optionen, wunsch_text: kalender.wunschText(p), zone: p.zone, frei: e.frei }),\n\t},\n} }];\n"
+      },
+      "id": "3c677445-8091-48c0-aecd-09869b62bb79",
+      "name": "Bewerten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "70585af2-30d2-4f50-a99f-dc516fe7b017",
+              "leftValue": "={{ $json.mit_link }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "6a278a43-46c8-4458-ac33-2fa8dd3f2f9c",
+      "name": "Link anlegen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1540,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: $input.first().json.zeile }];\n"
+      },
+      "id": "c94ce344-c913-4d3e-a7fd-f53bf1cc61c3",
+      "name": "Zeile vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_kalender_termine"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "87d9def8-2be9-490c-a8a7-aebf5292f562",
+      "name": "Termin speichern",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1980,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Benachrichtigen",
+          "cachedResultName": "EPA SW Benachrichtigen"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $('Config laden').first().json.config.kunde_id }}",
+            "vorgangs_id": "={{ $('Bei Aufruf').first().json.vorgangs_id }}",
+            "team_id": "={{ $('Config laden').first().json.config.benachrichtigung.team_id }}",
+            "channel_id": "={{ $('Config laden').first().json.config.benachrichtigung.channel_id }}",
+            "kanal": "={{ $('Config laden').first().json.config.benachrichtigung.kanal }}",
+            "chat_id": "={{ $('Config laden').first().json.config.benachrichtigung.chat_id || '' }}",
+            "telegram_workflow_id": "={{ $('Config laden').first().json.config.benachrichtigung.telegram_workflow_id || '' }}",
+            "nachricht_html": "={{ $('Bewerten').first().json.nachricht_html }}",
+            "anlass": "={{ 'kalender_' + $('Bewerten').first().json.ergebnis }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "team_id",
+              "displayName": "team_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "channel_id",
+              "displayName": "channel_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "kanal",
+              "displayName": "kanal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "telegram_workflow_id",
+              "displayName": "telegram_workflow_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "nachricht_html",
+              "displayName": "nachricht_html",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "anlass",
+              "displayName": "anlass",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "6bf38b60-9345-4bfa-af69-9267ac005438",
+      "name": "Team informieren",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        2200,
+        -80
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst b = $('Bewerten').first().json;\nreturn [{ json: { geprueft: true, ergebnis: b.ergebnis, link: b.mit_link === true, benachrichtigt: $input.first().json.gesendet === true } }];\n"
+      },
+      "id": "0ec833fa-8e34-4d72-a8ed-9ec44977db12",
+      "name": "Ergebnis melden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: { geprueft: false, grund: $input.first().json.grund } }];\n"
+      },
+      "id": "d3ebdf5f-e70c-47d0-a37c-1f30657aba46",
+      "name": "Ergebnis: nicht geprüft",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "Bei Aufruf": {
+      "main": [
+        [
+          {
+            "node": "Config laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config laden": {
+      "main": [
+        [
+          {
+            "node": "Vorgang lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorgang lesen": {
+      "main": [
+        [
+          {
+            "node": "Plan erstellen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan erstellen": {
+      "main": [
+        [
+          {
+            "node": "Kalender prüfen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kalender prüfen?": {
+      "main": [
+        [
+          {
+            "node": "Kalender lesen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ergebnis: nicht geprüft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kalender lesen": {
+      "main": [
+        [
+          {
+            "node": "Bewerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bewerten": {
+      "main": [
+        [
+          {
+            "node": "Link anlegen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Link anlegen?": {
+      "main": [
+        [
+          {
+            "node": "Zeile vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Team informieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Zeile vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Termin speichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Termin speichern": {
+      "main": [
+        [
+          {
+            "node": "Team informieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Team informieren": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "saveDataSuccessExecution": "none"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

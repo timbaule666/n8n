@@ -41,6 +41,7 @@
       "uebersetzungen": "string",
       "outlook_kategorien": "string",
       "vorgangsarten": "string",
+      "kalender": "string",
       "config_sheet": "string"
     },
     "epa_config_pflichtfelder": {
@@ -207,6 +208,19 @@
       "felder": "string",
       "modell": "string",
       "prompt_version": "string",
+      "fehler": "string"
+    },
+    "epa_kalender_termine": {
+      "termin_id": "string",
+      "kunde_id": "string",
+      "vorgangs_id": "string",
+      "token_hash": "string",
+      "status": "string",
+      "ablauf": "date",
+      "daten": "string",
+      "entscheider": "string",
+      "entschieden_am": "date",
+      "event_id": "string",
       "fehler": "string"
     }
   }

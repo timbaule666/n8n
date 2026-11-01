@@ -644,5 +644,24 @@ return [{ json: {
 	wf.verbinde(abschluss, warnungPruefen);
 	wf.kette(warnungPruefen, warnen);
 	wf.kette(abschluss, abschliessen, melden);
+
+
+	// Terminanfrage vollständig: Kalender prüfen und dem Team einen Eintragen-Link schicken (nur mit Config "kalender").
+	// In der Kette (nicht parallel), damit "Ergebnis zurückgeben" immer der letzte Node ist (Rückgabe an den Aufrufer).
+	const kalFrage = wf.node('Termin im Kalender prüfen?', 'n8n-nodes-base.if', [6600, -200], {
+		conditions: bedingungen([bedingung(`={{ $('Pflichtfelder prüfen').isExecuted && $('Pflichtfelder prüfen').first().json.weg === 'bereit' && Boolean(${C}.kalender) }}`, { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: { looseTypeValidation: true },
+	});
+	const kalPruefen = wf.aufruf('Kalender prüfen', [6820, -280], 'EPA SW Kalender prüfen', [
+		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
+		['vorgangs_id', 'string', "={{ $('Vorgang anlegen').first().json.vorgang.vorgangs_id }}"],
+	], { onError: 'continueRegularOutput', alwaysOutputData: true });
+	const zurueck = wf.code('Ergebnis zurückgeben', [7040, -200], [], `
+return [{ json: $('Ergebnis melden').first().json }];
+`);
+	wf.verbinde(melden, kalFrage);
+	wf.verbinde(kalFrage, kalPruefen, 0);
+	wf.verbinde(kalFrage, zurueck, 1);
+	wf.kette(kalPruefen, zurueck);
 	return wf;
 };

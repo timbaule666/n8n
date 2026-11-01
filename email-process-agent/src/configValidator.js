@@ -293,6 +293,7 @@ function validiereConfig(allgemein, pflichtfelder, optionen = {}) {
 	config.vorgangsarten = pruefeVorgangsarten(a.vorgangsarten, config.vorgangstypen, fehler);
 	config.uebersetzungen = pruefeUebersetzungen(a.uebersetzungen, config, fehler);
 	config.outlook_kategorien = pruefeKategorien(a.outlook_kategorien, fehler);
+	config.kalender = pruefeKalender(a.kalender, config.vorgangstypen, fehler);
 	for (const liste of ['absender_allowlist', 'absender_blocklist']) {
 		if (!Array.isArray(config[liste])) fehler.push(`${liste}: muss eine Liste sein`);
 	}
@@ -349,6 +350,46 @@ function pruefeVorgangsarten(roh, vorgangstypen, fehler) {
 		out[t] = { name: name.slice(0, 60), beschreibung: beschreibung.slice(0, 300) };
 	}
 	return out;
+}
+
+/**
+ * Optionale Kalenderprüfung für Terminanfragen: { "aktiv": true, "vorgangstyp": "termin", "datum_feld": "Wunschtermin",
+ * "uhrzeit_feld": "Uhrzeit", "titel_feld": "Terminanlass", "ort_feld": "Terminort", "dauer_minuten": 60, "gueltig_stunden": 72 }.
+ * Leer = aus. Geprüft wird der Kalender des Postfachs; eingetragen wird erst nach Klick im Team (EPA-15).
+ */
+function pruefeKalender(roh, vorgangstypen, fehler) {
+	if (roh === undefined || roh === null || roh === '') return null;
+	const k = parseJson(roh, 'kalender', fehler);
+	if (!k) return null;
+	if (typeof k !== 'object' || Array.isArray(k)) {
+		fehler.push('kalender: muss ein Objekt sein');
+		return null;
+	}
+	if (k.aktiv !== true) return null;
+	const felder = (vorgangstypen || {})[k.vorgangstyp];
+	if (!felder) {
+		fehler.push(`kalender.vorgangstyp: "${k.vorgangstyp}" hat keine Pflichtfelder`);
+		return null;
+	}
+	const namen = felder.map((f) => f.feldname);
+	const typ = Object.fromEntries(felder.map((f) => [f.feldname, f.typ]));
+	if (!namen.includes(k.datum_feld)) fehler.push(`kalender.datum_feld: "${k.datum_feld}" ist kein Feld von ${k.vorgangstyp}`);
+	else if (typ[k.datum_feld] !== 'datum') fehler.push('kalender.datum_feld: muss ein Feld vom Typ "datum" sein');
+	for (const opt of ['uhrzeit_feld', 'titel_feld', 'ort_feld']) {
+		if (k[opt] !== undefined && k[opt] !== null && k[opt] !== '' && !namen.includes(k[opt])) fehler.push(`kalender.${opt}: "${k[opt]}" ist kein Feld von ${k.vorgangstyp}`);
+	}
+	const dauer = k.dauer_minuten === undefined ? 60 : zahl(k.dauer_minuten, 'kalender.dauer_minuten', fehler, { min: 15, max: 480, ganz: true });
+	const gueltig = k.gueltig_stunden === undefined ? 72 : zahl(k.gueltig_stunden, 'kalender.gueltig_stunden', fehler, { min: 1, max: 720, ganz: true });
+	return {
+		aktiv: true,
+		vorgangstyp: k.vorgangstyp,
+		datum_feld: k.datum_feld,
+		uhrzeit_feld: k.uhrzeit_feld || null,
+		titel_feld: k.titel_feld || null,
+		ort_feld: k.ort_feld || null,
+		dauer_minuten: dauer,
+		gueltig_stunden: gueltig,
+	};
 }
 
 function standardName(typ) {

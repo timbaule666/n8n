@@ -10,7 +10,7 @@ const MAIL_FELDER = [
 const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
 // Eigene Mail-Eigenschaft (Extended Property, PS_PUBLIC_STRINGS) zur Wiedererkennung gesendeter Rückfragen.
 const PROP_FREIGABE = 'String {00020329-0000-0000-C000-000000000046} Name EPA-Freigabe-ID';
-const AKTIONEN = ['eingang', 'entwurf_anlegen', 'entwurf_aktualisieren', 'entwurf_senden', 'verbindung_pruefen', 'entwurf_loeschen', 'kategorien_setzen', 'zustelltest_senden', 'versand_pruefen', 'teams_kanal', 'teams_chat'];
+const AKTIONEN = ['eingang', 'entwurf_anlegen', 'entwurf_aktualisieren', 'entwurf_senden', 'verbindung_pruefen', 'entwurf_loeschen', 'kategorien_setzen', 'zustelltest_senden', 'versand_pruefen', 'teams_kanal', 'teams_chat', 'kalender_pruefen', 'kalender_eintragen'];
 const E = "$('Bei Einzelaufruf').first().json";
 const P = `{{ encodeURIComponent(${E}.postfach) }}`;
 
@@ -62,7 +62,7 @@ module.exports = function () {
 		'**Zweck:** Holt neue Mails aus dem Posteingang (Polling, Bauplan 5.1), lädt Header und Anhänge über Microsoft Graph, liest PDF-Text und bereitet Bilder für die KI auf und übergibt alles an "EPA-01 Eingang verarbeiten". Aussortierte Mails (Newsletter, Auto-Replies, Blockliste) werden danach in den Archivordner verschoben, nie gelöscht.',
 		'**Trigger:** Microsoft Outlook Trigger (jede Minute, nur Posteingang). Jede Mail wird als eigene Ausführung dieses Workflows verarbeitet (Aufruf von sich selbst), damit ein Fehler nur diese eine Mail betrifft.',
 		'**Einrichten:** 1) Workflow duplizieren und umbenennen (z. B. "EPA-00 Postfach anfragen@kunde.de"). 2) Im Node "Postfach festlegen" die Adresse eintragen (muss in epa_config_allgemein.postfach stehen). 3) Outlook-Credential (Microsoft Outlook OAuth2, bei Shared Mailbox mit "Use Shared Mailbox") im Trigger und in allen Graph-Nodes zuweisen. 4) Archivordner (Config: archivordner) als Ordner auf oberster Ebene im Postfach anlegen. 5) Veröffentlichen.',
-		'**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread; Vorgangs-ID nur mit betreff_mit_id im Betreff, sonst im Mailtext; Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). kategorien_setzen: Outlook-Kategorie (z. B. "AI Geprüft") an den Kundenmails eines Vorgangs setzen oder entfernen; legt die Kategorie mit Farbe an, wenn die Berechtigung reicht. Fehler hier stören die Verarbeitung nie. zustelltest_senden (EPA-11): Kontrollmail mit Zustelltest-Betreff an das Prüfpostfach. versand_pruefen (EPA-04): Liegt der Entwurf einer offenen Freigabe schon in "Gesendete Elemente" (direkt in Outlook gesendet)? Teams des Kunden (eigenes Teams-Credential in dieser Kopie): teams_kanal (Meldung in den Kanal team_id/channel_id), teams_chat (Freigabe-Link im 1:1-Chat an empfaenger); verbindung_pruefen prüft Postfach und Teams. Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.',
+		'**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread; Vorgangs-ID nur mit betreff_mit_id im Betreff, sonst im Mailtext; Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). kategorien_setzen: Outlook-Kategorie (z. B. "AI Geprüft") an den Kundenmails eines Vorgangs setzen oder entfernen; legt die Kategorie mit Farbe an, wenn die Berechtigung reicht. Fehler hier stören die Verarbeitung nie. zustelltest_senden (EPA-11): Kontrollmail mit Zustelltest-Betreff an das Prüfpostfach. versand_pruefen (EPA-04): Liegt der Entwurf einer offenen Freigabe schon in "Gesendete Elemente" (direkt in Outlook gesendet)? Teams des Kunden (eigenes Teams-Credential in dieser Kopie): teams_kanal (Meldung in den Kanal team_id/channel_id), teams_chat (Freigabe-Link im 1:1-Chat an empfaenger); kalender_pruefen (belegte Zeiten im Kalender des Postfachs, daten = { von, bis }) und kalender_eintragen (Termin anlegen, daten = Graph-Event; nur nach Klick in EPA-15); verbindung_pruefen prüft Postfach und Teams. Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.',
 		'**Hinweis:** Der Trigger liefert nur die Message-ID; Header (In-Reply-To, References, Auto-Submitted, Authentication-Results) holt "Mail laden", weil der Trigger sie nicht ausgibt.',
 	].join('\n'), { breite: 900, hoehe: 380 });
 
@@ -112,6 +112,7 @@ return $input.all().filter((i) => i.json.id).map((i) => ({ json: { postfach: POS
 		['betreff', 'string'],
 		['team_id', 'string'],
 		['channel_id', 'string'],
+		['daten', 'string'],
 	]);
 	const aktion = wf.node('Aktion', 'n8n-nodes-base.switch', [220, 300], {
 		mode: 'rules',
@@ -382,6 +383,30 @@ if (status !== 202) { try { const b = JSON.parse(r.body || '{}'); meldung = Stri
 return [{ json: { gesendet: status === 202, status, meldung } }];
 `);
 
+	// ---------------------------------------------------------------- Aktion: Kalender prüfen / Termin eintragen (Terminanfragen)
+	// Nur der Kalender dieses Postfachs. Lesen liefert nur Zeiten und Status (keine Betreffe); eingetragen wird nur auf
+	// ausdrücklichen Klick im Team (EPA-15). transactionId (= Termin-ID) verhindert doppelte Termine.
+	const D = `JSON.parse(${E}.daten || '{}')`;
+	const kalLesen = graph(wf, 'Kalender lesen', [440, 2800], 'GET', `=${GRAPH}/users/${P}/calendarView`,
+		{ query: { startDateTime: `={{ ${D}.von }}`, endDateTime: `={{ ${D}.bis }}`, $select: 'start,end,showAs,isCancelled,isAllDay', $top: '200' }, node: { retryOnFail: false } },
+		{ response: { response: { fullResponse: true, neverError: true, responseFormat: 'json' } }, timeout: 20000 });
+	const kalMelden = wf.code('Kalender melden', [660, 2800], [], `
+const r = $input.first().json || {};
+const status = Number(r.statusCode) || null;
+if (status !== 200) return [{ json: { ok: false, status, meldung: String((r.body && r.body.error && (r.body.error.code || r.body.error.message)) || 'keine Antwort').slice(0, 160) } }];
+const ereignisse = ((r.body && r.body.value) || []).map((e) => ({ start: e.start, end: e.end, showAs: e.showAs, isCancelled: e.isCancelled === true, isAllDay: e.isAllDay === true }));
+return [{ json: { ok: true, status, ereignisse, mehr: Boolean(r.body && r.body['@odata.nextLink']) } }];
+`);
+	const kalAnlegen = graph(wf, 'Termin anlegen', [440, 3000], 'POST', `=${GRAPH}/users/${P}/events`,
+		{ body: `={{ ${E}.daten }}`, node: { retryOnFail: false } },
+		{ response: { response: { fullResponse: true, neverError: true, responseFormat: 'json' } }, timeout: 20000 });
+	const kalAngelegt = wf.code('Termin melden', [660, 3000], [], `
+const r = $input.first().json || {};
+const status = Number(r.statusCode) || null;
+if (status !== 201 && status !== 200) return [{ json: { ok: false, status, meldung: String((r.body && r.body.error && (r.body.error.code || r.body.error.message)) || 'keine Antwort').slice(0, 160) } }];
+return [{ json: { ok: true, status, event_id: (r.body && r.body.id) || null, link: (r.body && r.body.webLink) || null } }];
+`);
+
 	// ---------------------------------------------------------------- Aktion: Versand prüfen (EPA-04)
 	// Wurde der Entwurf einer offenen Freigabe direkt in Outlook gesendet? Erkennung über die Freigabe-Kennung, die der
 	// Entwurf beim Anlegen bekommt und die Outlook beim Senden in "Gesendete Elemente" mitnimmt. Nur lesen, nie senden.
@@ -498,6 +523,10 @@ return [{ json: { geaendert: r.filter((s) => s === 200).length, fehler: r.filter
 	wf.verbinde(aktion, testPruefen, 7);
 	wf.kette(testPruefen, testSenden, testMelden);
 	wf.verbinde(aktion, versandSuchen, 8);
+	wf.verbinde(aktion, kalLesen, 11);
+	wf.kette(kalLesen, kalMelden);
+	wf.verbinde(aktion, kalAnlegen, 12);
+	wf.kette(kalAnlegen, kalAngelegt);
 	wf.kette(versandSuchen, versandMelden);
 	wf.kette(entwurfLesen, loeschPruefung, loeschenFrage);
 	wf.verbinde(loeschenFrage, entwurfWeg, 0);

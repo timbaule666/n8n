@@ -201,3 +201,21 @@ test('Vorgangsarten: Beispiel mit Angebotsanfrage, Bestellung und Terminanfrage'
 	assert.match(falsch.fehler.join('\n'), /vorgangsarten\.reklamation: Vorgangsart hat keine Pflichtfelder/);
 	assert.match(falsch.fehler.join('\n'), /vorgangsarten\.termin\.beschreibung: zu lang/);
 });
+
+test('kalender: optional, Felder müssen zur Vorgangsart passen', () => {
+	const b = JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'config', 'datatables', 'beispiel-transport.json'), 'utf8'));
+	const basis = { ...b.epa_config_allgemein[0], postfach: 'a@b.de', freigeber: '["c@b.de"]' };
+	assert.equal(validiereConfig({ ...basis, kalender: '' }, b.epa_config_pflichtfelder).config.kalender, null);
+	const ok = validiereConfig({ ...basis, kalender: JSON.stringify({ aktiv: true, vorgangstyp: 'termin', datum_feld: 'Wunschtermin', uhrzeit_feld: 'Uhrzeit', titel_feld: 'Terminanlass', ort_feld: 'Terminort' }) }, b.epa_config_pflichtfelder);
+	assert.equal(ok.gueltig, true, ok.fehler.join('\n'));
+	assert.equal(ok.config.kalender.dauer_minuten, 60);
+	assert.equal(ok.config.kalender.gueltig_stunden, 72);
+	const falsch = validiereConfig({ ...basis, kalender: JSON.stringify({ aktiv: true, vorgangstyp: 'termin', datum_feld: 'Uhrzeit', ort_feld: 'Gibtsnicht', dauer_minuten: 5 }) }, b.epa_config_pflichtfelder);
+	assert.equal(falsch.gueltig, false);
+	assert.match(falsch.fehler.join('\n'), /Typ "datum"/);
+	assert.match(falsch.fehler.join('\n'), /ort_feld/);
+	assert.match(falsch.fehler.join('\n'), /dauer_minuten/);
+	const typ = validiereConfig({ ...basis, kalender: JSON.stringify({ aktiv: true, vorgangstyp: 'reklamation', datum_feld: 'x' }) }, b.epa_config_pflichtfelder);
+	assert.match(typ.fehler.join('\n'), /keine Pflichtfelder/);
+	assert.equal(validiereConfig({ ...basis, kalender: JSON.stringify({ aktiv: false }) }, b.epa_config_pflichtfelder).config.kalender, null);
+});

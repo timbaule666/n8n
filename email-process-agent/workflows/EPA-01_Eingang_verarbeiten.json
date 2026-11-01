@@ -3453,6 +3453,112 @@
         100
       ],
       "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2e63d09d-4762-41bf-a096-eb61643f0db3",
+              "leftValue": "={{ $('Pflichtfelder prüfen').isExecuted && $('Pflichtfelder prüfen').first().json.weg === 'bereit' && Boolean($('Config laden').first().json.config.kalender) }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "9d41faa0-ae89-4e42-abda-89655c2eeec5",
+      "name": "Termin im Kalender prüfen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        6600,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Kalender prüfen",
+          "cachedResultName": "EPA SW Kalender prüfen"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $('Config laden').first().json.config.kunde_id }}",
+            "vorgangs_id": "={{ $('Vorgang anlegen').first().json.vorgang.vorgangs_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "4e76f33c-667f-4aa5-a371-84947fd87e2b",
+      "name": "Kalender prüfen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        6820,
+        -280
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: $('Ergebnis melden').first().json }];\n"
+      },
+      "id": "5547d9bf-af7e-41b3-a1d3-2228fd733004",
+      "name": "Ergebnis zurückgeben",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7040,
+        -200
+      ]
     }
   ],
   "connections": {
@@ -4224,6 +4330,46 @@
         [
           {
             "node": "Ergebnis melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ergebnis melden": {
+      "main": [
+        [
+          {
+            "node": "Termin im Kalender prüfen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Termin im Kalender prüfen?": {
+      "main": [
+        [
+          {
+            "node": "Kalender prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ergebnis zurückgeben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kalender prüfen": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis zurückgeben",
             "type": "main",
             "index": 0
           }
