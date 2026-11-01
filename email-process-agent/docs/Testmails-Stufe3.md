@@ -815,3 +815,14 @@ Offene Punkte:
 - Antworten werden ohne Wissen ausgewertet, welche Felder gefragt waren: „delivery postcode“ landete beim Abholort. Vorschlag: nachgefragte Felder als Hinweis an die Extraktion geben und eine eindeutige Antwort auf genau ein nachgefragtes Feld bevorzugen.
 - Zusatzinfo „Gefahrgut (Farben)“ führte zu „Ladungsart: Sonstiges“ als Widerspruch.
 - Ausländische Postleitzahlen (z. B. Österreich, 4-stellig) sind laut Regel ungültig; der Agent fragt dann erneut. Ob Auslandsabholungen erlaubt sein sollen, ist eine Config-Entscheidung (zu klären).
+
+## Kalenderprüfung Terminanfragen (01.11.2026)
+
+Testkunde epa-m365, Config `kalender` aktiv (vorgangstyp termin, 60 Minuten, Link 72 h).
+
+| Mail | Inhalt | Prüfung | Eintragen (Klick Tim) |
+|---|---|---|---|
+| K01 | Besichtigung Do 03.12.2026, 10 Uhr | Kalender gelesen, frei, Link + Teams-Meldung | eingetragen (event_id vorhanden), keine Fehler |
+| K02 | Beratung Fr 04.12.2026, vormittags | 3 freie Zeiten (08:00, 08:30, 09:00), Link + Teams-Meldung | eingetragen (event_id vorhanden), keine Fehler |
+
+Kalenderzugriff funktioniert mit dem bestehenden Outlook-Credential der Postfach-Kopie. EPA-15: keine Fehlerausführungen.
