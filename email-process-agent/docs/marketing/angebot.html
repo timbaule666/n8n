@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<title>Config-Driven Email Process Agent – Angebot</title>
+<style>
+/* Zwei A4-Seiten: 1 = Nutzen, Ablauf, Leistungen · 2 = Pakete, Gründe, Kontakt */
+:root{
+  --navy:#0f1f3d; --navy2:#1b3363; --blau:#2457d6; --blau-hell:#eaf0fc; --linie:#dfe5ef;
+  --text:#1c2638; --grau:#5b6678; --gruen:#17784a; --gruen-hell:#e8f5ee; --papier:#ffffff; --flaeche:#f5f7fb;
+  --display:"Inter Display","Inter",Arial,sans-serif; --body:"Inter",Arial,sans-serif;
+}
+@page{size:A4;margin:0}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#d9dee8}
+body{font-family:var(--body);color:var(--text);font-size:8.1pt;line-height:1.5;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.seite{width:210mm;height:297mm;background:var(--papier);margin:0 auto;position:relative;overflow:hidden;display:flex;flex-direction:column}
+@media screen{.seite{margin:24px auto;box-shadow:0 4px 24px rgba(15,31,61,.15)}}
+.innen{padding:0 15mm}
+h1,h2,h3{font-family:var(--display);color:var(--navy);text-wrap:balance}
+.marke{font-family:var(--display);font-weight:700;font-size:6.7pt;letter-spacing:.14em;text-transform:uppercase;color:#9fb6ea}
+
+/* Kopf */
+.kopf{background:linear-gradient(135deg,var(--navy) 0%,var(--navy2) 100%);color:#fff;padding:11mm 15mm 9mm}
+.kopf .zeile{display:flex;justify-content:space-between;align-items:center;margin-bottom:6mm}
+.kopf .seitenhinweis{font-size:6.3pt;color:#9fb0d0}
+.kopf h1{color:#fff;font-size:18pt;line-height:1.15;font-weight:800;letter-spacing:-.01em;max-width:165mm}
+.kopf p.sub{margin-top:4mm;font-size:9.2pt;line-height:1.5;color:#d2dcf0;max-width:165mm}
+.fakten{display:flex;gap:3mm;margin-top:7mm;flex-wrap:wrap}
+.fakten span{border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:1.6mm 4mm;font-size:7.0pt;font-weight:600;color:#fff}
+
+/* Abschnitte */
+.abschnitt{margin-top:5.5mm}
+.abschnitt h2{font-size:11.8pt;font-weight:800;margin-bottom:1mm}
+.abschnitt .einl{color:var(--grau);font-size:7.9pt;margin-bottom:4mm;max-width:170mm}
+
+/* Ablauf */
+.ablauf{display:grid;grid-template-columns:repeat(4,1fr);gap:3mm}
+.schritt{background:var(--flaeche);border-radius:3mm;padding:3.4mm 3.6mm 3.6mm;position:relative}
+.schritt .n{width:7mm;height:7mm;border-radius:50%;background:var(--blau);color:#fff;font-weight:800;font-size:7.6pt;display:flex;align-items:center;justify-content:center;margin-bottom:2.5mm}
+.schritt h3{font-size:8.4pt;margin-bottom:1mm}
+.schritt p{font-size:6.9pt;line-height:1.45;color:var(--grau)}
+
+/* Leistungen */
+.leistungen{display:grid;grid-template-columns:1fr 1fr;gap:2.8mm}
+.l{border:1px solid var(--linie);border-radius:3mm;padding:3.2mm 4mm;display:flex;gap:3.5mm}
+.l .ic{flex:none;width:9mm;height:9mm;border-radius:2.2mm;background:var(--blau-hell);display:flex;align-items:center;justify-content:center}
+.l .ic svg{width:5mm;height:5mm;stroke:var(--blau);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.l h3{font-size:8.8pt;margin-bottom:1mm}
+.l p{font-size:6.9pt;line-height:1.5;color:#3a4558}
+.l.breit{grid-column:1 / -1}
+.fuss1{margin-top:auto;padding:3.5mm 15mm;border-top:1px solid var(--linie);display:flex;justify-content:space-between;font-size:6.6pt;color:var(--grau)}
+
+/* Pakete */
+.pakete{display:grid;grid-template-columns:repeat(4,1fr);gap:2.6mm;align-items:stretch}
+.p{border:1px solid var(--linie);border-radius:3mm;padding:4.5mm 3.6mm 4mm;display:flex;flex-direction:column;position:relative;background:#fff}
+.p.top{border:2px solid var(--blau);box-shadow:0 2mm 6mm rgba(36,87,214,.12)}
+.p .badge{position:absolute;top:-3mm;left:50%;transform:translateX(-50%);background:var(--blau);color:#fff;font-size:5.9pt;font-weight:700;padding:.8mm 3mm;border-radius:999px;white-space:nowrap}
+.p .stufe{font-size:5.9pt;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--blau)}
+.p .name{font-family:var(--display);font-size:11.8pt;font-weight:800;color:var(--navy);margin-top:.5mm}
+.p .fuer{font-size:6.6pt;color:var(--grau);min-height:9mm;line-height:1.35;margin-top:.5mm}
+.p .preis{border-top:1px solid var(--linie);margin-top:2.5mm;padding-top:2.5mm}
+.p .mon{font-family:var(--display);font-size:14.3pt;font-weight:800;color:var(--navy);font-variant-numeric:tabular-nums}
+.p .mon small{font-size:6.7pt;font-weight:600;color:var(--grau)}
+.p .mon.anfrage{font-size:10.5pt;line-height:1.25}
+.p .ein{display:flex;justify-content:space-between;font-size:6.6pt;color:var(--grau);margin-top:.8mm}
+.p .ein b{color:var(--text);font-size:7.2pt}
+.p .menge{margin-top:2.5mm;background:var(--blau-hell);border-radius:2mm;padding:1.8mm 2.4mm;font-size:6.7pt;font-weight:700;color:var(--blau)}
+.p .test{margin-top:1.6mm;background:var(--gruen-hell);border-radius:2mm;padding:1.4mm 2.4mm;font-size:6.4pt;font-weight:700;color:var(--gruen);text-align:center}
+.p ul{list-style:none;margin-top:2.4mm}
+.p li{font-size:6.4pt;line-height:1.35;padding:1.1mm 0 1.1mm 3.8mm;position:relative;border-bottom:1px dashed var(--linie)}
+.p li:last-child{border-bottom:0}
+.p li::before{content:"";position:absolute;left:0;top:2.2mm;width:1.8mm;height:1mm;border-left:1.4px solid var(--gruen);border-bottom:1.4px solid var(--gruen);transform:rotate(-45deg)}
+.p.ind{background:var(--flaeche)}
+.hinweise{display:flex;justify-content:space-between;gap:4mm;margin-top:3mm;font-size:6.6pt;color:var(--grau)}
+.hinweise b{color:var(--text)}
+
+/* Gründe */
+.gruende{display:grid;grid-template-columns:1fr 1fr;column-gap:7mm;row-gap:1.6mm;margin-bottom:6mm}
+.g{display:flex;gap:3mm;border-top:1px solid var(--linie);padding-top:2mm}
+.g .nr{font-size:6.6pt;font-weight:800;color:var(--blau);min-width:5mm;padding-top:.4mm}
+.g h3{font-size:8.1pt;margin-bottom:.6mm}
+.g p{font-size:6.7pt;line-height:1.45;color:#3a4558}
+
+/* Kontakt */
+.kontakt{margin:auto 15mm 8mm;background:linear-gradient(135deg,var(--navy) 0%,var(--navy2) 100%);border-radius:4mm;padding:5.5mm 7mm;color:#fff;display:flex;justify-content:space-between;align-items:center;gap:8mm}
+.kontakt h2{color:#fff;font-size:11.8pt;margin-bottom:1.5mm}
+.kontakt p{color:#d2dcf0;font-size:7.6pt;max-width:105mm}
+.kontakt .daten{border-left:1px solid rgba(255,255,255,.25);padding-left:7mm;font-size:7.6pt;line-height:1.75;color:#fff;white-space:nowrap}
+.kontakt .daten span{color:#9fb0d0;display:inline-block;width:17mm}
+</style></head>
+<body>
+
+<!-- ======================= Seite 1 ======================= -->
+<section class="seite" id="s1">
+  <div class="kopf">
+    <div class="zeile"><div class="marke">Config-Driven Email Process Agent</div><div class="seitenhinweis">Produktinformation · Seite 1 von 2</div></div>
+    <h1>Anfragen, Bestellungen und Termine aus Ihrem Postfach – automatisch vorbereitet, von Ihrem Team freigegeben.</h1>
+    <p class="sub">Der Agent kümmert sich um jede Anfrage: Daten erfassen, fehlende Informationen zum Auftrag nachfragen, Antworten zuordnen und erinnern, wenn der Kunde nicht antwortet. Ihr Team gibt nur noch frei.</p>
+    <div class="fakten"><span>Keine Mail ohne Ihre Freigabe</span><span>Arbeitet in Outlook und Microsoft Teams</span><span>Mailtext und PDF-Anhänge</span><span>Inklusive 14 Tage Testlauf</span></div>
+  </div>
+
+  <div class="innen">
+    <div class="abschnitt">
+      <h2>So arbeitet der Agent</h2>
+      <p class="einl">Jede neue Mail durchläuft dieselben vier Schritte. Sie behalten bei jedem Schritt die Kontrolle.</p>
+      <div class="ablauf">
+        <div class="schritt"><div class="n">1</div><h3>Mail erkennen</h3><p>Jede neue Mail wird geprüft: Ist es eine Angebotsanfrage, eine Bestellung oder eine Terminanfrage? Alles andere bleibt unverändert im Postfach.</p></div>
+        <div class="schritt"><div class="n">2</div><h3>Angaben erfassen</h3><p>Der Agent liest Mailtext und PDF-Anhänge aus und prüft, ob alle nötigen Angaben vollständig und plausibel sind.</p></div>
+        <div class="schritt"><div class="n">3</div><h3>Vorbereiten</h3><p>Fehlt etwas, liegt eine passende Rückfrage zur Freigabe bereit. Bei Terminen prüft er zusätzlich Ihren Kalender.</p></div>
+        <div class="schritt"><div class="n">4</div><h3>Freigeben</h3><p>Ihr Team entscheidet mit einem Klick. Vollständige Vorgänge werden in Teams gemeldet und in Outlook markiert.</p></div>
+      </div>
+    </div>
+
+    <div class="abschnitt">
+      <h2>In jedem Paket enthalten</h2>
+      <p class="einl">Alle drei Bereiche und die komplette Absicherung – unabhängig vom gewählten Paket.</p>
+      <div class="leistungen">
+        <div class="l"><div class="ic"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/></svg></div><div><h3>Angebotsanfragen</h3><p>Preis- und Angebotsanfragen werden automatisch erkannt. Der Agent liest Orte, Termine, Mengen und Gewichte aus Mailtext und PDF aus, rechnet Einheiten um und erkennt Widersprüche, etwa zwischen Mailtext und Anhang. Fehlt etwas, liegt eine Rückfrage zur Freigabe bereit. Die Antwort des Kunden wird dem Vorgang zugeordnet, bleibt sie aus, erinnert der Agent automatisch.</p></div></div>
+        <div class="l"><div class="ic"><svg viewBox="0 0 24 24"><path d="M4 7l8-4 8 4v10l-8 4-8-4z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg></div><div><h3>Bestellungen</h3><p>Verbindliche Bestellungen werden mit Ware oder Leistung, Menge, Liefertermin, Lieferadresse, Bestellnummer und Ansprechpartner erfasst. Fehlende Pflichtangaben fragt der Agent nach, bevor Ihr Team die Bestellung bearbeitet. Stornierungen, Änderungswünsche und wichtige Zusatzinformationen in späteren Mails werden sofort gemeldet.</p></div></div>
+        <div class="l"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M9 14.5l2 2 4-4"/></svg></div><div><h3>Terminanfragen</h3><p>Terminwünsche werden mit Anlass, Datum, Uhrzeit, Ort und Kontakt aufgenommen, Fehlendes fragt der Agent nach. Danach prüft er in Ihrem Outlook-Kalender, ob der Termin frei ist, und schlägt bei Angaben wie „vormittags“ oder einem belegten Wunschtermin freie Zeiten vor. Eingetragen wird erst nach Ihrem Klick.</p></div></div>
+        <div class="l"><div class="ic"><svg viewBox="0 0 24 24"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg></div><div><h3>Überwachung</h3><p>Der Agent überwacht sich regelmäßig selbst: die Verbindung zum Postfach, den KI-Dienst, die Meldungen in Teams und Vorgänge, die zu lange liegen bleiben. Unzustellbare Mails werden erkannt und nach einem erfolgreichen Zustelltest erneut zur Freigabe gestellt. Bei einer Störung werden Sie sofort alarmiert.</p></div></div>
+        <div class="l breit"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg></div><div><h3>Schutz und Kontrolle</h3><p>Keine Mail geht ohne Ihre Freigabe raus – jeden Entwurf können Sie vorher ansehen, bearbeiten oder ablehnen. Mailinhalte gelten als nicht vertrauenswürdig: Versuche, die KI über versteckte Anweisungen zu steuern, werden doppelt geprüft und gemeldet. Die KI hat keinen Zugriff auf Ihre Systeme, unklare Mails werden nie gelöscht und personenbezogene Daten erscheinen nicht in Protokollen.</p></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="fuss1"><span>Config-Driven Email Process Agent</span><span>Pakete und Preise auf Seite 2</span></div>
+</section>
+
+<!-- ======================= Seite 2 ======================= -->
+<section class="seite" id="s2">
+  <div class="innen" style="padding-top:9mm">
+    <div class="zeile" style="display:flex;justify-content:space-between;align-items:center"><div class="marke" style="color:var(--blau)">Config-Driven Email Process Agent</div><div style="font-size:7.5pt;color:var(--grau)">Produktinformation · Seite 2 von 2</div></div>
+
+    <div class="abschnitt" style="margin-top:4mm">
+      <h2>Pakete und Preise</h2>
+      <p class="einl">Die Pakete unterscheiden sich nach Menge, Postfächern, Sprachen und Selbststeuerung. Angebots-, Bestell- und Terminanfragen sind in jedem Paket enthalten.</p>
+      <div class="pakete">
+        <div class="p">
+          <div class="stufe">Stufe 1</div><div class="name">Basis</div><div class="fuer">Für kleine Betriebe</div>
+          <div class="preis"><div class="mon">249 €<small> / Monat</small></div><div class="ein">Einrichtung einmalig <b>2.490 €</b></div></div>
+          <div class="menge">150 neue Vorgänge / Monat (+15 Puffer)</div>
+          <div class="test">Inklusive 14 Tage Testlauf</div>
+          <ul><li>1 Postfach, bis 3 Freigeber</li><li>Rückfragen auf Deutsch</li><li>10 Regeln je Bereich nach Ihrer Wahl, bei der Einrichtung festgelegt</li><li>1 Anpassung pro Jahr</li></ul>
+        </div>
+        <div class="p top"><div class="badge">Empfohlen</div>
+          <div class="stufe">Stufe 2</div><div class="name">Business</div><div class="fuer">Für die meisten Betriebe</div>
+          <div class="preis"><div class="mon">549 €<small> / Monat</small></div><div class="ein">Einrichtung einmalig <b>2.990 €</b></div></div>
+          <div class="menge">400 neue Vorgänge / Monat (+40 Puffer)</div>
+          <div class="test">Inklusive 14 Tage Testlauf</div>
+          <ul><li>1 Postfach, bis 10 Freigeber</li><li>Rückfragen auf Deutsch und Englisch</li><li>15 Regeln je Bereich</li><li>Regeln selbst pflegen (Google Sheet)</li><li>Tägliche Übersicht + Monatsbericht</li><li>4 Anpassungen pro Jahr</li></ul>
+        </div>
+        <div class="p">
+          <div class="stufe">Stufe 3</div><div class="name">Premium</div><div class="fuer">Für hohes Volumen und mehrere Postfächer</div>
+          <div class="preis"><div class="mon">949 €<small> / Monat</small></div><div class="ein">Einrichtung einmalig <b>4.990 €</b></div></div>
+          <div class="menge">1.000 neue Vorgänge / Monat (+100 Puffer)</div>
+          <div class="test">Inklusive 14 Tage Testlauf</div>
+          <ul><li>Bis 3 Postfächer, Freigeber unbegrenzt</li><li>Deutsch, Englisch + 1 weitere Sprache</li><li>Beliebig viele Regeln je Bereich</li><li>Regeln selbst pflegen (Google Sheet)</li><li>Monatsbericht + Gespräch pro Quartal</li><li>Anpassungen unbegrenzt (fair use)</li></ul>
+        </div>
+        <div class="p ind">
+          <div class="stufe">Stufe 4</div><div class="name">Individuell</div><div class="fuer">Für sehr hohes Volumen und eigene Abläufe</div>
+          <div class="preis"><div class="mon anfrage">Preis auf Anfrage</div><div class="ein">Einrichtung und Monatspreis nach Bedarf</div></div>
+          <div class="menge">Volumen nach Bedarf</div>
+          <div class="test">Inklusive 14 Tage Testlauf</div>
+          <ul><li>Alles aus Premium</li><li>Vorgänge und Postfächer nach Bedarf</li><li>Weitere Sprachen nach Bedarf</li><li>Eigene Vorgangsarten und Abläufe</li><li>Individuelles Angebot</li></ul>
+        </div>
+      </div>
+      <div class="hinweise"><span><b>Ein Vorgang</b> = eine neue Kundenmail aus einem Ihrer Bereiche. Rückfragen und Kundenantworten zählen nicht extra.</span><span style="white-space:nowrap">Alle Preise netto zzgl. MwSt.</span></div>
+    </div>
+
+    <div class="abschnitt">
+      <h2>Warum der Config-Driven Email Process Agent?</h2>
+      <p class="einl">Weniger Handarbeit im Postfach, schnellere Antworten an Ihre Kunden – und kein Schritt ohne Ihre Zustimmung.</p>
+      <div class="gruende">
+        <div class="g"><div class="nr">01</div><div><h3>Keine Anfrage geht verloren</h3><p>Jede Mail wird sofort geprüft. Bearbeitet werden nur echte Anfragen – alles andere bleibt unverändert in Ihrem Postfach.</p></div></div>
+        <div class="g"><div class="nr">05</div><div><h3>Sie behalten die Kontrolle</h3><p>Keine Mail geht ohne Freigabe raus. Manipulationsversuche werden erkannt und gemeldet – die KI hat keinen Zugriff auf Ihre Systeme.</p></div></div>
+        <div class="g"><div class="nr">02</div><div><h3>Daten automatisch erfasst</h3><p>Orte, Termine, Mengen und Kontakt werden aus Mailtext und PDF-Anhängen ausgelesen – auch auf Englisch und in weiteren Sprachen.</p></div></div>
+        <div class="g"><div class="nr">06</div><div><h3>Alles in Teams und Outlook</h3><p>Übersichtliche Meldungen im Teams-Kanal, farbige Markierungen in Outlook, Erinnerungen bei liegengebliebenen Vorgängen und Überwachung mit Alarm.</p></div></div>
+        <div class="g"><div class="nr">03</div><div><h3>Rückfragen fertig vorbereitet</h3><p>Fehlt etwas, liegt die passende Rückfrage als Entwurf bereit. Ein Klick zum Freigeben, Bearbeiten oder Ablehnen.</p></div></div>
+        <div class="g"><div class="nr">07</div><div><h3>Ganz einfach selbst steuern</h3><p>Pflichtfelder, Texte, Fristen und Regeln pflegen Sie in einem Google Sheet – ohne Programmierkenntnisse. Der Agent übernimmt Änderungen automatisch (ab Business).</p></div></div>
+        <div class="g"><div class="nr">04</div><div><h3>Antworten werden ausgewertet</h3><p>Kundenantworten werden dem richtigen Vorgang zugeordnet. Widersprüche, Stornierungen und wichtige Hinweise wie Gefahrgut werden gemeldet.</p></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="kontakt">
+    <div><h2>Testen Sie den Agent mit Ihrem eigenen Postfach</h2><p>Wir richten den Agent für Ihre Anfragen ein und starten mit einem 14-tägigen Testlauf. Danach entscheiden Sie, welches Paket passt.</p></div>
+    <div class="daten"><span>Kontakt</span>[Name]<br><span>E-Mail</span>[E-Mail-Adresse]<br><span>Telefon</span>[Telefonnummer]</div>
+  </div>
+</section>
+</body></html>
