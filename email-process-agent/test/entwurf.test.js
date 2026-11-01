@@ -47,7 +47,7 @@ test('Verstöße in der Hülle führen zum Fallback', () => {
 		const r = fall(h);
 		assert.equal(r.fallback, true, JSON.stringify(h));
 		assert.ok(r.pruefung.some((p) => grund.test(p)), `${JSON.stringify(h)} -> ${r.pruefung}`);
-		assert.match(r.text, /^Guten Tag Max,\n\nvielen Dank für Ihre Anfrage/);
+		assert.match(r.text, /^Guten Tag Max,\n\nvielen Dank für Ihre Nachricht/);
 	}
 	assert.equal(e.entwurfBauen(null, { config: CONFIG, felder: FELDER, fehlende: FEHLENDE }).fallback, true);
 });
@@ -134,7 +134,7 @@ test('KI-Hülle in der falschen Sprache fällt auf die Vorlage zurück (Live-Tes
 	assert.ok(e.huellePruefen(deutsch, en).some((f) => /Antwortsprache/.test(f)));
 	const r = e.entwurfBauen(deutsch, { config: en, felder: FELDER, fehlende: FEHLENDE, name: 'James Taylor' });
 	assert.equal(r.fallback, true);
-	assert.match(r.text, /^Dear James Taylor,\n\nThank you for your request/);
+	assert.match(r.text, /^Dear James Taylor,\n\nThank you for your message/);
 	assert.doesNotMatch(r.text, /[äöüß]|Vielen|Guten/);
 	const englisch = { anrede: 'Dear James Taylor,', einleitung: 'thank you for your request. To process it, we still need the following information:', schluss: 'Thank you in advance for your reply.' };
 	assert.deepEqual(e.huellePruefen(englisch, en), []);

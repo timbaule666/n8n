@@ -9,7 +9,7 @@ const q = require('../src/kiQualitaet');
 const { vorlageInhalt } = require('../tools/testfaelle-import');
 
 const beispiel = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config', 'datatables', 'beispiel-transport.json'), 'utf8'));
-const FELDER = imp.felderAusConfig(beispiel.epa_config_pflichtfelder, 'beispiel-transport');
+const FELDER = imp.felderAusConfig(beispiel.epa_config_pflichtfelder, 'beispiel-transport', 'transport');
 const OPT = { feldPruefen: pf.feldPruefen, heute: '2026-10-14' };
 const KOPF = imp.vorlageSpalten(FELDER).join(';');
 const pruefen = (csv, opt = {}) => imp.zeilenPruefen(imp.csvLesen(csv), FELDER, { ...OPT, ...opt });

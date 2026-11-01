@@ -96,3 +96,10 @@ test('Alternative Daten und Vorwahl statt PLZ', () => {
 	assert.deepEqual(t.alternativeDaten('Abholung 03.12.2026, Lieferung 05.12.2026'), []);
 	assert.deepEqual(t.mehrereAuftraege('Von 58452 Witten nach 58095 Hagen. Tel. 02302 5557037').plz, ['58452', '58095']);
 });
+
+test('Mehrere Aufträge nur bei Vorgangsarten mit Strecke (zwei PLZ-Felder)', () => {
+	const text = 'Bitte liefern an 50667 Köln. Unser Lager: 40210 Düsseldorf, Zentrale 80331 München.';
+	assert.equal(t.alle({ text }).hinweise.length, 1);
+	assert.equal(t.alle({ text }, { felder: [{ typ: 'plz' }, { typ: 'plz' }] }).hinweise.length, 1);
+	assert.deepEqual(t.alle({ text }, { felder: [{ typ: 'plz' }, { typ: 'text' }] }).hinweise, []);
+});

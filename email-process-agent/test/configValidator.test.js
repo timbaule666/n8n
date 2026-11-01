@@ -186,3 +186,18 @@ test('uebersetzungen: optional, vollständig je Sprache', () => {
 	assert.match(f({ english: en }), /ISO-Code/);
 	assert.match(f([1]), /muss ein Objekt/);
 });
+
+test('Vorgangsarten: Beispiel mit Angebotsanfrage, Bestellung und Terminanfrage', () => {
+	const b = JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'config', 'datatables', 'beispiel-transport.json'), 'utf8'));
+	const r = validiereConfig({ ...b.epa_config_allgemein[0], postfach: 'a@b.de', freigeber: '["c@b.de"]' }, b.epa_config_pflichtfelder);
+	assert.deepEqual(r.fehler, []);
+	assert.deepEqual(Object.keys(r.config.vorgangstypen).sort(), ['bestellung', 'termin', 'transport']);
+	assert.equal(r.config.vorgangsarten.bestellung.name, 'Bestellung');
+	assert.match(r.config.vorgangsarten.termin.beschreibung, /Termin/);
+	// ohne Angabe: Schlüssel als Name; unbekannte Vorgangsart und zu lange Texte werden gemeldet
+	const ohne = validiereConfig({ ...b.epa_config_allgemein[0], postfach: 'a@b.de', freigeber: '["c@b.de"]', vorgangsarten: '' }, b.epa_config_pflichtfelder);
+	assert.equal(ohne.config.vorgangsarten.termin.name, 'Termin');
+	const falsch = validiereConfig({ ...b.epa_config_allgemein[0], postfach: 'a@b.de', freigeber: '["c@b.de"]', vorgangsarten: JSON.stringify({ reklamation: { name: 'Reklamation' }, termin: { beschreibung: 'x'.repeat(301) } }) }, b.epa_config_pflichtfelder);
+	assert.match(falsch.fehler.join('\n'), /vorgangsarten\.reklamation: Vorgangsart hat keine Pflichtfelder/);
+	assert.match(falsch.fehler.join('\n'), /vorgangsarten\.termin\.beschreibung: zu lang/);
+});

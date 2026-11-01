@@ -79,8 +79,10 @@ async function main() {
 	if (!config && !kundeArg) throw new Error('--config=<datei.json> oder --kunde=<kunde_id> angeben');
 	if (!config && (!process.env.N8N_URL || !process.env.N8N_API_KEY)) throw new Error('Für --kunde N8N_URL und N8N_API_KEY setzen');
 	const { zeilen, kunde } = await pflichtfeldZeilen({ config, kunde: kundeArg });
-	const felder = imp.felderAusConfig(zeilen, kunde);
-	if (!felder.length) throw new Error(`Keine aktiven Pflichtfelder für Kunde "${kunde}" gefunden`);
+	// Der KI-Prüfstand prüft eine Vorgangsart (Standard: transport); andere mit --vorgangstyp=<schlüssel>
+	const vorgangstyp = arg('vorgangstyp') || 'transport';
+	const felder = imp.felderAusConfig(zeilen, kunde, vorgangstyp);
+	if (!felder.length) throw new Error(`Keine aktiven Pflichtfelder für Kunde "${kunde}" und Vorgangsart "${vorgangstyp}" gefunden`);
 
 	if (process.argv.includes('--vorlage')) {
 		const ziel = path.resolve(arg('ziel') || VORLAGE_STANDARD);

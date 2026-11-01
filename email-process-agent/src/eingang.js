@@ -104,6 +104,8 @@ function erfasstText(iso, zone) {
 function kopf(titel, vorgangsId, mail, opts = {}) {
 	const z = [`<b>${esc(titel)}</b>`, ''];
 	if (vorgangsId) z.push(`Vorgangsnummer: <b>${esc(vorgangsId)}</b>`);
+	// Vorgangsart (z. B. Bestellung), nur wenn der Kunde mehrere Vorgangsarten hat
+	if (opts.art) z.push(`Art: <b>${esc(opts.art)}</b>`);
 	if (mail) {
 		z.push(`Absender der Anfrage: ${esc(mail.absender_name ? `${mail.absender_name} <${mail.absender_adresse}>` : mail.absender_adresse)}`);
 		z.push(`<b>Betreff: ${esc(mail.betreff || '(leer)')}</b>`);
@@ -172,14 +174,22 @@ function datenBlock(felder, daten) {
 	}).join('<br><br>');
 }
 
+/** Name der Vorgangsart für Meldungen, nur wenn der Kunde mehr als eine Vorgangsart hat (sonst null). */
+function vorgangsartName(config, typ) {
+	const typen = Object.keys((config && config.vorgangstypen) || {});
+	if (typen.length < 2 || !typ) return null;
+	const a = ((config && config.vorgangsarten) || {})[typ];
+	return (a && a.name) || typ;
+}
+
 /**
  * Eingangsmeldung nach der Prüfung (Teams/Telegram). extra: { zone, kategorie, besonderheiten, rueckfrage,
- * ohneRueckfrageText, manipulation_hinweis, text_hinweise }. besonderheiten ist eine kurze, von der KI
+ * ohneRueckfrageText, manipulation_hinweis, text_hinweise, vorgangsart }. besonderheiten ist eine kurze, von der KI
  * zusammengefasste Zusatzinformation aus der Mail (nur Anzeige, escaped).
  */
 function meldungGeprueft(vorgangsId, mail, felder, pruefung, extra = {}) {
 	const titel = pruefung.vollstaendig ? 'Vollständige Anfrage – bereit zur Bearbeitung' : 'Unvollständige Anfrage erkannt';
-	const teile = [kopf(titel, vorgangsId, mail, { zone: extra.zone, kategorie: extra.kategorie }), TRENNER];
+	const teile = [kopf(titel, vorgangsId, mail, { zone: extra.zone, kategorie: extra.kategorie, art: extra.vorgangsart }), TRENNER];
 	teile.push('<b>ERFASSTE DATEN</b><br><br>' + datenBlock(felder, pruefung.daten));
 	const bes = typeof extra.besonderheiten === 'string' ? extra.besonderheiten.trim() : '';
 	if (bes) teile.push(`<b>Wichtige Information erkannt</b><br>${esc(bes.slice(0, 400))}`);
@@ -388,6 +398,7 @@ module.exports = {
 	TRENNER,
 	erfasstText,
 	verdaechtigeStellen,
+	vorgangsartName,
 	starkeStellen,
 	manipulationBewerten,
 	manipulationQuellen,

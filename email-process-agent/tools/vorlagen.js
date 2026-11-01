@@ -52,6 +52,7 @@ const ALLGEMEIN = {
 	stille_alarm_stunden: 0,
 	uebersetzungen: '',
 	outlook_kategorien: '',
+	vorgangsarten: '',
 	config_sheet: '',
 };
 

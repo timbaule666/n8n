@@ -227,3 +227,14 @@ test('Keine Anfrage, aber bitte ansehen: Meldung mit passendem Vorgang', () => {
 	assert.match(e.meldungKeineAnfrage('V-1', mail, { anlass: 'storno', stelle: 'x' }, []), /bitte selbst zuordnen/);
 	assert.match(e.meldungKeineAnfrage('V-1', mail, { anlass: 'status', stelle: null, vorgangs_ids: ['V-2026-9999'] }, []), /V-2026-9999 – im System nicht gefunden/);
 });
+
+test('Vorgangsart in Meldungen nur bei mehreren Vorgangsarten', () => {
+	const eine = { vorgangstypen: { transport: [] }, vorgangsarten: { transport: { name: 'Angebotsanfrage' } } };
+	const drei = { vorgangstypen: { transport: [], bestellung: [], termin: [] }, vorgangsarten: { bestellung: { name: 'Bestellung' } } };
+	assert.equal(e.vorgangsartName(eine, 'transport'), null);
+	assert.equal(e.vorgangsartName(drei, 'bestellung'), 'Bestellung');
+	assert.equal(e.vorgangsartName(drei, 'termin'), 'termin');
+	const g = e.meldungGeprueft('V-1', MAIL, [], { vollstaendig: true, daten: {}, fehlende: [], hinweise: [], unsicher: [] }, { vorgangsart: 'Bestellung' });
+	assert.match(g, /Vorgangsnummer: <b>V-1<\/b><br>Art: <b>Bestellung<\/b>/);
+	assert.doesNotMatch(e.meldungGeprueft('V-1', MAIL, [], { vollstaendig: true, daten: {}, fehlende: [], hinweise: [], unsicher: [] }, {}), /Art:/);
+});

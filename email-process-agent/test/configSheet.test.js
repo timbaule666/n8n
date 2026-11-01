@@ -115,8 +115,9 @@ test('Übersetzungen: Texte je Sprache im Sheet, fehlender Text wird verständli
 	const inhalt = s.sheetInhalt(ALLG, PF);
 	assert.ok(inhalt.Pflichtfelder[0].includes('Rückfrage-Text (en)'));
 	assert.ok(inhalt.Allgemein.some((z) => z[0] === 'Signatur (en)'));
-	let r = lauf((i) => { feld(i, 'Telefon')[i.Pflichtfelder[0].indexOf('Rückfrage-Text (en)')] = ''; });
-	assert.match(r.fehler.join('|'), /"Rückfrage-Text \(en\)" für Telefon fehlt/);
+	// Gewicht_kg gibt es nur bei Transport (Telefon steht in mehreren Vorgangsarten und hat dort weitere Texte)
+	let r = lauf((i) => { feld(i, 'Gewicht_kg')[i.Pflichtfelder[0].indexOf('Rückfrage-Text (en)')] = ''; });
+	assert.match(r.fehler.join('|'), /"Rückfrage-Text \(en\)" für Gewicht_kg fehlt/);
 	r = lauf((i) => setze(i, 'Signatur (en)', 'Best regards\nTest team'));
 	assert.deepEqual(r.fehler, []);
 	assert.equal(JSON.parse(r.allgemein_update.uebersetzungen).en.signatur, 'Best regards\nTest team');

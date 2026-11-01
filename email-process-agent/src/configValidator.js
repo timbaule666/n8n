@@ -290,6 +290,7 @@ function validiereConfig(allgemein, pflichtfelder, optionen = {}) {
 		vorgangstypen: pruefePflichtfelder(pflichtfelder, fehler),
 	};
 	if (config.config_sheet && !/^[A-Za-z0-9_-]{20,100}$/.test(config.config_sheet)) fehler.push('config_sheet: keine gültige Google-Sheet-ID (der Teil der URL zwischen /d/ und /edit)');
+	config.vorgangsarten = pruefeVorgangsarten(a.vorgangsarten, config.vorgangstypen, fehler);
 	config.uebersetzungen = pruefeUebersetzungen(a.uebersetzungen, config, fehler);
 	config.outlook_kategorien = pruefeKategorien(a.outlook_kategorien, fehler);
 	for (const liste of ['absender_allowlist', 'absender_blocklist']) {
@@ -321,6 +322,38 @@ function pruefeKategorien(roh, fehler) {
 		out[status] = { name, farbe: e.farbe ? String(e.farbe) : null };
 	}
 	return out;
+}
+
+/**
+ * Optional: Name und Beschreibung je Vorgangsart, z. B.
+ * { "bestellung": { "name": "Bestellung", "beschreibung": "Kunde bestellt verbindlich Ware oder eine Leistung" } }.
+ * Die Beschreibung bekommt die KI bei der Erkennung, der Name steht in den Meldungen. Fehlt ein Eintrag, gilt der
+ * Schlüssel als Name. Jede Vorgangsart aus den Pflichtfeldern bekommt immer einen Eintrag.
+ */
+function pruefeVorgangsarten(roh, vorgangstypen, fehler) {
+	const typen = Object.keys(vorgangstypen || {});
+	const leer = roh === undefined || roh === null || roh === '';
+	const v = leer ? {} : parseJson(roh, 'vorgangsarten', fehler);
+	if (!leer && (!v || typeof v !== 'object' || Array.isArray(v))) {
+		if (v !== null) fehler.push('vorgangsarten: muss ein Objekt { "<vorgangstyp>": { name, beschreibung } } sein');
+		return Object.fromEntries(typen.map((t) => [t, { name: standardName(t), beschreibung: '' }]));
+	}
+	for (const t of Object.keys(v || {})) if (!typen.includes(t)) fehler.push(`vorgangsarten.${t}: Vorgangsart hat keine Pflichtfelder`);
+	const out = {};
+	for (const t of typen) {
+		const e = (v || {})[t] || {};
+		const name = typeof e.name === 'string' && e.name.trim() ? e.name.trim() : standardName(t);
+		const beschreibung = typeof e.beschreibung === 'string' ? e.beschreibung.trim() : '';
+		if (name.length > 60) fehler.push(`vorgangsarten.${t}.name: zu lang (max. 60 Zeichen)`);
+		if (beschreibung.length > 300) fehler.push(`vorgangsarten.${t}.beschreibung: zu lang (max. 300 Zeichen)`);
+		out[t] = { name: name.slice(0, 60), beschreibung: beschreibung.slice(0, 300) };
+	}
+	return out;
+}
+
+function standardName(typ) {
+	const s = String(typ).replace(/_/g, ' ');
+	return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /**

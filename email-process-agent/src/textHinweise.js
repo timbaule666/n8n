@@ -111,13 +111,17 @@ function alternativeDaten(text) {
 /**
  * Alle Hinweise zu einer Mail als Texte (unescaped; der Aufrufer escaped).
  * @param {object} mail normalisierte Mail (betreff, text)
- * @param {{ antwort?: boolean }} [optionen] antwort: Kundenantwort zu einem bestehenden Vorgang (prüft auf Stornierung)
+ * @param {{ antwort?: boolean, felder?: object[] }} [optionen] antwort: Kundenantwort zu einem bestehenden Vorgang (prüft auf
+ *   Stornierung); felder: Felder der Vorgangsart (ohne zwei PLZ-Felder keine Prüfung auf mehrere Aufträge)
  */
 function alle(mail, optionen = {}) {
 	const m = mail || {};
 	const text = [m.betreff, m.text].filter(Boolean).join('\n');
 	const h = [];
-	const mehrere = mehrereAuftraege(m.text);
+	// "Mehrere Aufträge" erkennt der Agent an Postleitzahlen: nur sinnvoll für Vorgangsarten mit Start- und Ziel-PLZ
+	// (Transport). Bei Bestellungen oder Terminen stehen Adressen in Signaturen und würden falsch zählen.
+	const mitStrecke = !Array.isArray(optionen.felder) || optionen.felder.filter((f) => f && f.typ === 'plz').length >= 2;
+	const mehrere = mitStrecke ? mehrereAuftraege(m.text) : { verdacht: false, plz: [] };
 	if (mehrere.verdacht) {
 		h.push(`Die Mail enthält möglicherweise mehrere Aufträge${mehrere.plz.length > 2 ? ` (${mehrere.plz.length} verschiedene Postleitzahlen)` : ''}. Erfasst wurde nur ein Auftrag – bitte die Mail prüfen und weitere Aufträge manuell anlegen.`);
 	}

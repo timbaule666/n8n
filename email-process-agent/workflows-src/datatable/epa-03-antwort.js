@@ -91,11 +91,13 @@ return [{ json: { weg: antwort.wegBestimmen(v.status), status: v.status } }];
 	});
 
 	// ---------------------------------------------------------------- nur melden
-	const mNur = wf.code('Meldung: nur zugeordnet', [1320, -320], ['antwort', 'textHinweise'], `
+	const mNur = wf.code('Meldung: nur zugeordnet', [1320, -320], ['antwort', 'textHinweise', 'eingang'], `
 const v = $('Vorgang lesen').first().json.vorgang;
 const mail = $('Bei Aufruf').first().json.mail;
-const th = textHinweise.alle(mail, { antwort: true });
-return [{ json: { anlass: 'antwort_gemeldet', nachricht_html: antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, mail, entscheidung: { weg: 'nur_melden' }, alterStatus: v.status, text_hinweise: th.hinweise, storno: th.storno }), ergebnis: 'gemeldet' } }];
+const config = $('Config laden').first().json.config;
+const th = textHinweise.alle(mail, { antwort: true, felder: (config.vorgangstypen || {})[v.vorgangstyp] });
+const art = eingang.vorgangsartName(config, v.vorgangstyp);
+return [{ json: { anlass: 'antwort_gemeldet', nachricht_html: antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, vorgangsart: art, mail, entscheidung: { weg: 'nur_melden' }, alterStatus: v.status, text_hinweise: th.hinweise, storno: th.storno }), ergebnis: 'gemeldet' } }];
 `);
 
 	// ---------------------------------------------------------------- Extraktion und Merge
@@ -196,8 +198,9 @@ const v = $('Vorgang lesen').first().json.vorgang;
 const config = $('Config laden').first().json.config;
 const mail = $('Bei Aufruf').first().json.mail;
 const fristText = z.frist_neu ? DateTime.fromISO(z.frist_neu).setZone(config.zeitzone).toFormat('dd.LL.yyyy, HH:mm') : null;
-const th = textHinweise.alle(mail, { antwort: true });
-let html = antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, mail, merge: z.merge, entscheidung: { weg: 'keine_daten' }, fristNeu: fristText, text_hinweise: th.hinweise, storno: th.storno, besonderheiten: z.besonderheiten });
+const th = textHinweise.alle(mail, { antwort: true, felder: (config.vorgangstypen || {})[v.vorgangstyp] });
+const art = eingang.vorgangsartName(config, v.vorgangstyp);
+let html = antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, vorgangsart: art, mail, merge: z.merge, entscheidung: { weg: 'keine_daten' }, fristNeu: fristText, text_hinweise: th.hinweise, storno: th.storno, besonderheiten: z.besonderheiten });
 if (z.manipulation_hinweis) html += '<br>⚠️ ' + eingang.esc(eingang.MANIPULATION_HINWEIS);
 return [{ json: { anlass: th.storno ? 'antwort_storno' : z.besonderheiten ? 'antwort_zusatzinfo' : 'antwort_keine_daten', nachricht_html: html, ergebnis: 'keine_daten' } }];
 `);
@@ -266,8 +269,10 @@ return zeilen.length ? zeilen.map((j) => ({ json: j })) : [{ json: { leer: true 
 const z = $('Zusammenführen').first().json;
 const v = $('Vorgang lesen').first().json.vorgang;
 const mail = $('Bei Aufruf').first().json.mail;
-const th = textHinweise.alle(mail, { antwort: true });
-let html = antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, mail, merge: z.merge, entscheidung: { weg: z.ergebnis, freigabe_ersetzen: z.freigabe_ersetzen }, ohneRueckfrageText: true, text_hinweise: th.hinweise, storno: th.storno, besonderheiten: z.besonderheiten });
+const config = $('Config laden').first().json.config;
+const th = textHinweise.alle(mail, { antwort: true, felder: (config.vorgangstypen || {})[v.vorgangstyp] });
+const art = eingang.vorgangsartName(config, v.vorgangstyp);
+let html = antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, vorgangsart: art, mail, merge: z.merge, entscheidung: { weg: z.ergebnis, freigabe_ersetzen: z.freigabe_ersetzen }, ohneRueckfrageText: true, text_hinweise: th.hinweise, storno: th.storno, besonderheiten: z.besonderheiten });
 if (z.manipulation_hinweis) html += '<br>⚠️ ' + eingang.esc(eingang.MANIPULATION_HINWEIS);
 return [{ json: { kontext_html: html } }];
 `);
@@ -286,8 +291,9 @@ const mail = $('Bei Aufruf').first().json.mail;
 if (z.ergebnis === 'manipulation') return [{ json: { anlass: 'antwort_manipulation', nachricht_html: '', ergebnis: 'manipulation', stumm: true } }];
 const r = $('Rückfrage anfordern').isExecuted ? $('Rückfrage anfordern').first().json : null;
 const config = $('Config laden').first().json.config;
-const th = textHinweise.alle(mail, { antwort: true });
-let html = antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, mail, merge: z.merge, entscheidung: { weg: z.ergebnis, freigabe_ersetzen: z.freigabe_ersetzen }, rueckfrage: r,
+const th = textHinweise.alle(mail, { antwort: true, felder: (config.vorgangstypen || {})[v.vorgangstyp] });
+const art = eingang.vorgangsartName(config, v.vorgangstyp);
+let html = antwort.meldungAntwort({ vorgangs_id: v.vorgangs_id, vorgangsart: art, mail, merge: z.merge, entscheidung: { weg: z.ergebnis, freigabe_ersetzen: z.freigabe_ersetzen }, rueckfrage: r,
 	uebersicht: { vorgang: v, felder: config.vorgangstypen[v.vorgangstyp] || [], zeitzone: config.zeitzone }, text_hinweise: th.hinweise, storno: th.storno, besonderheiten: z.besonderheiten });
 if (z.manipulation_hinweis) html += '<br>⚠️ ' + eingang.esc(eingang.MANIPULATION_HINWEIS);
 // Neue Rückfrage samt Übersicht ist beim Freigeber angekommen: keine zweite Nachricht.

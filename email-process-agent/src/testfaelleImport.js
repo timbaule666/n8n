@@ -49,10 +49,12 @@ function csvLesen(text) {
 }
 
 /** Felddefinitionen aus Zeilen von epa_config_pflichtfelder (nur aktive, Feldname eindeutig über alle Vorgangstypen). */
-function felderAusConfig(pflichtfeldZeilen, kundeId) {
+// vorgangstyp: nur die Felder dieser Vorgangsart (ein Kunde kann mehrere haben, z. B. transport, bestellung, termin)
+function felderAusConfig(pflichtfeldZeilen, kundeId, vorgangstyp) {
 	const felder = new Map();
 	for (const z of pflichtfeldZeilen) {
 		if (kundeId && z.kunde_id !== kundeId) continue;
+		if (vorgangstyp && z.vorgangstyp !== vorgangstyp) continue;
 		if (z.aktiv === false || z.aktiv === 'false') continue;
 		if (felder.has(z.feldname)) continue;
 		let regel = z.validierungsregel || {};

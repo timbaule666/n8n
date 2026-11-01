@@ -329,7 +329,7 @@ return [{ json: {
 		['aufgabe', 'string', 'klassifizierung'],
 		['prompt_version', 'string', `={{ ${C}.prompt_versionen.klassifizierung }}`],
 		['profil', 'object', `={{ ${C}.llm_profil.klassifizierung }}`],
-		['kontext', 'object', `={{ { mail: ${M}, vorgangstypen: Object.keys(${C}.vorgangstypen), hinweise: ${N}.hinweise_klassifizierung } }}`],
+		['kontext', 'object', `={{ { mail: ${M}, vorgangstypen: Object.keys(${C}.vorgangstypen), vorgangsarten: ${C}.vorgangsarten, hinweise: ${N}.hinweise_klassifizierung } }}`],
 		['fehler_als_ergebnis', 'boolean', '={{ false }}'],
 	]);
 	const klasse = wf.code('Klasse auswerten', [3080, 240], ['eingang'], `
@@ -466,7 +466,7 @@ const p = $('Pflichtfelder prüfen').first().json;
 const v = $('Vorgang anlegen').first().json.vorgang;
 const mail = $('Mail normalisieren').first().json.mail;
 const kat = (config.outlook_kategorien || {})['Freigabe ausstehend'];
-return [{ json: { kontext_html: eingang.meldungGeprueft(v.vorgangs_id, mail, config.vorgangstypen[k.vorgangstyp], p.pruefung, { manipulation_hinweis: p.manipulation_hinweis, ohneRueckfrageText: true, text_hinweise: textHinweise.alle(mail).hinweise, zone: config.zeitzone, kategorie: kat && kat.name, besonderheiten: p.besonderheiten }) } }];
+return [{ json: { kontext_html: eingang.meldungGeprueft(v.vorgangs_id, mail, config.vorgangstypen[k.vorgangstyp], p.pruefung, { manipulation_hinweis: p.manipulation_hinweis, ohneRueckfrageText: true, text_hinweise: textHinweise.alle(mail, { felder: config.vorgangstypen[k.vorgangstyp] }).hinweise, zone: config.zeitzone, kategorie: kat && kat.name, besonderheiten: p.besonderheiten, vorgangsart: eingang.vorgangsartName(config, k.vorgangstyp) }) } }];
 `);
 	// Fehler in EPA-02 meldet EPA-05 selbst (Alarm, Vorgang sichern); die Mailverarbeitung läuft weiter.
 	const rueckfrage = wf.aufruf('Rückfrage anfordern', [4840, 40], 'EPA-02 Rückfrage anfordern', [
@@ -489,7 +489,8 @@ const html = p.weg === 'extraktion_fehlgeschlagen'
 		kategorie: ((config.outlook_kategorien || {})[p.pruefung.vollstaendig ? 'Bereit zur Bearbeitung' : 'Freigabe ausstehend'] || {}).name,
 		besonderheiten: p.besonderheiten,
 		manipulation_hinweis: p.manipulation_hinweis,
-		text_hinweise: textHinweise.alle(mail).hinweise,
+		text_hinweise: textHinweise.alle(mail, { felder: config.vorgangstypen[k.vorgangstyp] }).hinweise,
+		vorgangsart: eingang.vorgangsartName(config, k.vorgangstyp),
 		rueckfrage: $('Rückfrage anfordern').isExecuted ? $('Rückfrage anfordern').first().json : null,
 	});
 const r = $('Rückfrage anfordern').isExecuted ? $('Rückfrage anfordern').first().json : null;

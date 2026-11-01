@@ -86,20 +86,20 @@ function vorlage({ anrede_stil: stil, sprache }, name) {
 	if (sprache === 'en') {
 		return {
 			anrede: n ? `Dear ${n},` : 'Hello,',
-			einleitung: 'Thank you for your request. To process it, we still need the following information:',
+			einleitung: 'Thank you for your message. To process your request, we still need the following information:',
 			schluss: 'Thank you in advance for your reply.',
 		};
 	}
 	if (stil === 'Du') {
 		return {
 			anrede: n ? `Hallo ${n},` : 'Hallo,',
-			einleitung: 'vielen Dank für deine Anfrage. Damit wir sie bearbeiten können, brauchen wir noch folgende Angaben:',
+			einleitung: 'vielen Dank für deine Nachricht. Damit wir dein Anliegen bearbeiten können, brauchen wir noch folgende Angaben:',
 			schluss: 'Vielen Dank für deine Rückmeldung.',
 		};
 	}
 	return {
 		anrede: n ? `Guten Tag ${n},` : 'Guten Tag,',
-		einleitung: 'vielen Dank für Ihre Anfrage. Damit wir sie bearbeiten können, benötigen wir noch folgende Angaben:',
+		einleitung: 'vielen Dank für Ihre Nachricht. Damit wir Ihr Anliegen bearbeiten können, benötigen wir noch folgende Angaben:',
 		schluss: 'Vielen Dank für Ihre Rückmeldung.',
 	};
 }
@@ -117,13 +117,13 @@ function vorlageErinnerung({ anrede_stil: stil, sprache }, name) {
 	if (stil === 'Du') {
 		return {
 			anrede: n ? `Hallo ${n},` : 'Hallo,',
-			einleitung: 'wir möchten dich freundlich an unsere letzte Nachricht erinnern. Damit wir deine Anfrage bearbeiten können, brauchen wir noch folgende Angaben:',
+			einleitung: 'wir möchten dich freundlich an unsere letzte Nachricht erinnern. Damit wir dein Anliegen bearbeiten können, brauchen wir noch folgende Angaben:',
 			schluss: 'Vielen Dank für deine Rückmeldung.',
 		};
 	}
 	return {
 		anrede: n ? `Guten Tag ${n},` : 'Guten Tag,',
-		einleitung: 'wir möchten Sie freundlich an unsere letzte Nachricht erinnern. Damit wir Ihre Anfrage bearbeiten können, benötigen wir noch folgende Angaben:',
+		einleitung: 'wir möchten Sie freundlich an unsere letzte Nachricht erinnern. Damit wir Ihr Anliegen bearbeiten können, benötigen wir noch folgende Angaben:',
 		schluss: 'Vielen Dank für Ihre Rückmeldung.',
 	};
 }

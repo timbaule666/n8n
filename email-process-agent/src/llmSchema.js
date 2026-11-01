@@ -185,6 +185,21 @@ function ersetzen(vorlage, variablen) {
 }
 
 /**
+ * Erlaubte Vorgangsarten für die Klassifizierung. Mit Beschreibungen (config.vorgangsarten) als Liste, damit die KI
+ * z. B. Angebotsanfrage, Bestellung und Terminanfrage unterscheiden kann; ohne nur die Schlüssel.
+ */
+function vorgangstypenText(typen, arten) {
+	const liste = typen || [];
+	if (!liste.length) return '(keine)';
+	if (!arten || typeof arten !== 'object') return liste.join(', ');
+	return liste.map((t) => {
+		const a = arten[t] || {};
+		const name = a.name && a.name !== t ? ` (${a.name})` : '';
+		return `- "${t}"${name}${a.beschreibung ? `: ${a.beschreibung}` : ''}`;
+	}).join('\n');
+}
+
+/**
  * Baut den Request-Body für /v1/chat/completions.
  * @param {string} aufgabe klassifizierung | extraktion
  * @param {{system: string, user_vorlage: string, version: string}} prompt aus der Prompt-Registry
@@ -204,7 +219,7 @@ function anfrageBauen(aufgabe, prompt, kontext, profil) {
 		SPRACHE: kontext.sprache || 'de',
 		LUECKEN: (kontext.luecken || []).map((l) => `- ${l}`).join('\n') || '- keine',
 		RUNDE: String(kontext.runde || 1),
-		VORGANGSTYPEN: (kontext.vorgangstypen || []).join(', ') || '(keine)',
+		VORGANGSTYPEN: vorgangstypenText(kontext.vorgangstypen, kontext.vorgangsarten),
 		FELDLISTE: feldliste(kontext.felder),
 		HINWEISE: (kontext.hinweise || []).length ? kontext.hinweise.map((h) => `- ${h}`).join('\n') : '- keine',
 		HEUTE: kontext.heute || '',
@@ -302,6 +317,7 @@ module.exports = {
 	klassifizierungSchema,
 	extraktionSchema,
 	entwurfSchema,
+	vorgangstypenText,
 	schemaFuer,
 	validieren,
 	fuerOpenAi,

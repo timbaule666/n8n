@@ -144,3 +144,10 @@ test('Entwurf: Schema nur Hülle, Prompt ohne Mailinhalt', () => {
 	assert.match(b.messages[1].content, /- Telefon\nRunde 2\n<mail_daten>\nName des Kunden: Eva\nBetreff: Anfrage\n<\/mail_daten>/);
 	assert.equal(b.response_format.json_schema.name, 'entwurf');
 });
+
+test('Klassifizierung: Vorgangsarten mit Name und Beschreibung im Prompt', () => {
+	const arten = { transport: { name: 'Angebotsanfrage', beschreibung: 'Preis für einen Transport' }, termin: { name: 'termin', beschreibung: '' } };
+	assert.equal(llm.vorgangstypenText(['transport', 'termin'], arten), '- "transport" (Angebotsanfrage): Preis für einen Transport\n- "termin"');
+	assert.equal(llm.vorgangstypenText(['transport'], undefined), 'transport');
+	assert.equal(llm.vorgangstypenText([], arten), '(keine)');
+});
