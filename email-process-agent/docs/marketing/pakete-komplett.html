@@ -79,6 +79,13 @@ li::before{content:"✓";position:absolute;left:0;top:5px;color:var(--ok);font-w
 .bx .r{display:flex;justify-content:space-between;font-size:15px;color:#334155;padding:3px 0}
 .bx .r.sum{border-top:1px solid var(--line);margin-top:6px;padding-top:8px;font-weight:800;color:var(--ink)}
 .bx .r .k{color:var(--muted)}
+.inh{margin-top:48px;max-width:860px;padding:0 8px}
+.inh h2{font-size:34px;font-weight:800;color:#fff;margin-bottom:22px}
+.inh-liste{display:flex;flex-direction:column}
+.ip{border-top:1px solid #334155;padding:18px 0}
+.ip h3{font-size:21px;font-weight:700;color:#fff;margin-bottom:6px}
+.ip p{font-size:17px;line-height:1.5;color:#cbd5e1}
+.netto{text-align:left!important;padding-left:8px}
 </style></head><body>
 <div class="kopf">
   <div class="tag">Config-Driven Email Process Agent</div>
@@ -162,31 +169,14 @@ li::before{content:"✓";position:absolute;left:0;top:5px;color:var(--ok);font-w
 </div>
 
 <div class="def"><b>Ein Vorgang</b> = eine neue Kundenmail aus einem Ihrer Bereiche (Angebotsanfrage, Bestellung oder Terminanfrage). Rückfragen und Kundenantworten zählen nicht extra.</div>
-<div class="ber">
-  <h2>In jedem Paket: drei Bereiche</h2>
-  <div class="sub">Der Agent bearbeitet Angebotsanfragen, Bestellungen und Terminanfragen – Sie nutzen, was Sie brauchen. Jede Mail wird automatisch dem richtigen Bereich zugeordnet.</div>
-  <div class="ber-grid">
-    <div class="b">
-      <div class="bn">Angebotsanfrage</div>
-      <div class="bd">Kunden fragen einen Preis oder ein Angebot an. Der Agent erfasst alle Angaben – auch aus PDF-Anhängen – und fragt Fehlendes nach.</div>
-      <div class="ang"><b>Typische Angaben:</b> Abhol- und Zielort, Termin, Menge oder Gewicht, Art der Ware, Ansprechpartner, Telefon</div>
-    </div>
-    <div class="b">
-      <div class="bn">Bestellung</div>
-      <div class="bd">Kunden bestellen verbindlich. Der Agent prüft, ob Menge, Liefertermin und Lieferadresse vollständig sind, bevor Ihr Team die Bestellung bearbeitet.</div>
-      <div class="ang"><b>Typische Angaben:</b> Ware oder Leistung, Menge, Liefertermin, Lieferadresse, Bestellnummer, Ansprechpartner, Telefon</div>
-    </div>
-    <div class="b">
-      <div class="bn">Terminanfrage</div>
-      <div class="bd">Kunden möchten einen Termin vereinbaren oder verschieben. Der Agent sammelt Anlass, Wunschtermin und Kontakt – ohne langes Hin und Her.</div>
-      <div class="ang"><b>Typische Angaben:</b> Anlass, Wunschtermin, Uhrzeit, Ort, Ansprechpartner, Telefon</div>
-    </div>
-  </div>
-
-  <div class="hinweis">
-    <span>Einrichtung von bis zu 3 Bereichen inklusive</span>
-    <span>Alle Vorgänge zählen gleich – egal aus welchem Bereich</span>
-    <span>Weitere Bereiche (z. B. Reklamation) auf Anfrage</span>
+<div class="inh">
+  <h2>In jedem Paket enthalten</h2>
+  <div class="inh-liste">
+    <div class="ip"><h3>Angebotserkennung</h3><p>Anfragen nach Preis oder Angebot werden sofort erkannt. Alle Angaben aus Mailtext und PDF-Anhängen werden erfasst, fehlende Informationen fragt der Agent nach.</p></div>
+    <div class="ip"><h3>Bestellungen</h3><p>Verbindliche Bestellungen werden auf Menge, Liefertermin und Lieferadresse geprüft, bevor Ihr Team sie bearbeitet.</p></div>
+    <div class="ip"><h3>Termine</h3><p>Terminwünsche werden mit Anlass, Datum und Kontakt gesammelt – ohne langes Hin und Her.</p></div>
+    <div class="ip"><h3>Überwachung</h3><p>Der Agent überwacht sich selbst. Steht das Postfach still, bleiben Vorgänge liegen oder tritt ein Fehler auf, werden Sie sofort alarmiert.</p></div>
+    <div class="ip"><h3>Schutz</h3><p>Keine Mail geht ohne Ihre Freigabe raus. Manipulationsversuche in Mails werden erkannt und gemeldet, die KI hat keinen Zugriff auf Ihre Systeme.</p></div>
   </div>
 </div>
 
