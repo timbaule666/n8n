@@ -70,6 +70,15 @@ li::before{content:"✓";position:absolute;left:0;top:5px;color:var(--ok);font-w
 .hinweis span{background:rgba(255,255,255,.08);border:1px solid #334155;border-radius:999px;padding:9px 18px;font-size:16px;color:#e2e8f0}
 .def{margin-top:26px;text-align:center;font-size:17px;color:#cbd5e1}
 .def b{color:#fff}
+.bsp{margin-top:26px;background:#fff;border-radius:18px;padding:24px 28px}
+.bsp h3{font-size:22px;font-weight:800;margin-bottom:4px}
+.bsp .s{font-size:15.5px;color:var(--muted);margin-bottom:16px}
+.bsp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.bx{border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+.bx .t{font-size:16px;font-weight:700;margin-bottom:10px}
+.bx .r{display:flex;justify-content:space-between;font-size:15px;color:#334155;padding:3px 0}
+.bx .r.sum{border-top:1px solid var(--line);margin-top:6px;padding-top:8px;font-weight:800;color:var(--ink)}
+.bx .r .k{color:var(--muted)}
 </style></head><body>
 <div class="kopf">
   <div class="tag">Config-Driven Email Process Agent</div>
@@ -165,7 +174,7 @@ li::before{content:"✓";position:absolute;left:0;top:5px;color:var(--ok);font-w
       <div class="bn">Angebotsanfrage</div>
       <div class="bd">Kunden fragen einen Preis oder ein Angebot an. Der Agent erfasst alle Angaben – auch aus PDF-Anhängen – und fragt Fehlendes nach.</div>
       <div class="ang"><b>Typische Angaben:</b> Abhol- und Zielort, Termin, Menge oder Gewicht, Art der Ware, Ansprechpartner, Telefon</div>
-      <div class="zus"><div class="l">Als Zusatzbereich</div>
+      <div class="zus"><div class="l">Zusätzlich zum Paket (wenn nicht inklusive)</div>
         <div class="w">Einrichtung einmalig <b>890 €</b></div>
         <div class="w">Monatlich <b>+ 49 €</b></div></div>
     </div>
@@ -173,7 +182,7 @@ li::before{content:"✓";position:absolute;left:0;top:5px;color:var(--ok);font-w
       <div class="bn">Bestellung</div>
       <div class="bd">Kunden bestellen verbindlich. Der Agent prüft, ob Menge, Liefertermin und Lieferadresse vollständig sind, bevor Ihr Team die Bestellung bearbeitet.</div>
       <div class="ang"><b>Typische Angaben:</b> Ware oder Leistung, Menge, Liefertermin, Lieferadresse, Bestellnummer, Ansprechpartner, Telefon</div>
-      <div class="zus"><div class="l">Als Zusatzbereich</div>
+      <div class="zus"><div class="l">Zusätzlich zum Paket (wenn nicht inklusive)</div>
         <div class="w">Einrichtung einmalig <b>690 €</b></div>
         <div class="w">Monatlich <b>+ 49 €</b></div></div>
     </div>
@@ -181,9 +190,17 @@ li::before{content:"✓";position:absolute;left:0;top:5px;color:var(--ok);font-w
       <div class="bn">Terminanfrage</div>
       <div class="bd">Kunden möchten einen Termin vereinbaren oder verschieben. Der Agent sammelt Anlass, Wunschtermin und Kontakt – ohne langes Hin und Her.</div>
       <div class="ang"><b>Typische Angaben:</b> Anlass, Wunschtermin, Uhrzeit, Ort, Ansprechpartner, Telefon</div>
-      <div class="zus"><div class="l">Als Zusatzbereich</div>
+      <div class="zus"><div class="l">Zusätzlich zum Paket (wenn nicht inklusive)</div>
         <div class="w">Einrichtung einmalig <b>390 €</b></div>
         <div class="w">Monatlich <b>+ 49 €</b></div></div>
+    </div>
+  </div>
+
+  <div class="bsp">
+    <h3>So setzt sich der Preis zusammen</h3>
+    <div class="s">Paketpreis + nur die Bereiche, die nicht im Paket enthalten sind. Angaben: einmalige Einrichtung | Monatspreis.</div>
+    <div class="bsp-grid">
+<div class="bx"><div class="t">Business mit 2 Bereichen</div><div class="r"><span>Paket Business</span><span>2.990 € <span class="k">|</span> 549 €</span></div><div class="r"><span>2 Bereiche inklusive</span><span>0 € <span class="k">|</span> 0 €</span></div><div class="r sum"><span>Gesamt</span><span>2.990 € <span class="k">|</span> 549 €/Monat</span></div></div><div class="bx"><div class="t">Business mit allen 3 Bereichen</div><div class="r"><span>Paket Business</span><span>2.990 € <span class="k">|</span> 549 €</span></div><div class="r"><span>+ Terminanfrage</span><span>390 € <span class="k">|</span> 49 €</span></div><div class="r sum"><span>Gesamt</span><span>3.380 € <span class="k">|</span> 598 €/Monat</span></div></div><div class="bx"><div class="t">Basis mit 2 Bereichen</div><div class="r"><span>Paket Basis</span><span>1.990 € <span class="k">|</span> 249 €</span></div><div class="r"><span>+ Bestellung</span><span>690 € <span class="k">|</span> 49 €</span></div><div class="r sum"><span>Gesamt</span><span>2.680 € <span class="k">|</span> 298 €/Monat</span></div></div>
     </div>
   </div>
   <div class="hinweis">
