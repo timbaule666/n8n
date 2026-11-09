@@ -57,3 +57,25 @@ Längere Code-Blöcke liegen in `workflows-src/datatable/code/`. Abweichung zur 
 EPA-08 um Kalender-Termine (mit dem Vorgang und 30 Tage nach Link-Ablauf) und Übersicht-Zugänge (30 Tage nach Ablauf) ergänzt, ausgerollt und veröffentlicht; läuft täglich 02:15. Probelauf vorher: 0 Vorgänge (keiner älter als 365 Tage), 7 ersetzte Rückfrage-Entwürfe zum Entfernen aus dem Postfach, Fehlerlog-Grenze 11.08.2026, Link-Grenze 10.10.2026.
 Offen: Regel, wann „Bereit zur Bearbeitung“ zu „Abgeschlossen“ wird (sonst nie gelöscht); Aufbewahrung der n8n-Ausführungsdaten in den n8n-Einstellungen begrenzen.
 Nachtrag: „Bereit zur Bearbeitung“ wird 30 Tage nach der letzten Änderung gelöscht (samt Freigaben, Links, Audit, Kalender-Terminen; Mails im Postfach bleiben). Probelauf heute: 0 Vorgänge; simuliert für 19.12.2026: 104 Vorgänge, 34 Freigaben, 4 zurückgestellt (erst Entwurf aus dem Postfach entfernen).
+
+## Nachtrag 09.11., 16:58 – Testdaten bereinigt
+Einmaliger Hilfs-Workflow (Probelauf, dann Ausführung, danach archiviert). Betroffen waren die Testkunden epa-m365, epa-test, epa-ki-test und beispiel-transport.
+
+| Bereich | Gelöscht |
+|---|---|
+| Rückfrage-Entwürfe im Testpostfach (nie gesendet, Freigabe-Kennung geprüft, landen in „Gelöschte Elemente“) | 13 |
+| Vorgänge (alle epa-m365) | 243 |
+| Freigaben | 86 |
+| Freigabe-Links | 131 |
+| Audit-Einträge | 1.640 |
+| Kalender-Termine (Tabelle; Einträge im Outlook-Kalender bleiben) | 5 |
+| Fehlerlog (komplett) | 59 |
+
+Unverändert geblieben:
+- Configs und Pflichtfelder aller Kunden
+- Prompts, PLZ-Verzeichnis, Systemstatus
+- Übersicht-Zugänge
+- `epa_verarbeitete_mails`: Schutz vor erneuter Verarbeitung alter Mails
+- Alle eingegangenen und gesendeten Mails im Postfach
+
+Neue Vorgangs-IDs zählen weiter (keine Wiederverwendung).
