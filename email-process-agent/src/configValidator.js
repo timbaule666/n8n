@@ -301,6 +301,8 @@ function validiereConfig(allgemein, pflichtfelder, optionen = {}) {
 	config.uebersetzungen = pruefeUebersetzungen(a.uebersetzungen, config, fehler);
 	config.outlook_kategorien = pruefeKategorien(a.outlook_kategorien, fehler);
 	config.kalender = pruefeKalender(a.kalender, config.vorgangstypen, fehler);
+	// Teams-Kanäle je Meldungsart (SW Teams einrichten). Ungültige Einträge werden ignoriert, nie ein Stopp.
+	config.kanaele = kanaeleLesen(a.kanaele);
 	for (const liste of ['absender_allowlist', 'absender_blocklist']) {
 		if (!Array.isArray(config[liste])) fehler.push(`${liste}: muss eine Liste sein`);
 	}
@@ -357,6 +359,17 @@ function pruefeVorgangsarten(roh, vorgangstypen, fehler) {
 		out[t] = { name: name.slice(0, 60), beschreibung: beschreibung.slice(0, 300) };
 	}
 	return out;
+}
+
+// Teams-Kanal-IDs je Meldungsart (Zuordnung in src/kanaele.js).
+const KANAL_ARTEN = ['anfragen', 'rueckfragen', 'ansehen', 'system', 'logs'];
+function kanaeleLesen(roh) {
+	let o = roh;
+	if (typeof roh === 'string') { try { o = roh.trim() ? JSON.parse(roh) : {}; } catch (e) { o = {}; } }
+	if (!o || typeof o !== 'object' || Array.isArray(o)) return {};
+	const aus = {};
+	for (const art of KANAL_ARTEN) if (typeof o[art] === 'string' && /^19:[^\s@]+@thread\.[a-z0-9]+$/i.test(o[art].trim())) aus[art] = o[art].trim();
+	return aus;
 }
 
 /**

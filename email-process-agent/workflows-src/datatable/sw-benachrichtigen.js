@@ -105,8 +105,9 @@ return [{ json: { gesendet: v.gesendet, fehler_id: p && p.id !== undefined ? p.i
 	wf.verbinde(welcherKanal, telegramSenden, 0);
 	wf.verbinde(welcherKanal, kunde, 1);
 	wf.kette(telegramSenden, pruefen);
-	// Kanal je Meldungsart (Config kanaele: anfragen, rueckfragen, system, logs); ohne kanaele der übergebene Kanal.
-	const kanal = wf.code('Kanal wählen', [770, 80], [], codeDatei('benachrichtigen-kanal-waehlen.js'));
+	// Kanal je Anlass (Config kanaele: anfragen, rueckfragen, ansehen, system, logs; Zuordnung src/kanaele.js);
+	// ohne kanaele der übergebene Kanal.
+	const kanal = wf.code('Kanal wählen', [770, 80], ['kanaele'], codeDatei('benachrichtigen-kanal-waehlen.js'));
 	wf.kette(kunde, kanal, senden, pruefen, fehlgeschlagen);
 	wf.verbinde(fehlgeschlagen, fehlerZeile, 0);
 	wf.verbinde(fehlgeschlagen, melden, 1);

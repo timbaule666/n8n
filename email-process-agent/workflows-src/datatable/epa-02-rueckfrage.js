@@ -168,7 +168,8 @@ const erneutBauen = () => {
 const e = erneut ? erneutBauen() : erinnerung
 	? entwurf.erinnerungBauen({ config: cfg, felder, fehlende: r.fehlende, name: r.name, referenz })
 	: entwurf.entwurfBauen(huelle, { config: cfg, felder, fehlende: r.fehlende, name: r.name, referenz });
-const tokens = config.freigeber.map((f) => ({ freigeber: f, ...freigabe.tokenErzeugen(crypto) }));
+// Kanal "Rückfragen" eingerichtet: ein Link für alle Freigeber (Name wird auf der Seite gewählt).
+const tokens = freigabe.linkEmpfaenger(config).map((f) => ({ freigeber: f, ...freigabe.tokenErzeugen(crypto) }));
 return [{ json: {
 	...e,
 	freigabe_id: freigabe.freigabeIdErzeugen(crypto),
@@ -244,7 +245,7 @@ const basis = freigabe.basisUrl($execution.resumeUrl, config.freigabe_basis_url)
 const ablaufText = DateTime.fromISO(z.ablauf).setZone(config.zeitzone).toFormat('dd.LL.yyyy, HH:mm');
 return z.tokens.map((t) => ({ json: {
 	freigeber: t.freigeber,
-	nachricht_html: freigabe.nachrichtFreigeber({ vorgang: v, freigabe: r.art === 'erneut' ? { ...fg, grund: r.vorige.grund } : fg, fehlende: r.fehlende.map((f) => ({ anzeigename: f.anzeigename || f.feldname })), link: freigabe.link(basis, t.token), ablaufText, art: r.freigabe_art, anlass: r.art === 'erneut' ? 'freigabe_nach_unzustellbar' : undefined, kontext_html: r.art === 'rueckfrage' ? $('Bei Aufruf').first().json.kontext_html : null }),
+	nachricht_html: freigabe.nachrichtFreigeber({ vorgang: v, freigabe: r.art === 'erneut' ? { ...fg, grund: r.vorige.grund } : fg, fehlende: r.fehlende.map((f) => ({ anzeigename: f.anzeigename || f.feldname })), link: freigabe.link(basis, t.token), ablaufText, art: r.freigabe_art, anlass: r.art === 'erneut' ? 'freigabe_nach_unzustellbar' : undefined, kontext_html: r.art === 'rueckfrage' ? $('Bei Aufruf').first().json.kontext_html : null, kanal: t.freigeber === freigabe.KANAL }),
 } }));
 `);
 	// Teams-Karte zur Freigabe-Nachricht (Marker <!--EPA_KARTE:base64-->); der Text bleibt als Rückfall.

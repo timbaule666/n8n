@@ -50,7 +50,10 @@ try {
 			{ type: 'TextBlock', text: 'ENTWURF DER RÜCKFRAGE', weight: 'Bolder', size: 'Small', isSubtle: true },
 			{ type: 'TextBlock', text: entwurfText, wrap: true },
 		] });
-		body.push({ type: 'TextBlock', text: 'Persönlicher Link, einmal verwendbar, gültig bis ' + ablaufText + '. Bitte nicht weiterleiten. Es wird nichts ohne Ihren Klick versendet.', isSubtle: true, size: 'Small', wrap: true, spacing: 'Medium' });
+		const imKanal = (it.json || {}).freigeber === 'kanal';
+		body.push({ type: 'TextBlock', text: (imKanal
+			? 'Link einmal verwendbar, gültig bis ' + ablaufText + '. Beim Öffnen wählen Sie Ihren Namen (wird protokolliert).'
+			: 'Persönlicher Link, einmal verwendbar, gültig bis ' + ablaufText + '. Bitte nicht weiterleiten.') + ' Es wird nichts ohne Klick versendet.', isSubtle: true, size: 'Small', wrap: true, spacing: 'Medium' });
 		const karte = { type: 'AdaptiveCard', '$schema': 'http://adaptivecards.io/schemas/adaptive-card.json', version: '1.4', body, actions: [{ type: 'Action.OpenUrl', title: 'Entwurf prüfen und freigeben', url, style: 'positive' }] };
 		const b64 = Buffer.from(JSON.stringify(karte), 'utf8').toString('base64');
 		return { json: { ...it.json, nachricht_html: html + '<!--EPA_KARTE:' + b64 + '-->' } };

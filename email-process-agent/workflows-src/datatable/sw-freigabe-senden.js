@@ -9,8 +9,8 @@ module.exports = function () {
 
 	wf.notiz('Notiz Zweck', [-80, -420], [
 		'## EPA SW Freigabe senden',
-		'**Zweck:** Schickt einem Freigeber seinen persönlichen Freigabe-Link als Teams-Nachricht im 1:1-Chat (Variante B, Bauplan 6). Der Link geht nur an diese Person, nicht in einen Kanal.',
-		'**Trigger:** Aufruf durch EPA-02 (je Freigeber ein Aufruf).',
+		'**Zweck:** Schickt den Freigabe-Link nach Teams. Ist in der Config der Kanal "Rückfragen" eingerichtet (kanaele.rueckfragen), kommt freigeber = "kanal": eine Karte im Kanal für alle Freigeber; wer entscheidet, wählt auf der Freigabe-Seite seinen Namen. Sonst (ältere Kunden) der persönliche Link im 1:1-Chat an jeden Freigeber.',
+		'**Trigger:** Aufruf durch EPA-02 und SW Nachfassen (je Link ein Aufruf).',
 		'**Eingaben:** kunde_id, vorgangs_id, freigeber (E-Mail/UPN), kanal, chat_id, nachricht_html.',
 		'**Nur für interne Tests:** kanal = "telegram_test" schickt den Link über "EPA-T2 Telegram senden (Test)" an chat_id (Zuordnung je Freigeber in benachrichtigung.freigeber_chat_ids, sonst benachrichtigung.chat_id). Kunden nutzen immer Teams.',
 		'**Ausgabe:** { gesendet, fehler_id }. Ein Fehler bricht nichts ab; er landet im Fehlerlog, EPA-02 meldet dann im Kanal, dass die Freigabe nicht zugestellt wurde.',
@@ -31,7 +31,7 @@ module.exports = function () {
 const e = $input.first().json;
 const vid = e.vorgangs_id || null;
 const kanal = e.kanal === 'telegram_test' ? 'telegram_test' : 'teams';
-if (!/^[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}$/.test(String(e.freigeber || ''))) throw fehlerklassen.epaFehler('UNGUELTIGES_FORMAT', vid, 'freigeber ist keine gültige Adresse');
+if (e.freigeber !== 'kanal' && !/^[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}$/.test(String(e.freigeber || ''))) throw fehlerklassen.epaFehler('UNGUELTIGES_FORMAT', vid, 'freigeber ist keine gültige Adresse');
 if (typeof e.nachricht_html !== 'string' || !e.nachricht_html.trim()) throw fehlerklassen.epaFehler('UNGUELTIGES_FORMAT', vid, 'Nachricht fehlt');
 const basis = { ...e, kanal, vorgangs_id: vid, freigeber: e.freigeber.trim().toLowerCase() };
 if (kanal !== 'telegram_test') return [{ json: basis }];
@@ -51,8 +51,10 @@ return [{ json: { ...basis, chat_id: telegram.istChatId(e.chat_id) && wfOk ? Str
 	const kunde = wf.tabelle('Kunde lesen', [660, 80], 'get', 'epa_config_allgemein', {
 		bedingungen: [['kunde_id', 'eq', "={{ $json.kunde_id || '__kein_kunde__' }}"]],
 	}, { alwaysOutputData: true });
+	// Kanal-Link: Karte in den Kanal "Rückfragen" (teams_kanal); persönlicher Link: 1:1-Chat (teams_chat).
+	const KANAL = "$('Eingabe prüfen').first().json.freigeber === 'kanal'";
 	const chat = wf.aufrufDynamisch('Freigabe-Chat senden', [880, 80], "={{ /^[A-Za-z0-9]{8,32}$/.test(String($json.postfach_workflow_id || '')) ? $json.postfach_workflow_id : 'keineId0' }}", [
-		['aktion', 'string', 'teams_chat'],
+		['aktion', 'string', `={{ ${KANAL} ? 'teams_kanal' : 'teams_chat' }}`],
 		['postfach', 'string', '={{ $json.postfach }}'],
 		['graph_id', 'string', ''],
 		['internet_message_id', 'string', ''],
@@ -60,7 +62,9 @@ return [{ json: { ...basis, chat_id: telegram.istChatId(e.chat_id) && wfOk ? Str
 		['freigabe_id', 'string', ''],
 		['vorgangs_id', 'string', "={{ $('Eingabe prüfen').first().json.vorgangs_id || '' }}"],
 		['html', 'string', "={{ $('Eingabe prüfen').first().json.nachricht_html }}"],
-		['empfaenger', 'string', "={{ $('Eingabe prüfen').first().json.freigeber }}"],
+		['empfaenger', 'string', `={{ ${KANAL} ? '' : $('Eingabe prüfen').first().json.freigeber }}`],
+		['team_id', 'string', `={{ ${KANAL} ? (() => { try { return JSON.parse($json.benachrichtigung || '{}').team_id || ''; } catch (e) { return ''; } })() : '' }}`],
+		['channel_id', 'string', `={{ ${KANAL} ? (() => { try { return JSON.parse($json.kanaele || '{}').rueckfragen || ''; } catch (e) { return ''; } })() : '' }}`],
 	], { onError: 'continueRegularOutput', alwaysOutputData: true });
 
 	const pruefen = wf.code('Zustellung prüfen', [1320, 0], ['fehlerklassen'], `

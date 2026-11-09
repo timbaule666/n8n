@@ -46,7 +46,7 @@ test('Freigabe prüfen: gültig, unbekannt, verbraucht, entschieden, abgelaufen,
 
 test('Formular lesen', () => {
 	const t = f.tokenErzeugen(crypto).token;
-	assert.deepEqual(f.formularLesen({ t, aktion: 'senden', text: 'Hallo' }), { ok: true, aktion: 'senden', token: t, text: 'Hallo', grund: '' });
+	assert.deepEqual(f.formularLesen({ t, aktion: 'senden', text: 'Hallo' }), { ok: true, aktion: 'senden', token: t, text: 'Hallo', grund: '', wer: '' });
 	assert.equal(f.formularLesen({ t, aktion: 'ablehnen' }).ok, false);
 	assert.equal(f.formularLesen({ t, aktion: 'ablehnen', grund: 'Kunde ruft an' }).ok, true);
 	assert.equal(f.formularLesen({ t, aktion: 'loeschen' }).ok, false);
@@ -103,4 +103,36 @@ test('Freigabe-Nachricht mit Übersicht ersetzt die zusätzliche Eingangsmeldung
 	const er = f.nachrichtFreigeber({ vorgang: { vorgangs_id: 'V-2026-0001' }, freigabe: fg, fehlende: [], link: 'https://x.example/f?t=1', ablaufText: '17.10.2026, 10:00', art: 'erinnerung' });
 	assert.match(er, /<b>Erinnerung an den Kunden freigeben<\/b>/);
 	assert.doesNotMatch(er, /Fehlende Angaben/);
+});
+
+test('Kanal-Freigabe: ein Link für alle, sobald der Kanal Rückfragen eingerichtet ist', () => {
+	assert.deepEqual(f.linkEmpfaenger({ freigeber: ['a@x.de', 'b@x.de'], kanaele: { rueckfragen: '19:r@thread.tacv2' } }), ['kanal']);
+	assert.deepEqual(f.linkEmpfaenger({ freigeber: ['a@x.de', 'b@x.de'], kanaele: {} }), ['a@x.de', 'b@x.de']);
+	assert.deepEqual(f.linkEmpfaenger({ freigeber: ['a@x.de'] }), ['a@x.de']);
+});
+
+test('Kanal-Freigabe: Berechtigung und Entscheider', () => {
+	const liste = ['Disponent@x.de', 'chef@x.de'];
+	assert.equal(f.freigeberErlaubt('kanal', liste), true);
+	assert.equal(f.freigeberErlaubt('kanal', []), false);
+	assert.equal(f.freigeberErlaubt('chef@x.de', liste), true);
+	assert.equal(f.freigeberErlaubt('fremd@x.de', liste), false);
+	assert.deepEqual(f.entscheiderBestimmen('kanal', liste, 'disponent@x.de'), { ok: true, entscheider: 'disponent@x.de' });
+	assert.equal(f.entscheiderBestimmen('kanal', liste, '').ok, false);
+	assert.match(f.entscheiderBestimmen('kanal', liste, 'fremd@x.de').meldung, /nicht als Freigeber/);
+	// Persönlicher Link: der Inhaber entscheidet, eine Auswahl im Formular zählt nicht.
+	assert.deepEqual(f.entscheiderBestimmen('Chef@x.de', liste, 'disponent@x.de'), { ok: true, entscheider: 'chef@x.de' });
+});
+
+test('Kanal-Freigabe: Formular mit Namensauswahl und neutralem Link-Text', () => {
+	const t = 'A'.repeat(43);
+	const html = f.seiteFormular({ token: t, freigabe: { art: 'rueckfrage', empfaenger: 'k@x.de', betreff: 'B', ablauf: '2026-12-01T10:00:00Z' }, vorgang: { vorgangs_id: 'V-2026-0001', rundenzaehler: 0 }, fehlende: [], text: 'T', abschluss: '', auswahl: ['a@x.de', 'b@x.de'] });
+	assert.match(html, /<select id="wer" name="wer" required>/);
+	assert.match(html, /<option value="b@x\.de">/);
+	const ohne = f.seiteFormular({ token: t, freigabe: { art: 'rueckfrage', empfaenger: 'k@x.de', betreff: 'B', ablauf: '2026-12-01T10:00:00Z' }, vorgang: { vorgangs_id: 'V-2026-0001', rundenzaehler: 0 }, fehlende: [], text: 'T', abschluss: '' });
+	assert.doesNotMatch(ohne, /name="wer"/);
+	assert.equal(f.formularLesen({ aktion: 'senden', t, wer: ' A@X.de ' }).wer, 'a@x.de');
+	const n = f.nachrichtFreigeber({ vorgang: { vorgangs_id: 'V-2026-0001' }, freigabe: { empfaenger: 'k@x.de', betreff: 'B' }, fehlende: [], link: 'https://x/webhook/epa-freigabe?t=' + t, ablaufText: '01.12.2026, 11:00', art: 'rueckfrage', kanal: true });
+	assert.match(n, /Beim Öffnen wählen Sie Ihren Namen/);
+	assert.doesNotMatch(n, /persönliche/);
 });

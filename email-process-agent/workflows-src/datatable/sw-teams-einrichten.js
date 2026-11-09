@@ -14,8 +14,8 @@ module.exports = function () {
 	const wf = new Workflow('EPA SW Teams einrichten');
 	wf.notiz('Notiz Zweck', [1056, 192], [
 		'## EPA SW Teams einrichten',
-		'**Zweck:** legt im Teams-Team des Kunden die vier Kanäle an (Vollständige Anfragen, Rückfragen, Systemmeldungen, Logs) und trägt die IDs in epa_config_allgemein ein (kanaele, log_channel_id, benachrichtigung.channel_id).',
-		'**Einrichten pro Kunde:** im Knoten "Kunde eintragen" kunde_id und team_name setzen, dann ausführen. Mehrfaches Ausführen ist unschädlich: vorhandene Kanäle (gleicher Name) werden wiederverwendet.',
+		'**Zweck:** legt im Teams-Team des Kunden die fünf Kanäle an (1 Vollständige Anfragen, 2 Rückfragen, 3 Bitte ansehen, 4 Systemmeldungen, 5 Logs) und trägt die IDs in epa_config_allgemein ein (kanaele, log_channel_id, benachrichtigung.channel_id = Systemmeldungen). Welche Meldung wohin geht, steht in src/kanaele.js. Sobald "2 Rückfragen" eingetragen ist, kommen die Freigaben als Karte in diesen Kanal statt in den 1:1-Chat.',
+		'**Einrichten pro Kunde:** im Knoten "Kunde eintragen" kunde_id und team_name setzen, dann ausführen. Mehrfaches Ausführen ist unschädlich: vorhandene Kanäle (gleicher Name ohne Nummer) werden wiederverwendet und auf die neue Nummer umbenannt (z. B. "3 Systemmeldungen" → "4 Systemmeldungen").',
 		'**Rechte:** Das Teams-Credential muss im Tenant des Kunden Kanäle anlegen dürfen. Team und Kanal umbenennen sind optional (Fehler wird ignoriert).',
 	].join('\n'), { breite: 520, hoehe: 300 });
 	const start = wf.node('Start', 'n8n-nodes-base.manualTrigger', [0, 0], {});
@@ -29,7 +29,7 @@ module.exports = function () {
 	});
 	const lesen = wf.tabelle('Kunde lesen', [448, 0], 'get', 'epa_config_allgemein', { bedingungen: [['kunde_id', 'eq', '={{ $json.kunde_id }}']] });
 	const kanaele = teams(wf, 'Kanäle lesen', [672, 0], 'GET', `={{ "${GRAPH}/teams/" + JSON.parse($json.benachrichtigung).team_id + "/channels" }}`);
-	const planen = wf.code('Kanäle planen', [896, 0], [], codeDatei('teams-kanaele-planen.js'));
+	const planen = wf.code('Kanäle planen', [896, 0], ['kanaele'], codeDatei('teams-kanaele-planen.js'));
 	const anlegen = teams(wf, 'Kanal anlegen', [1120, 0], 'POST', `={{ "${GRAPH}/teams/" + $json.team_id + "/channels" }}`,
 		'={{ JSON.stringify({ displayName: $json.kanal_id ? $json.alt_name : $json.name, description: $json.beschreibung, membershipType: "standard" }) }}');
 	const sammeln = wf.code('Ergebnis sammeln', [1344, 0], [], codeDatei('teams-ergebnis-sammeln.js'));

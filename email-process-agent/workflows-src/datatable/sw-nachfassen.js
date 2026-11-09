@@ -162,7 +162,8 @@ return [{ json: {
 	alte_sperren: r.alteLinksSperren,
 	ablauf: r.ablauf,
 	daten: r.daten,
-	tokens: config.freigeber.map((fg) => ({ freigeber: fg, ...freigabe.tokenErzeugen(crypto) })),
+	// Kanal "Rückfragen" eingerichtet: ein Link für alle Freigeber (Name wird auf der Seite gewählt).
+	tokens: freigabe.linkEmpfaenger(config).map((fg) => ({ freigeber: fg, ...freigabe.tokenErzeugen(crypto) })),
 } }];
 `);
 	// Nach Versandfehler erst prüfen, ob das Postfach wieder erreichbar ist. Sonst nichts tun, nächster Lauf prüft erneut.
@@ -225,7 +226,7 @@ const basis = freigabe.basisUrl($execution.resumeUrl, config.freigabe_basis_url)
 const ablaufText = DateTime.fromISO(a.ablauf).setZone(config.zeitzone).toFormat('dd.LL.yyyy, HH:mm');
 return a.tokens.map((t) => ({ json: {
 	freigeber: t.freigeber,
-	nachricht_html: freigabe.nachrichtFreigeber({ vorgang: v, freigabe: f, fehlende: fehlende.map((x) => ({ anzeigename: x.anzeigename || x.feldname })), link: freigabe.link(basis, t.token), ablaufText, art: f.art, anlass: e.aktion, wartet_stunden: nachfassen.wartetStunden(f, e.jetzt || new Date().toISOString()) }),
+	nachricht_html: freigabe.nachrichtFreigeber({ vorgang: v, freigabe: f, fehlende: fehlende.map((x) => ({ anzeigename: x.anzeigename || x.feldname })), link: freigabe.link(basis, t.token), ablaufText, art: f.art, anlass: e.aktion, wartet_stunden: nachfassen.wartetStunden(f, e.jetzt || new Date().toISOString()), kanal: t.freigeber === freigabe.KANAL }),
 } }));
 `, { executeOnce: true });
 	const senden = wf.aufruf('Freigeber benachrichtigen', [3520, 40], 'EPA SW Freigabe senden', [

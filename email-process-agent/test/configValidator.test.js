@@ -228,3 +228,12 @@ test('PLZ-Regel laender: erlaubte Länder, nicht zusammen mit regex', () => {
 	assert.match(fehlerText(f({ laender: [] })), /laender/);
 	assert.match(fehlerText(f({ laender: ['DE'], regex: '^\\d{5}$' })), /schliessen sich aus/);
 });
+
+test('kanaele: gültige Kanal-IDs übernehmen, Unsinn ignorieren (nie ein Stopp)', () => {
+	const ok = validiereConfig(allgemein({ kanaele: JSON.stringify({ anfragen: '19:a@thread.tacv2', rueckfragen: '19:r@thread.tacv2', ansehen: 'kaputt', unbekannt: '19:u@thread.tacv2' }) }), [feld()]);
+	assert.equal(ok.gueltig, true);
+	assert.deepEqual(ok.config.kanaele, { anfragen: '19:a@thread.tacv2', rueckfragen: '19:r@thread.tacv2' });
+	const leer = validiereConfig(allgemein({ kanaele: "{kaputt" }), [feld()]);
+	assert.equal(leer.gueltig, true);
+	assert.deepEqual(leer.config.kanaele, {});
+});

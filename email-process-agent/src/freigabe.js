@@ -5,6 +5,35 @@
 
 const TOKEN_MUSTER = /^[A-Za-z0-9_-]{43}$/; // 32 Byte base64url
 const AKTIONEN = ['senden', 'ablehnen'];
+// Freigabe im Teams-Kanal "Rückfragen": ein Link für alle Freigeber statt je einer pro Person. Wer entscheidet,
+// wählt seinen Namen auf der Freigabe-Seite; nur Adressen aus der Freigeber-Liste sind erlaubt.
+const KANAL = 'kanal';
+
+/** Für wen Links erzeugt werden: ein Kanal-Link, sobald der Kanal "Rückfragen" eingerichtet ist, sonst je Freigeber. */
+function linkEmpfaenger(config) {
+	const k = config && config.kanaele;
+	return k && k.rueckfragen ? [KANAL] : (config.freigeber || []);
+}
+
+/** Darf der Inhaber dieses Links überhaupt entscheiden? (vor der Anzeige) */
+function freigeberErlaubt(tokenFreigeber, liste) {
+	const l = (liste || []).map((s) => String(s).toLowerCase());
+	if (String(tokenFreigeber || '') === KANAL) return l.length > 0;
+	return l.includes(String(tokenFreigeber || '').toLowerCase());
+}
+
+/**
+ * Wer entscheidet (für Protokoll und Status). Kanal-Link: die gewählte Adresse muss in der Freigeber-Liste stehen.
+ * @returns {{ ok: true, entscheider: string } | { ok: false, meldung: string }}
+ */
+function entscheiderBestimmen(tokenFreigeber, liste, wer) {
+	const l = (liste || []).map((s) => String(s).toLowerCase());
+	if (String(tokenFreigeber || '') !== KANAL) return { ok: true, entscheider: String(tokenFreigeber || '').toLowerCase() };
+	const w = String(wer || '').trim().toLowerCase();
+	if (!w) return { ok: false, meldung: 'Bitte wählen Sie Ihren Namen aus.' };
+	if (!l.includes(w)) return { ok: false, meldung: 'Sie sind für diesen Kunden nicht als Freigeber eingetragen.' };
+	return { ok: true, entscheider: w };
+}
 
 /** @param {object} c Node-Modul "crypto" (im Code-Node per require('crypto')) */
 function tokenErzeugen(c) {
@@ -67,7 +96,7 @@ function formularLesen(body) {
 	if (!istGueltigesToken(b.t)) return { ok: false, meldung: 'Ungültiger Link.' };
 	const grund = String(b.grund || '').trim().slice(0, 500);
 	if (aktion === 'ablehnen' && !grund) return { ok: false, meldung: 'Bitte einen Grund für die Ablehnung angeben.' };
-	return { ok: true, aktion, token: b.t, text: typeof b.text === 'string' ? b.text : '', grund };
+	return { ok: true, aktion, token: b.t, text: typeof b.text === 'string' ? b.text : '', grund, wer: String(b.wer || '').trim().toLowerCase().slice(0, 200) };
 }
 
 function istBearbeitet(original, neu) {
@@ -88,14 +117,14 @@ h1{font-size:1.3rem;margin:0 0 12px}dl{display:grid;grid-template-columns:max-co
 dt{color:#5b6475}dd{margin:0;overflow-wrap:anywhere}textarea{width:100%;box-sizing:border-box;min-height:260px;font:inherit;padding:8px}
 pre{white-space:pre-wrap;font:inherit;color:#5b6475;margin:8px 0 0}.knoepfe{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}
 button{font:inherit;padding:10px 16px;border-radius:6px;border:0;cursor:pointer}.senden{background:#1f6f43;color:#fff}.ablehnen{background:#a3222b;color:#fff}
-input[type=text]{width:100%;box-sizing:border-box;font:inherit;padding:8px}.hinweis{color:#5b6475;font-size:.9rem}
+input[type=text],select{width:100%;box-sizing:border-box;font:inherit;padding:8px}.hinweis{color:#5b6475;font-size:.9rem}
 .ok{border-left:4px solid #1f6f43}.fehler{border-left:4px solid #a3222b}`;
 
 function seite(titel, inhalt) {
 	return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(titel)}</title><style>${STIL}</style></head><body><main>${inhalt}</main></body></html>`;
 }
 
-function seiteFormular({ token, freigabe, vorgang, fehlende, text, abschluss }) {
+function seiteFormular({ token, freigabe, vorgang, fehlende, text, abschluss, auswahl }) {
 	const luecken = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}${f.grund ? ` <span class="hinweis">(${esc(f.grund)})</span>` : ''}</li>`).join('');
 	const was = freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';
 	return seite(`${was} ${vorgang.vorgangs_id}`, `
@@ -105,6 +134,7 @@ function seiteFormular({ token, freigabe, vorgang, fehlende, text, abschluss }) 
 <p>Fehlende Angaben:</p><ul>${luecken}</ul>${freigabe.fallback ? '<p class="hinweis">Hinweis: Die KI-Formulierung hat die Prüfung nicht bestanden, es wird die Standardvorlage verwendet.</p>' : ''}</div>
 <form class="karte" method="post" onsubmit="var f=this;setTimeout(function(){var b=f.querySelectorAll('button');for(var i=0;i<b.length;i++)b[i].disabled=true},0)">
 <input type="hidden" name="t" value="${esc(token)}">
+${Array.isArray(auswahl) && auswahl.length ? `<label for="wer"><b>Wer entscheidet?</b></label><select id="wer" name="wer" required><option value="">Bitte Namen wählen …</option>${auswahl.map((a) => `<option value="${esc(a)}">${esc(a)}</option>`).join('')}</select><p class="hinweis">Ihr Name wird im Protokoll gespeichert.</p>` : ''}
 <label for="text"><b>Text der Mail</b> (bearbeitbar)</label>
 <textarea id="text" name="text">${esc(text)}</textarea>
 <pre>${esc(abschluss)}</pre>
@@ -121,10 +151,10 @@ function seiteMeldung(titel, text, art = 'ok') {
 
 /** Teams-Nachricht an den Freigeber (1:1-Chat). */
 const ANLASS = Object.freeze({
-	freigabe_erinnerung: 'Erinnerung: Diese Freigabe ist noch offen. Hier ist ein neuer persönlicher Link.',
-	freigabe_erneuern: 'Der bisherige Link ist abgelaufen und gilt nicht mehr. Hier ist ein neuer persönlicher Link.',
+	freigabe_erinnerung: 'Erinnerung: Diese Freigabe ist noch offen. Hier ist ein neuer Link.',
+	freigabe_erneuern: 'Der bisherige Link ist abgelaufen und gilt nicht mehr. Hier ist ein neuer Link.',
 	freigabe_nach_fehler: 'Diese Nachricht wurde wegen eines Fehlers NICHT gesendet. Das Postfach ist wieder erreichbar, bitte erneut freigeben. Die bisherigen Links gelten nicht mehr.',
-	freigabe_eskalation: 'Bitte jetzt entscheiden: freigeben, bearbeiten oder ablehnen. Hier ist ein neuer persönlicher Link; alle bisherigen Links gelten nicht mehr.',
+	freigabe_eskalation: 'Bitte jetzt entscheiden: freigeben, bearbeiten oder ablehnen. Hier ist ein neuer Link; alle bisherigen Links gelten nicht mehr.',
 	freigabe_nach_unzustellbar: 'Der Zustelltest war wieder erfolgreich, der Versand funktioniert. Bitte prüfen und erneut freigeben; gesendet wird eine neue Mail mit demselben Text.',
 });
 
@@ -133,7 +163,7 @@ const ANLASS = Object.freeze({
  * zur Mail (erkannte und fehlende Angaben, Warnhinweise). Dann ersetzt diese eine Nachricht die sonst zusätzliche
  * Eingangsmeldung, und die Liste der fehlenden Angaben steht nicht doppelt drin.
  */
-function nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art, anlass, kontext_html: kontext, wartet_stunden: wartet }) {
+function nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art, anlass, kontext_html: kontext, wartet_stunden: wartet, kanal }) {
 	const liste = (fehlende || []).map((f) => `• ${esc(f.anzeigename)}`).join('<br>');
 	const was = art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';
 	let hinweis = ANLASS[anlass] ? `<i>${esc(ANLASS[anlass])}</i><br>` : '';
@@ -146,7 +176,9 @@ function nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText
 		// freigabe.grund trägt hier den Grund der vorigen (nicht zugestellten) Freigabe.
 		hinweis = `<b>🔁 Erneut zur Freigabe: Die Nachricht kam beim Kunden nicht an</b><br>${freigabe.grund ? `${esc(freigabe.grund)}<br>` : ''}${hinweis}<br>`;
 	}
-	const link = `<a href="${esc(url)}">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>Dieser persönliche Link ist einmal verwendbar und gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.</i>`;
+	const link = `<a href="${esc(url)}">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>${kanal
+		? `Der Link ist einmal verwendbar und gültig bis ${esc(ablaufText)}. Beim Öffnen wählen Sie Ihren Namen; er wird im Protokoll gespeichert.`
+		: `Dieser persönliche Link ist einmal verwendbar und gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.`}</i>`;
 	const empfang = `An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br><br>`;
 	if (kontext && typeof kontext === 'string' && kontext.trim()) {
 		return `${hinweis}${kontext}<br><br><b>${was} an den Kunden wurde erstellt</b><br>${empfang}${link}`;
@@ -156,6 +188,6 @@ function nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText
 }
 
 module.exports = {
-	TOKEN_MUSTER, AKTIONEN, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,
+	TOKEN_MUSTER, AKTIONEN, KANAL, linkEmpfaenger, freigeberErlaubt, entscheiderBestimmen, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,
 	freigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber, ANLASS,
 };

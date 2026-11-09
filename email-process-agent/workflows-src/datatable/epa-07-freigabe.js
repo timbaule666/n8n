@@ -26,7 +26,7 @@ module.exports = function () {
 
 	wf.notiz('Notiz Zweck', [-120, -640], [
 		'## EPA-07 Freigabe-Endpunkt (Phase C3/C4)',
-		'**Zweck:** Seite hinter dem persönlichen Freigabe-Link. GET zeigt Empfänger, Betreff, fehlende Angaben und den bearbeitbaren Text; POST nimmt "Freigeben und senden" (optional mit geändertem Text) oder "Ablehnen" (mit Grund) entgegen.',
+		'**Zweck:** Seite hinter dem Freigabe-Link (Karte im Kanal "Rückfragen" bzw. persönlicher Link im 1:1-Chat). Beim Kanal-Link wählt der Mitarbeiter seinen Namen aus der Freigeber-Liste; er wird als Entscheider protokolliert. GET zeigt Empfänger, Betreff, fehlende Angaben und den bearbeitbaren Text; POST nimmt "Freigeben und senden" (optional mit geändertem Text) oder "Ablehnen" (mit Grund) entgegen.',
 		'**Sicherheit:** Token einmalig (nur Hash gespeichert), Ablaufzeit, Freigeber muss noch in der Config stehen. Die Freigabe wird atomar übernommen (bedingtes Update auf status = offen): ein Doppelklick oder zweiter Freigeber bekommt "bereits bearbeitet". Signatur und KI-Hinweis sind nicht änderbar.',
 		'**Versand (C4):** über den Postfach-Workflow des Kunden (postfach_workflow_id): vorher prüfen, ob der Entwurf noch existiert, sonst in Gesendete Elemente suchen → kein Doppelversand. Erst nach bestätigtem Versand: Status "Warten auf Kunde", Rundenzähler +1, Antwortfrist (Geschäftszeiten), Audit mit Freigeber und "bearbeitet". Bei einer Erinnerung (M5): Erinnerungszähler +1, neue Frist = Erinnerungsintervall, Runde bleibt.',
 		'**Links (M5):** Jeder Link hat eine eigene Ablaufzeit. Erneuert EPA-04 eine abgelaufene Freigabe, gelten nur noch die neuen Links (alte → 410).',
@@ -81,17 +81,21 @@ const antwort = (status, text) => [{ json: { weg: 'antworten', status, html: fre
 if (!a.gueltig) return antwort(404, 'Dieser Freigabe-Link ist ungültig.');
 let liste = [];
 try { liste = JSON.parse((kunde && kunde.freigeber) || '[]').map((s) => String(s).toLowerCase()); } catch (e) { liste = []; }
-const p = freigabe.freigabePruefen({ token: tok, freigabe: fg, freigeberErlaubt: Boolean(tok) && liste.includes(String(tok.freigeber).toLowerCase()), jetzt: new Date().toISOString() });
+const p = freigabe.freigabePruefen({ token: tok, freigabe: fg, freigeberErlaubt: Boolean(tok) && freigabe.freigeberErlaubt(tok.freigeber, liste), jetzt: new Date().toISOString() });
+// Link aus dem Kanal "Rückfragen": Wer entscheidet, wählt seinen Namen aus der Freigeber-Liste.
+const auswahl = tok && tok.freigeber === freigabe.KANAL ? liste : null;
 if (!p.ok) return antwort(p.status, p.meldung);
 if (!v) return antwort(404, 'Der Vorgang existiert nicht mehr.');
 let fehlende = [];
 try { fehlende = JSON.parse(fg.fehlende_felder || '[]'); } catch (e) { fehlende = []; }
 if (a.methode === 'GET') {
-	return [{ json: { weg: 'antworten', status: 200, html: freigabe.seiteFormular({ token: a.token, freigabe: fg, vorgang: v, fehlende, text: fg.entwurf_text, abschluss: fg.abschluss }) } }];
+	return [{ json: { weg: 'antworten', status: 200, html: freigabe.seiteFormular({ token: a.token, freigabe: fg, vorgang: v, fehlende, text: fg.entwurf_text, abschluss: fg.abschluss, auswahl }) } }];
 }
 const f = a.formular;
 if (!f.ok) return antwort(400, f.meldung + ' Bitte über den Link erneut öffnen.');
-const basis = { freigabe_id: fg.freigabe_id, kunde_id: fg.kunde_id, vorgangs_id: fg.vorgangs_id, entwurf_id: fg.entwurf_id, token_id: tok.id, entscheider: String(tok.freigeber).toLowerCase(), runde: fg.runde, art: fg.art || 'rueckfrage', erinnerungen_gesendet: Number(v.erinnerungen_gesendet || 0) };
+const wer = freigabe.entscheiderBestimmen(tok.freigeber, liste, f.wer);
+if (!wer.ok) return antwort(wer.meldung.includes('nicht als Freigeber') ? 403 : 400, wer.meldung + ' Bitte über den Link erneut öffnen.');
+const basis = { freigabe_id: fg.freigabe_id, kunde_id: fg.kunde_id, vorgangs_id: fg.vorgangs_id, entwurf_id: fg.entwurf_id, token_id: tok.id, entscheider: wer.entscheider, runde: fg.runde, art: fg.art || 'rueckfrage', erinnerungen_gesendet: Number(v.erinnerungen_gesendet || 0) };
 if (f.aktion === 'ablehnen') return [{ json: { ...basis, weg: 'ablehnen', grund: f.grund } }];
 const bearbeitet = freigabe.istBearbeitet(fg.entwurf_text, f.text);
 let text = fg.entwurf_text;
