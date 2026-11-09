@@ -11,7 +11,7 @@ module.exports = function () {
 	wf.notiz('Notiz Zweck', [-120, -620], [
 		'## EPA-08 Löschjob (Datenschutz, Phase F)',
 		'**Zweck:** Löscht Daten nach Ablauf der Aufbewahrung (src/loeschen.js). Nichts wird gelöscht, was noch bearbeitet wird.',
-		'**Vorgänge:** nur Status "Abgeschlossen" oder "Ignoriert" und seit aufbewahrung_tage (Config je Kunde) unverändert. Danach die zugehörigen Freigaben, Freigabe-Links und Audit-Einträge. Offene und eskalierte Vorgänge bleiben immer erhalten.',
+		'**Vorgänge:** Status "Abgeschlossen" oder "Ignoriert" und seit aufbewahrung_tage (Config je Kunde) unverändert; "Bereit zur Bearbeitung" nach 30 Tagen ohne Änderung. Danach die zugehörigen Freigaben, Freigabe-Links und Audit-Einträge. Offene und eskalierte Vorgänge bleiben immer erhalten.',
 		'**Weitere Daten:** Dedupe-Einträge (epa_verarbeitete_mails) nach aufbewahrung_tage, Fehlerlog nach 90 Tagen. Kalender-Termine mit dem Vorgang und 30 Tage nach Ablauf des Links; Zugänge zur Übersichtsseite 30 Tage nach Ablauf.',
 		'**Postfach:** Ersetzte Rückfrage-Entwürfe (nie gesendet, nicht mehr gültig) werden über die EPA-00-Kopie gelöscht, aber nur, wenn es nachweislich ein Entwurf mit der passenden Freigabe-Kennung ist (landet in "Gelöschte Elemente"). Eingegangene Mails werden nie gelöscht.',
 		'**Grenzen je Lauf:** 200 Vorgänge, 50 Entwürfe; der Rest folgt in der nächsten Nacht. Ergebnis (nur Zähler) in epa_system_status, Zeile "loeschjob".',
@@ -35,7 +35,7 @@ return [{ json: { jetzt, probelauf: e.probelauf === true } }];
 	const einmal = { alwaysOutputData: true, executeOnce: true };
 	const vorgaenge = wf.tabelle('Abgeschlossene Vorgänge lesen', [440, 0], 'get', 'epa_vorgaenge', {
 		match: 'anyCondition',
-		bedingungen: [['status', 'eq', 'Abgeschlossen'], ['status', 'eq', 'Ignoriert']],
+		bedingungen: [['status', 'eq', 'Abgeschlossen'], ['status', 'eq', 'Ignoriert'], ['status', 'eq', 'Bereit zur Bearbeitung']],
 		alle: true,
 	}, einmal);
 	const freigaben = wf.tabelle('Freigaben lesen', [660, 0], 'get', 'epa_freigaben', { alle: true }, einmal);
@@ -98,7 +98,7 @@ return erledigt.length ? erledigt.map((x) => ({ json: { freigabe_id: x.a.freigab
 	// ---------------------------------------------------------------- 2. Vorgänge (mit Sicherung: unverändert seit der Frist)
 	const vAuftraege = wf.code('Vorgänge (Aufträge)', [2640, 0], [], `
 const p = $('Löschplan').first().json;
-const liste = p.vorgaenge.map((v) => ({ json: { ...v, grenze: p.grenzen[v.kunde_id] } }));
+const liste = p.vorgaenge.map((v) => ({ json: { ...v, grenze: v.grenze || p.grenzen[v.kunde_id] } }));
 return liste.length ? liste : [{ json: { kunde_id: '${KEINER}', vorgangs_id: '${KEINER}', grenze: new Date(0).toISOString() } }];
 `, { executeOnce: true });
 	const vLoeschen = wf.tabelle('Vorgänge löschen', [2860, 0], 'deleteRows', 'epa_vorgaenge', {

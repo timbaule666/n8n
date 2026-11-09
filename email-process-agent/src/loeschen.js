@@ -2,6 +2,8 @@
 // Lösch- und Aufräumjob (Masterprompt 7, Bauplan Datenschutz): Daten nur so lange wie nötig.
 // - Vorgänge in einem Endstatus ("Abgeschlossen", "Ignoriert") nach aufbewahrung_tage seit der letzten Änderung,
 //   samt Audit, Freigaben und Freigabe-Links. Offene oder eskalierte Vorgänge werden nie automatisch gelöscht.
+// - Vorgänge in "Bereit zur Bearbeitung" 30 Tage nach der letzten Änderung (Vorgabe Betreiber), ebenfalls samt Audit,
+//   Freigaben und Links. Die Mails im Postfach bleiben; das Team bearbeitet den Auftrag in seinen eigenen Systemen.
 // - Dedupe-Einträge (epa_verarbeitete_mails) nach aufbewahrung_tage.
 // - Fehlerlog nach 90 Tagen (enthält nur IDs und technische Meldungen).
 // - Kalender-Termine (epa_kalender_termine) mit dem Vorgang sowie 30 Tage nach Ablauf des Links;
@@ -10,6 +12,8 @@
 //   ein Entwurf ist und die passende Freigabe-Kennung trägt. Outlook verschiebt ihn in "Gelöschte Elemente".
 
 const ENDSTATUS = Object.freeze(['Abgeschlossen', 'Ignoriert']);
+const BEREIT_STATUS = 'Bereit zur Bearbeitung';
+const BEREIT_TAGE = 30;
 const FEHLERLOG_TAGE = 90;
 const LINK_TAGE = 30;
 const MAX_VORGAENGE = 200;
@@ -58,8 +62,8 @@ function planen({ jetzt, vorgaenge, freigaben, configs, maxVorgaenge = MAX_VORGA
 	const zuLoeschen = [];
 	let zurueckgestellt = 0;
 	for (const v of vorgaenge || []) {
-		if (!v || !ENDSTATUS.includes(v.status)) continue;
-		const n = tage(v.kunde_id);
+		if (!v || (!ENDSTATUS.includes(v.status) && v.status !== BEREIT_STATUS)) continue;
+		const n = v.status === BEREIT_STATUS ? BEREIT_TAGE : tage(v.kunde_id);
 		if (n === null) continue;
 		const stand = ms(v.updatedAt);
 		if (!Number.isFinite(stand) || stand + n * TAG > t) continue;
@@ -68,7 +72,7 @@ function planen({ jetzt, vorgaenge, freigaben, configs, maxVorgaenge = MAX_VORGA
 			zurueckgestellt += 1;
 			continue;
 		}
-		zuLoeschen.push({ kunde_id: v.kunde_id, vorgangs_id: v.vorgangs_id });
+		zuLoeschen.push({ kunde_id: v.kunde_id, vorgangs_id: v.vorgangs_id, grenze: new Date(t - n * TAG).toISOString() });
 	}
 	const vorgaengeListe = zuLoeschen.slice(0, maxVorgaenge);
 	const schluessel = new Set(vorgaengeListe.map((v) => `${v.kunde_id}|${v.vorgangs_id}`));
@@ -118,4 +122,4 @@ function zusammenfassung(plan) {
 	};
 }
 
-module.exports = { ENDSTATUS, FEHLERLOG_TAGE, LINK_TAGE, MAX_VORGAENGE, MAX_ENTWUERFE, planen, entwurfPruefen, zusammenfassung };
+module.exports = { ENDSTATUS, BEREIT_STATUS, BEREIT_TAGE, FEHLERLOG_TAGE, LINK_TAGE, MAX_VORGAENGE, MAX_ENTWUERFE, planen, entwurfPruefen, zusammenfassung };

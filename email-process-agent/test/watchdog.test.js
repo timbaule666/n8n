@@ -163,3 +163,19 @@ test('Config: stille_alarm_stunden optional (Standard aus)', () => {
 	assert.equal(CONFIG.stille_alarm_stunden, 24);
 	assert.equal(validiereConfig({ ...a, stille_alarm_stunden: -1 }, beispiel.epa_config_pflichtfelder).gueltig, false);
 });
+
+test('Löschplan: "Bereit zur Bearbeitung" nach 30 Tagen ohne Änderung, unabhängig von der Aufbewahrungsfrist', () => {
+	const l = require('../src/loeschen');
+	const JETZT = '2026-11-09T12:00:00.000Z';
+	const vor = (t) => new Date(new Date(JETZT).getTime() - t * 86400000).toISOString();
+	const configs = { k: { aufbewahrung_tage: 365, postfach: 'p@x.de', postfach_workflow_id: 'abcdefgh12' } };
+	const vorgaenge = [
+		{ kunde_id: 'k', vorgangs_id: 'V-B1', status: 'Bereit zur Bearbeitung', updatedAt: vor(31) },
+		{ kunde_id: 'k', vorgangs_id: 'V-B2', status: 'Bereit zur Bearbeitung', updatedAt: vor(29) },
+		{ kunde_id: 'k', vorgangs_id: 'V-A1', status: 'Abgeschlossen', updatedAt: vor(31) },
+		{ kunde_id: 'x', vorgangs_id: 'V-B3', status: 'Bereit zur Bearbeitung', updatedAt: vor(40) },
+	];
+	const p = l.planen({ jetzt: JETZT, vorgaenge, freigaben: [], configs });
+	assert.deepEqual(p.vorgaenge.map((v) => v.vorgangs_id), ['V-B1', 'V-B3'], 'Bereit-Frist gilt auch ohne Kunden-Config; Abgeschlossen erst nach 365 Tagen');
+	assert.equal(p.vorgaenge[0].grenze, vor(30));
+});
