@@ -882,3 +882,19 @@ Nicht geprüft: Nachfassen und Erinnerungen (Frist 48 Std. Geschäftszeit, früh
 ### Bewertung
 
 Sicherheit ohne Befund: keine Mail ohne Freigabe, kein falscher Kalendereintrag, keine falschen Werte aus Angriffen, keine Fehlalarme. Erkennung und Extraktion über alle drei Bereiche zuverlässig. Vor dem Pilot zu beheben: Stornierung in Antworten (R05), Reklamation melden (F45), Widerspruch Text/PDF (F15), PLZ/Ort-Konflikt nicht als „bereit“ (R04). Kleiner: inhaltsleerer Terminanlass, Wochenende im Kalender markieren, JSON-Muster.
+
+### Nachtrag 09.11.2026: Korrekturen aus dem finalen Härtetest
+
+**Korrektur der Auswertung zu F15 (V-0015):** Der Widerspruch wurde doch gemeldet. Die Teams-Meldung enthielt: „Mailtext und Anhang „Auftrag_F15.pdf“ nennen unterschiedliche Gewichte: Mailtext 600 kg, Anhang 900 kg – bitte prüfen.“ Die Auswertung hatte nur die gespeicherten Daten geprüft. Offen war, dass der Vorgang trotzdem auf „bereit“ stand.
+
+Behoben (Commit `4c9aaa4`, in der Cloud veröffentlicht: EPA-01, EPA-02, EPA-03, EPA-07, SW Nachfassen):
+
+| Befund | Neu |
+|---|---|
+| R05 Stornierung in einer Antwort (V-0013) | Vorgang auf „Eskaliert / Manuell“: keine weitere Rückfrage, keine Erinnerungen. Eine offene Rückfrage wird deaktiviert. Meldung „Antwort: Kunde storniert – bitte bearbeiten“ im Kanal „3 Bitte ansehen“. |
+| F45 Reklamation ohne Meldung (V-0045) | Neuer Anlass „Reklamation / Beschwerde“ (beschädigt, defekt, falsch geliefert, Beschwerde, damaged …) → „Keine Anfrage – bitte ansehen“. Rückruf und Stornierung werden auch ohne Umlaut erkannt („zurueckrufen“, „Rueckruf“). |
+| F15 Widerspruch Mailtext/Anhang bei Pflichtfeld (V-0015) | Das Feld (Gewicht bzw. das einzige Datum) gilt als offen. Die Rückfrage bittet um Bestätigung: „Bitte bestätigen Sie die Angabe „Gesamtgewicht (kg)“: Wir haben „600 kg“ und „900 kg“ erhalten. Welche ist richtig?“ |
+| R04 Abholort und PLZ passen nicht (V-0012) | Fehlte ein Feld einer Gruppe (PLZ des Abholorts) und kommt es zusammen mit einem neuen Wert derselben Gruppe (Ort), werden beide übernommen (84028 Landshut). |
+| Andere Widersprüche in Pflichtfeldern (z. B. R08 Liefertermin) | Nicht mehr „bereit“, sondern Bestätigungs-Rückfrage mit beiden Werten. Die Antwort darauf wird übernommen und erledigt den Widerspruch. |
+
+Tests: 304 bestanden. Live noch nicht nachgetestet; die Fälle mit Kundenantwort brauchen eine Freigabe.
