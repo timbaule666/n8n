@@ -12,7 +12,7 @@ module.exports = function () {
 		'## EPA-08 Löschjob (Datenschutz, Phase F)',
 		'**Zweck:** Löscht Daten nach Ablauf der Aufbewahrung (src/loeschen.js). Nichts wird gelöscht, was noch bearbeitet wird.',
 		'**Vorgänge:** nur Status "Abgeschlossen" oder "Ignoriert" und seit aufbewahrung_tage (Config je Kunde) unverändert. Danach die zugehörigen Freigaben, Freigabe-Links und Audit-Einträge. Offene und eskalierte Vorgänge bleiben immer erhalten.',
-		'**Weitere Daten:** Dedupe-Einträge (epa_verarbeitete_mails) nach aufbewahrung_tage, Fehlerlog nach 90 Tagen.',
+		'**Weitere Daten:** Dedupe-Einträge (epa_verarbeitete_mails) nach aufbewahrung_tage, Fehlerlog nach 90 Tagen. Kalender-Termine mit dem Vorgang und 30 Tage nach Ablauf des Links; Zugänge zur Übersichtsseite 30 Tage nach Ablauf.',
 		'**Postfach:** Ersetzte Rückfrage-Entwürfe (nie gesendet, nicht mehr gültig) werden über die EPA-00-Kopie gelöscht, aber nur, wenn es nachweislich ein Entwurf mit der passenden Freigabe-Kennung ist (landet in "Gelöschte Elemente"). Eingegangene Mails werden nie gelöscht.',
 		'**Grenzen je Lauf:** 200 Vorgänge, 50 Entwürfe; der Rest folgt in der nächsten Nacht. Ergebnis (nur Zähler) in epa_system_status, Zeile "loeschjob".',
 		'**Trigger:** täglich 02:15 (Europe/Berlin). Zusätzlich Aufruf mit "jetzt" und "probelauf" (true = nur anzeigen, nichts löschen).',
@@ -129,6 +129,23 @@ return liste.length ? liste : [{ json: { kunde_id: '${KEINER}', vorgangs_id: '${
 		bedingungen: [['kunde_id', 'eq', '={{ $json.kunde_id }}'], ['vorgangs_id', 'eq', '={{ $json.vorgangs_id }}']],
 	}, { alwaysOutputData: true });
 
+	const kAuftraege = wf.code('Kalender (Aufträge)', [4180, 200], [], abhaengig, { executeOnce: true });
+	const kLoeschen = wf.tabelle('Kalender-Termine löschen', [4400, 200], 'deleteRows', 'epa_kalender_termine', {
+		bedingungen: [['kunde_id', 'eq', '={{ $json.kunde_id }}'], ['vorgangs_id', 'eq', '={{ $json.vorgangs_id }}']],
+	}, { alwaysOutputData: true });
+	const linkAuftrag = wf.code('Abgelaufene Links (Auftrag)', [4620, 200], [], `
+return [{ json: { grenze: $('Löschplan').first().json.link_grenze } }];
+`, { executeOnce: true });
+	const kAltLoeschen = wf.tabelle('Alte Kalender-Termine löschen', [4840, 200], 'deleteRows', 'epa_kalender_termine', {
+		bedingungen: [['ablauf', 'lt', '={{ $json.grenze }}']],
+	}, { alwaysOutputData: true, executeOnce: true });
+	const uAltAuftrag = wf.code('Übersicht-Zugänge (Auftrag)', [5060, 200], [], `
+return [{ json: { grenze: $('Löschplan').first().json.link_grenze } }];
+`, { executeOnce: true });
+	const uAltLoeschen = wf.tabelle('Alte Übersicht-Zugänge löschen', [5280, 200], 'deleteRows', 'epa_uebersicht_zugaenge', {
+		bedingungen: [['ablauf', 'lt', '={{ $json.grenze }}']],
+	}, { alwaysOutputData: true, executeOnce: true });
+
 	// ---------------------------------------------------------------- 4. Dedupe-Einträge und Fehlerlog nach Frist
 	const mAuftraege = wf.code('Dedupe (Aufträge)', [4400, 0], [], `
 const p = $('Löschplan').first().json;
@@ -152,6 +169,7 @@ const p = $('Löschplan').first().json;
 const ergebnis = {
 	vorgaenge: zahl('Vorgänge löschen'), freigaben: zahl('Freigaben löschen'), links: zahl('Links löschen'), audit: zahl('Audit löschen'),
 	dedupe: zahl('Dedupe-Einträge löschen'), fehlerlog: zahl('Fehlerlog löschen'), entwuerfe: zahl('Entwürfe vermerken'),
+	kalender: zahl('Kalender-Termine löschen') + zahl('Alte Kalender-Termine löschen'), uebersicht_zugaenge: zahl('Alte Übersicht-Zugänge löschen'),
 	zurueckgestellt: p.zurueckgestellt, verschoben: p.verschoben, ohne_config: p.ohne_config,
 };
 return [{ json: { schluessel: 'loeschjob', letzter_lauf: new Date().toISOString(), letztes_ergebnis: JSON.stringify(ergebnis) } }];
@@ -170,6 +188,6 @@ return [{ json: { ergebnis: 'geloescht', ...JSON.parse($('Lauf abschließen').fi
 	wf.verbinde(entwurfDa, entwurfLoeschen, 0);
 	wf.verbinde(entwurfDa, vAuftraege, 1);
 	wf.kette(entwurfLoeschen, entwurfDaten, entwurfVermerken, vAuftraege);
-	wf.kette(vAuftraege, vLoeschen, tAuftraege, tLoeschen, fAuftraege, fLoeschen, aAuftraege, aLoeschen, mAuftraege, mLoeschen, feAuftrag, feLoeschen, abschluss, vermerken, ergebnis);
+	wf.kette(vAuftraege, vLoeschen, tAuftraege, tLoeschen, fAuftraege, fLoeschen, aAuftraege, aLoeschen, kAuftraege, kLoeschen, linkAuftrag, kAltLoeschen, uAltAuftrag, uAltLoeschen, mAuftraege, mLoeschen, feAuftrag, feLoeschen, abschluss, vermerken, ergebnis);
 	return wf;
 };

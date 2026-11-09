@@ -4,11 +4,14 @@
 //   samt Audit, Freigaben und Freigabe-Links. Offene oder eskalierte Vorgänge werden nie automatisch gelöscht.
 // - Dedupe-Einträge (epa_verarbeitete_mails) nach aufbewahrung_tage.
 // - Fehlerlog nach 90 Tagen (enthält nur IDs und technische Meldungen).
+// - Kalender-Termine (epa_kalender_termine) mit dem Vorgang sowie 30 Tage nach Ablauf des Links;
+//   Zugänge zur Übersichtsseite (epa_uebersicht_zugaenge) 30 Tage nach Ablauf. Beide enthalten nur Zeiten, IDs und Hashes.
 // - Ersetzte Rückfrage-Entwürfe im Postfach (nie gesendet, nie mehr gültig). Gelöscht wird nur, was nachweislich
 //   ein Entwurf ist und die passende Freigabe-Kennung trägt. Outlook verschiebt ihn in "Gelöschte Elemente".
 
 const ENDSTATUS = Object.freeze(['Abgeschlossen', 'Ignoriert']);
 const FEHLERLOG_TAGE = 90;
+const LINK_TAGE = 30;
 const MAX_VORGAENGE = 200;
 const MAX_ENTWUERFE = 50;
 const TAG = 86400000;
@@ -80,6 +83,7 @@ function planen({ jetzt, vorgaenge, freigaben, configs, maxVorgaenge = MAX_VORGA
 		entwuerfe,
 		mail_grenzen: mailGrenzen,
 		fehler_grenze: new Date(t - FEHLERLOG_TAGE * TAG).toISOString(),
+		link_grenze: new Date(t - LINK_TAGE * TAG).toISOString(),
 		zurueckgestellt,
 		verschoben: Math.max(0, zuLoeschen.length - maxVorgaenge) + Math.max(0, offeneEntwuerfe.length - entwuerfe.length),
 		ohne_config: [...ohneConfig].sort(),
@@ -110,7 +114,8 @@ function zusammenfassung(plan) {
 		verschoben: plan.verschoben,
 		ohne_config: plan.ohne_config,
 		fehler_grenze: plan.fehler_grenze,
+		link_grenze: plan.link_grenze,
 	};
 }
 
-module.exports = { ENDSTATUS, FEHLERLOG_TAGE, MAX_VORGAENGE, MAX_ENTWUERFE, planen, entwurfPruefen, zusammenfassung };
+module.exports = { ENDSTATUS, FEHLERLOG_TAGE, LINK_TAGE, MAX_VORGAENGE, MAX_ENTWUERFE, planen, entwurfPruefen, zusammenfassung };

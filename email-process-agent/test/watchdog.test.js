@@ -122,6 +122,7 @@ test('Löschplan: nur Endstatus nach Aufbewahrung, mit Freigaben; nie offene/esk
 	assert.deepEqual(p.ohne_config, ['x']);
 	assert.deepEqual(p.mail_grenzen, [{ kunde_id: 'k', grenze: tageVor(30) }]);
 	assert.equal(p.fehler_grenze, tageVor(90));
+	assert.equal(p.link_grenze, tageVor(30), 'abgelaufene Links (Kalender, Übersicht) 30 Tage nach Ablauf');
 });
 
 test('Löschplan: ersetzte Entwürfe zuerst; Vorgang wartet, bis der Entwurf weg ist; Limits', () => {
