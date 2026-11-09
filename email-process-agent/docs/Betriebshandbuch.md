@@ -10,7 +10,7 @@ Stand 2026-10-14 (M6). Für die Person, die das System betreut: Was läuft wann,
 | EPA-07 | bei Klick auf einen Freigabe-Link | Freigabeseite, Versand nach Freigabe |
 | EPA-04 | stündlich (Minute 5) | Erinnerungen an Kunden (mit Freigabe), Eskalation, Erinnerungen an Freigeber, neue Links |
 | EPA-06 Watchdog | 07:30 und 13:30 | Prüft, ob alles läuft; einmal täglich „Alles in Ordnung“ |
-| EPA-08 Löschjob | 02:15 | Löscht Daten nach Ablauf der Aufbewahrung |
+| EPA-08 Löschjob | 02:15 | Löscht Daten nach Ablauf der Aufbewahrung; „Bereit zur Bearbeitung“ nach 30 Tagen ohne Änderung |
 | EPA-05 | bei jedem Fehler | Fehlerlog, Alarm im Betriebskanal, Vorgang sichern |
 | EPA-13 Tagesübersicht | 08:05 an Geschäftstagen | Zusammenfassung der offenen Vorgänge je Kunde in seinen Kanal, mit neuem Link zur Übersichtsseite |
 | EPA-12 Übersicht-Seite | bei Klick auf den Übersicht-Link | Webseite mit den offenen Vorgängen genau eines Kunden (nur lesen) |
