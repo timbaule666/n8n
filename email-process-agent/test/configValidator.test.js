@@ -219,3 +219,12 @@ test('kalender: optional, Felder müssen zur Vorgangsart passen', () => {
 	assert.match(typ.fehler.join('\n'), /keine Pflichtfelder/);
 	assert.equal(validiereConfig({ ...basis, kalender: JSON.stringify({ aktiv: false }) }, b.epa_config_pflichtfelder).config.kalender, null);
 });
+
+test('PLZ-Regel laender: erlaubte Länder, nicht zusammen mit regex', () => {
+	const f = (regel) => validiereConfig(allgemein(), [feld({ feldname: 'Start_PLZ', typ: 'plz', validierungsregel: JSON.stringify(regel) })]);
+	assert.equal(f({ laender: ['DE'] }).gueltig, true, f({ laender: ['DE'] }).fehler.join('\n'));
+	assert.equal(f({ laender: ['DE', 'AT', 'CH'] }).gueltig, true);
+	assert.match(fehlerText(f({ laender: ['XX'] })), /laender/);
+	assert.match(fehlerText(f({ laender: [] })), /laender/);
+	assert.match(fehlerText(f({ laender: ['DE'], regex: '^\\d{5}$' })), /schliessen sich aus/);
+});

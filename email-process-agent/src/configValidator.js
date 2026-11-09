@@ -7,7 +7,7 @@ const FELDTYPEN = ['text', 'plz', 'datum', 'zahl', 'email', 'telefon', 'enum'];
 // Erlaubte Schlüssel der Validierungsregel je Feldtyp (Tippfehler sollen auffallen).
 const REGEL_SCHLUESSEL = {
 	text: ['min_laenge', 'max_laenge', 'regex', 'person'],
-	plz: ['regex'],
+	plz: ['regex', 'laender'],
 	datum: ['min_tage_ab_heute', 'max_tage_ab_heute'],
 	zahl: ['min', 'max', 'ganzzahl'],
 	email: ['regex'],
@@ -84,6 +84,13 @@ function pruefeRegel(feld, regel, praefix, fehler) {
 	if (r.regex !== undefined) {
 		if (typeof r.regex !== 'string') fehler.push(`${praefix}.validierungsregel.regex: muss Text sein`);
 		else pruefeRegex(r.regex, `${praefix}.validierungsregel.regex`, fehler);
+	}
+	if (r.laender !== undefined) {
+		const LAENDER = ['DE', 'AT', 'CH', 'NL', 'BE', 'LU', 'DK', 'FR', 'IT', 'PL', 'CZ'];
+		if (!Array.isArray(r.laender) || r.laender.length === 0 || r.laender.some(function (x) { return !LAENDER.includes(String(x).toUpperCase()); })) {
+			fehler.push(praefix + '.validierungsregel.laender: Liste mit Laendercodes erwartet (' + LAENDER.join(', ') + ')');
+		}
+		if (r.regex !== undefined) fehler.push(praefix + '.validierungsregel: regex und laender schliessen sich aus');
 	}
 	for (const k of ['min_laenge', 'max_laenge', 'min_ziffern', 'max_ziffern']) {
 		if (r[k] !== undefined) zahl(r[k], `${praefix}.validierungsregel.${k}`, fehler, { min: 0, max: 100000, ganz: true });
