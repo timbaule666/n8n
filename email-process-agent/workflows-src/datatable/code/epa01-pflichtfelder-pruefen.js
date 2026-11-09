@@ -12,6 +12,13 @@ if (!llm.ok) {
 	} }];
 }
 const p = pflichtfelder.pruefen(llm.ergebnis.felder, felder, { heute: n.heute, quelltext: pflichtfelder.quelltextAus(n.mail), absenderName: n.mail.absender_name, plzInfo });
+// Mailtext und Anhang nennen bei einem Pflichtfeld verschiedene Werte (z. B. 600 kg / 900 kg): nicht "bereit",
+// sondern per Rückfrage bestätigen lassen (Härtetest final, F15).
+for (const w of textHinweise.widerspruchFelder(n.mail, felder)) {
+	if (p.fehlende.some((f) => f.feldname === w.feldname)) continue;
+	p.fehlende.push(w);
+	p.vollstaendig = false;
+}
 const kiVerdacht = llm.ergebnis.verdacht_manipulation === true || k.details.verdacht_manipulation === true;
 // KI-Einschätzung + feste Musterprüfung: Bei bestätigtem Verdacht keine Rückfrage, keine Freigabe – nur die
 // Systemwarnung, ein Mensch prüft die Mail. Meldet nur die KI etwas, läuft die Mail normal mit Hinweis weiter.

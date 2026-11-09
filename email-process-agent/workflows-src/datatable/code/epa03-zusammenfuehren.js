@@ -11,6 +11,8 @@ const m = antwort.zusammenfuehren(v.extrahierte_daten, neu, felder, {
 	istPlatzhalter: pflichtfelder.istPlatzhalter, konflikteBisher: v.konflikte, message_id: mail.message_id, runde: Number(v.rundenzaehler || 0),
 	// Name des Antwortenden bzw. des ursprünglichen Absenders (z. B. Weiterleitender) ist kein neuer Ansprechpartner
 	absenderNamen: [mail.absender_name, v.absender_name],
+	// Felder, nach denen gefragt wurde (auch Bestätigung eines Widerspruchs): die Antwort darauf gilt.
+	angefragt: Array.isArray(v.fehlende_felder) ? v.fehlende_felder : [],
 });
 const ent = antwort.entscheiden(m, v);
 let fristNeu = null;
@@ -27,11 +29,15 @@ const sperren = bewertung.stufe === 'sperren';
 const manipulation = sperren;
 // Wichtige Zusatzinformation aus der Antwort (z. B. Gefahrgut, Hebebühne): immer melden, auch ohne neue Feldwerte.
 const besonderheiten = typeof llm.ergebnis.besonderheiten === 'string' && llm.ergebnis.besonderheiten.trim() ? llm.ergebnis.besonderheiten.trim().slice(0, 400) : null;
+// Kunde storniert in seiner Antwort (Härtetest final, V-0013): keine weitere Rückfrage, keine Erinnerungen –
+// Vorgang auf "Eskaliert / Manuell", eine offene Rückfrage wird deaktiviert, ein Mensch entscheidet.
+const storno = !sperren ? textHinweise.stornoStelle(mail.text) : null;
+const ergebnis = sperren ? 'manipulation' : storno ? 'storno' : ent.weg;
 return [{ json: {
-	weg: ent.weg === 'keine_daten' && !sperren ? 'keine_daten' : 'auswerten',
-	ergebnis: sperren ? 'manipulation' : ent.weg,
-	zielstatus: sperren ? 'Eskaliert / Manuell' : ent.zielstatus,
-	freigabe_ersetzen: ent.freigabe_ersetzen,
+	weg: ergebnis === 'keine_daten' ? 'keine_daten' : 'auswerten',
+	ergebnis,
+	zielstatus: sperren || storno ? 'Eskaliert / Manuell' : ent.zielstatus,
+	freigabe_ersetzen: storno ? v.status === 'Freigabe ausstehend' && Boolean(v.freigabe_id_aktuell) : ent.freigabe_ersetzen,
 	merge: m,
 	frist_neu: fristNeu,
 	verdacht_manipulation: manipulation,
@@ -42,7 +48,7 @@ return [{ json: {
 	details: {
 		anlass: 'Kundenantwort', message_id: mail.message_id,
 		uebernommen: m.uebernommen.map((u) => u.feldname), konflikte_neu: m.konflikte_neu.map((k) => k.feldname),
-		fehlende: m.fehlende.map((f) => f.feldname), verdacht_manipulation: manipulation, manipulation: bewertung, besonderheiten,
+		fehlende: m.fehlende.map((f) => f.feldname), verdacht_manipulation: manipulation, manipulation: bewertung, besonderheiten, storno,
 		llm: { modell: llm.modell, prompt_version: llm.prompt_version, versuche: llm.versuche, korrekturen: llm.korrekturen },
 	},
 } }];

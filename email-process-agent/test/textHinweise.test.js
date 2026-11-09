@@ -103,3 +103,23 @@ test('Mehrere Aufträge nur bei Vorgangsarten mit Strecke (zwei PLZ-Felder)', ()
 	assert.equal(t.alle({ text }, { felder: [{ typ: 'plz' }, { typ: 'plz' }] }).hinweise.length, 1);
 	assert.deepEqual(t.alle({ text }, { felder: [{ typ: 'plz' }, { typ: 'text' }] }).hinweise, []);
 });
+
+test('Härtetest final: Reklamation und Schreibweisen ohne Umlaut werden gemeldet', () => {
+	assert.equal(t.handlungKeineAnfrage({ text: 'Guten Tag,\n\nbei der Lieferung vom 05.11. waren 2 Kartons beschädigt. Bitte um Rückmeldung.' }).anlass, 'reklamation');
+	assert.equal(t.handlungKeineAnfrage({ text: 'The goods arrived damaged.' }).anlass, 'reklamation');
+	assert.equal(t.handlungKeineAnfrage({ text: 'koennten Sie mich bitte kurz zurueckrufen? 0511 5557303' }).anlass, 'rueckruf');
+	assert.equal(t.handlungKeineAnfrage({ text: 'Ich bitte um Rueckruf.' }).anlass, 'rueckruf');
+	assert.equal(t.handlungKeineAnfrage({ text: 'Vielen Dank für die schnelle Lieferung, alles bestens!' }), null);
+	// Stornierung geht vor
+	assert.equal(t.handlungKeineAnfrage({ text: 'Die Ware war beschädigt, bitte stornieren Sie den Auftrag.' }).anlass, 'storno');
+});
+
+test('Härtetest final: Widerspruch Mailtext/Anhang macht das Pflichtfeld offen', () => {
+	const felder = [{ feldname: 'Gewicht_kg', anzeigename: 'Gesamtgewicht (kg)', typ: 'zahl', pflicht: true }, { feldname: 'Abholdatum', anzeigename: 'Abholdatum', typ: 'datum', pflicht: true }];
+	const mail = { text: 'Abholung bitte am 03.12.2026, 2 Paletten mit 600 kg.', anhaenge: [{ name: 'Auftrag.pdf', text: 'Abholung: 99084 Erfurt, 03.12.2026\n2 Paletten, 900 kg' }] };
+	const w = t.widerspruchFelder(mail, felder);
+	assert.deepEqual(w.map((x) => [x.feldname, x.grund, x.widerspruch.werte]), [['Gewicht_kg', 'widersprüchlich: 600 kg (Mailtext) / 900 kg (Anhang)', ['600 kg', '900 kg']]]);
+	assert.deepEqual(t.widerspruchFelder({ text: '600 kg', anhaenge: [{ name: 'a.pdf', text: '600 kg' }] }, felder), []);
+	// Gewicht kein Pflichtfeld: kein offenes Feld (der Hinweis in der Meldung bleibt)
+	assert.deepEqual(t.widerspruchFelder(mail, [{ ...felder[0], pflicht: false }]), []);
+});

@@ -121,7 +121,7 @@ return [{ json: { hinweise: [...antwort.extraktionsHinweise(v, config.vorgangsty
 	const plz = wf.aufruf('PLZ nachschlagen', [1430, 100], 'EPA SW PLZ nachschlagen', [
 		['plz_liste', 'array', "={{ ($json.ok && $json.ergebnis && $json.ergebnis.felder) ? Object.values($json.ergebnis.felder).map(function (e) { return e && e.wert !== null && e.wert !== undefined ? String(e.wert).replace(/\\s/g, '') : ''; }).filter(function (s) { return /^[0-9]{5}$/.test(s); }) : [] }}"],
 	], { onError: 'continueRegularOutput' });
-	const zusammen = wf.code('Zusammenführen', [1540, 100], ['antwort', 'pflichtfelder', 'fristen', 'eingang'], codeDatei('epa03-zusammenfuehren.js'));
+	const zusammen = wf.code('Zusammenführen', [1540, 100], ['antwort', 'pflichtfelder', 'fristen', 'eingang', 'textHinweise'], codeDatei('epa03-zusammenfuehren.js'));
 	const wWeg = weiche(wf, 'Nach Merge', [1760, 100], '={{ $json.weg }}', ['auswerten', 'keine_daten', 'extraktion_fehlgeschlagen']);
 
 	// ---------------------------------------------------------------- keine Daten (Vertröstung)

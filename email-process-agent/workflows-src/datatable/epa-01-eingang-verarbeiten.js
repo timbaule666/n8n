@@ -400,7 +400,7 @@ return [{ json: {
 	const plz = wf.aufruf('PLZ nachschlagen', [3850, 120], 'EPA SW PLZ nachschlagen', [
 		['plz_liste', 'array', "={{ ($json.ok && $json.ergebnis && $json.ergebnis.felder) ? Object.values($json.ergebnis.felder).map(function (e) { return e && e.wert !== null && e.wert !== undefined ? String(e.wert).replace(/\\s/g, '') : ''; }).filter(function (s) { return /^[0-9]{5}$/.test(s); }) : [] }}"],
 	], { onError: 'continueRegularOutput' });
-	const pruefen = wf.code('Pflichtfelder prüfen', [3960, 120], ['pflichtfelder', 'eingang'], codeDatei('epa01-pflichtfelder-pruefen.js'));
+	const pruefen = wf.code('Pflichtfelder prüfen', [3960, 120], ['pflichtfelder', 'eingang', 'textHinweise'], codeDatei('epa01-pflichtfelder-pruefen.js'));
 	const speichern = wf.aufruf('Daten speichern', [4180, 120], 'EPA SW Vorgang verwalten', [
 		['aktion', 'string', 'aktualisieren'],
 		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],

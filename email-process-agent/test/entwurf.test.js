@@ -154,3 +154,13 @@ test('Vorgangsnummer im Mailtext: Sprache des Entwurfs, fest vor der Signatur', 
 	assert.ok(html.indexOf('V-2026-0185') > html.indexOf('Text') && html.indexOf('V-2026-0185') < html.indexOf('Gruß'));
 	assert.ok(!e.zuHtml('Text', cfg).includes('Vorgangsnummer'));
 });
+
+test('Widerspruch: Bitte um Bestätigung mit beiden Werten statt Textbaustein', () => {
+	const felder = [{ feldname: 'Gewicht_kg', anzeigename: 'Gesamtgewicht (kg)', typ: 'zahl', resolution_textbaustein: 'Bitte nennen Sie das Gewicht.' }, { feldname: 'Liefertermin', anzeigename: 'Liefertermin', typ: 'datum', resolution_textbaustein: 'Bitte nennen Sie den Termin.' }];
+	const b = e.bausteine([{ feldname: 'Gewicht_kg', widerspruch: { werte: ['600 kg', '900 kg'] } }, { feldname: 'Liefertermin', widerspruch: { werte: ['2026-12-07', '2026-12-14'] } }], felder, null, 'de');
+	assert.equal(b[0].text, 'Bitte bestätigen Sie die Angabe „Gesamtgewicht (kg)“: Wir haben „600 kg“ und „900 kg“ erhalten. Welche ist richtig?');
+	assert.match(b[1].text, /„07\.12\.2026“ und „14\.12\.2026“/);
+	assert.match(e.bausteine([{ feldname: 'Gewicht_kg', widerspruch: { werte: ['600', '900'] } }], felder, null, 'en')[0].text, /^Please confirm "Gesamtgewicht \(kg\)": we received "600" and "900"/);
+	// ohne zwei verschiedene Werte: normaler Textbaustein
+	assert.equal(e.bausteine([{ feldname: 'Gewicht_kg', widerspruch: { werte: ['600', '600'] } }], felder, null, 'de')[0].text, 'Bitte nennen Sie das Gewicht.');
+});

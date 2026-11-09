@@ -69,6 +69,7 @@ function zusammenfuehren(alt, neu, felder, optionen = {}) {
 	const hinweise = [];
 	const unsicher = [];
 	let angaben = 0;
+	const angefragt = new Set((optionen.angefragt || []).map((x) => (x && typeof x === 'object' ? x.feldname : x)).filter(Boolean));
 
 	for (const f of felder || []) {
 		const vorher = a[f.feldname] || {};
@@ -85,6 +86,11 @@ function zusammenfuehren(alt, neu, felder, optionen = {}) {
 				if (angegeben) hinweise.push({ feldname: f.feldname, anzeigename: f.anzeigename, grund: `neue Angabe ungültig (${ungueltig.get(f.feldname) || 'ungültig'}), bisheriger Wert bleibt` });
 			} else if (gleich(vorher.wert, neuWert)) {
 				bestaetigt.push(f.feldname);
+			} else if (angefragt.has(f.feldname)) {
+				// Danach wurde gefragt (z. B. Bestätigung eines Widerspruchs): die Antwort gilt.
+				daten[f.feldname] = { wert: neuWert, roh, quelle: n.quelle || null, konfidenz: n.konfidenz ?? null, nachgefordert: true, runde: optionen.runde ?? null };
+				uebernommen.push({ feldname: f.feldname, anzeigename: f.anzeigename, alt: vorher.wert, neu: neuWert, quelle: n.quelle || null });
+				angaben += 1;
 			} else if (f.validierungsregel && f.validierungsregel.person === true && istAbsenderName(neuWert, optionen.absenderNamen)
 				&& !istAbsenderName(vorher.wert, optionen.absenderNamen)) {
 				// Der Antwortende unterschreibt mit seinem Namen (z. B. der Kollege, der die Anfrage weitergeleitet hat):
@@ -115,12 +121,33 @@ function zusammenfuehren(alt, neu, felder, optionen = {}) {
 		}
 	}
 
+	// Adresse neu angegeben (Härtetest final, V-0012): Fehlte ein Feld einer Gruppe (z. B. PLZ des Abholorts) und kommt
+	// es jetzt zusammen mit einem anderen Wert für ein Feld derselben Gruppe (Ort), gilt die neue Angabe als Ganzes.
+	const nachName = new Map((felder || []).map((f) => [f.feldname, f]));
+	const gruppeNeu = new Set(uebernommen.filter((u) => u.alt === null).map((u) => String((nachName.get(u.feldname) || {}).gruppe || '')).filter(Boolean));
+	for (let i = konflikteNeu.length - 1; i >= 0; i--) {
+		const k = konflikteNeu[i];
+		const g = String((nachName.get(k.feldname) || {}).gruppe || '');
+		if (!g || !gruppeNeu.has(g)) continue;
+		const n = nd[k.feldname] || {};
+		daten[k.feldname] = { wert: k.neu, roh: n.roh ?? k.neu, quelle: k.quelle, konfidenz: n.konfidenz ?? null, nachgefordert: true, runde: optionen.runde ?? null };
+		uebernommen.push({ feldname: k.feldname, anzeigename: k.anzeigename, alt: k.alt, neu: k.neu, quelle: k.quelle });
+		konflikteNeu.splice(i, 1);
+	}
+
 	const fehlende = (felder || [])
 		.filter((f) => f.pflicht && leer(daten[f.feldname].wert))
 		.map((f) => ({ feldname: f.feldname, anzeigename: f.anzeigename, grund: ungueltig.get(f.feldname) && ungueltig.get(f.feldname) !== 'fehlt' ? ungueltig.get(f.feldname) : 'fehlt' }));
+	// Widerspruch in einem Pflichtfeld: nicht "bereit", sondern beim Kunden bestätigen lassen (Rückfrage zur Freigabe).
+	for (const k of konflikteNeu) {
+		const f = nachName.get(k.feldname);
+		if (!f || !f.pflicht || fehlende.some((x) => x.feldname === k.feldname)) continue;
+		fehlende.push({ feldname: k.feldname, anzeigename: k.anzeigename, grund: `widersprüchlich: bisher "${k.alt}", jetzt "${k.neu}"`, widerspruch: { werte: [k.alt, k.neu] } });
+	}
 
-	// Offene Konflikte sammeln (gleicher Feldname + gleicher neuer Wert nur einmal)
-	const bisher = Array.isArray(optionen.konflikteBisher) ? optionen.konflikteBisher : [];
+	// Offene Konflikte sammeln (gleicher Feldname + gleicher neuer Wert nur einmal); beantwortete Felder sind erledigt.
+	const erledigt = new Set(uebernommen.map((u) => u.feldname));
+	const bisher = (Array.isArray(optionen.konflikteBisher) ? optionen.konflikteBisher : []).filter((b) => !erledigt.has(b.feldname));
 	const schluessel = (k) => `${k.feldname}|${String(k.neu).toLowerCase()}`;
 	const gesehen = new Set(bisher.map(schluessel));
 	const konflikte = [...bisher, ...konflikteNeu.filter((k) => !gesehen.has(schluessel(k)))];
@@ -251,6 +278,7 @@ function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrag
 		luecken: 'Antwort eingegangen – es fehlen noch Angaben',
 		keine_daten: besonderheiten ? 'Antwort mit Zusatzinformation' : 'Antwort ohne neue Angaben',
 		nur_melden: 'Neue Nachricht zu einem Vorgang in Bearbeitung',
+		storno: 'Antwort: Kunde storniert – bitte bearbeiten',
 	}[entscheidung.weg];
 	const z = [`<b>${esc(titel)}</b>`, `Vorgang: <b>${esc(vid)}</b>`, ...(vorgangsart ? [`Art: <b>${esc(vorgangsart)}</b>`] : []), `Von: ${esc(mail.absender_adresse)}`, `Betreff: ${esc(mail.betreff)}`];
 	if (mail.web_link) z.push(`<a href="${esc(mail.web_link)}">Mail in Outlook öffnen</a>`);
@@ -264,7 +292,9 @@ function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrag
 	}
 	for (const h of merge.hinweise) z.push(`Hinweis ${esc(h.anzeigename)}: ${esc(h.grund)}`);
 	for (const u of merge.unsicher) z.push(`⚠️ ${esc(u.anzeigename)}: KI unsicher (Konfidenz ${esc(u.konfidenz)}), bitte prüfen`);
-	if (entscheidung.weg === 'keine_daten') {
+	if (entscheidung.weg === 'storno') {
+		z.push('Der Vorgang steht jetzt auf "Eskaliert / Manuell". Es geht keine weitere Rückfrage und keine Erinnerung an den Kunden. Bitte die Stornierung bestätigen bzw. mit dem Kunden klären.');
+	} else if (entscheidung.weg === 'keine_daten') {
 		z.push((storno || besonderheiten ? 'Die Antwort enthält keine neuen Angaben zum Vorgang. Der Vorgang bleibt unverändert.' : 'Die Antwort enthält keine verwertbaren Angaben (z. B. Vertröstung). Der Vorgang bleibt unverändert.') + (fristNeu ? ` Antwortfrist verlängert bis ${esc(fristNeu)}.` : ''));
 	} else if (entscheidung.weg === 'luecken') {
 		z.push('Weiter offen:<ul>' + merge.fehlende.map((f) => `<li>${esc(f.anzeigename)}: ${esc(f.grund)}</li>`).join('') + '</ul>');

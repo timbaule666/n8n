@@ -66,12 +66,31 @@ function andererAbsender(name, absenderName) {
 }
 
 /** Feste Bausteine der fehlenden Felder in Config-Reihenfolge. Fehlender Baustein = Konfigurationsfehler. */
-function bausteine(fehlende, felder, textbausteine) {
+// Widersprüchliche Angaben (Härtetest final): statt "Bitte nennen Sie …" eine Bitte um Bestätigung mit den Werten.
+function wertText(w, f) {
+	const s = String(w ?? '').replace(/[\r\n"„“]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+	return f && f.typ === 'datum' && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s.split('-').reverse().join('.') : s;
+}
+function bestaetigungsText(f, werte, sprache) {
+	const w = [...new Set((werte || []).map((x) => wertText(x, f)).filter(Boolean))];
+	if (w.length < 2) return null;
+	if (sprache === 'en') {
+		const liste = w.map((x) => `"${x}"`);
+		return `Please confirm "${f.anzeigename}": we received ${liste.slice(0, -1).join(', ')} and ${liste[liste.length - 1]}. Which one is correct?`;
+	}
+	const liste = w.map((x) => `„${x}“`);
+	return `Bitte bestätigen Sie die Angabe „${f.anzeigename}“: Wir haben ${liste.slice(0, -1).join(', ')} und ${liste[liste.length - 1]} erhalten. Welche ist richtig?`;
+}
+
+function bausteine(fehlende, felder, textbausteine, sprache) {
 	const nachName = new Map((felder || []).map((f) => [f.feldname, f]));
 	const fehlendeNamen = new Set((fehlende || []).map((f) => f.feldname));
+	const widerspruch = new Map((fehlende || []).filter((f) => f && f.widerspruch && Array.isArray(f.widerspruch.werte)).map((f) => [f.feldname, f.widerspruch.werte]));
 	const out = [];
 	for (const f of felder || []) {
 		if (!fehlendeNamen.has(f.feldname)) continue;
+		const bestaetigen = widerspruch.has(f.feldname) ? bestaetigungsText(f, widerspruch.get(f.feldname), sprache) : null;
+		if (bestaetigen) { out.push({ feldname: f.feldname, anzeigename: f.anzeigename, text: bestaetigen }); continue; }
 		const b = normalisiereLeerraum(textbausteine && textbausteine[f.feldname] ? textbausteine[f.feldname] : f.resolution_textbaustein);
 		if (!b) throw new Error(`Textbaustein für Feld "${f.feldname}" fehlt`);
 		out.push({ feldname: f.feldname, anzeigename: f.anzeigename, text: b });
@@ -214,7 +233,7 @@ function zuHtml(text, config, referenz) {
  * @returns {{ text, html, abschluss, bausteine, fallback, pruefung }}
  */
 function entwurfBauen(llmHuelle, { config, felder, fehlende, name, referenz }) {
-	const bs = bausteine(fehlende, felder, config.textbausteine);
+	const bs = bausteine(fehlende, felder, config.textbausteine, config.sprache);
 	if (!bs.length) throw new Error('Keine fehlenden Felder: keine Rückfrage nötig');
 	const pruefung = llmHuelle ? huellePruefen(llmHuelle, config) : ['LLM-Entwurf nicht verfügbar'];
 	const fallback = pruefung.length > 0;
@@ -225,7 +244,7 @@ function entwurfBauen(llmHuelle, { config, felder, fehlende, name, referenz }) {
 
 /** Erinnerungs-Entwurf: Template-Hülle, feste Bausteine der noch offenen Felder, fester Abschluss. */
 function erinnerungBauen({ config, felder, fehlende, name, referenz }) {
-	const bs = bausteine(fehlende, felder, config.textbausteine);
+	const bs = bausteine(fehlende, felder, config.textbausteine, config.sprache);
 	if (!bs.length) throw new Error('Keine fehlenden Felder: keine Erinnerung nötig');
 	const text = bearbeitbarerText(vorlageErinnerung(config, name), bs);
 	return { text, html: zuHtml(text, config, referenz), abschluss: abschlussText(config), bausteine: bs, fallback: false, pruefung: [] };

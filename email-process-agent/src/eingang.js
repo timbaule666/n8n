@@ -229,6 +229,7 @@ function meldungInFreigabe(rueckfrage) {
 
 const ANLASS_TITEL = {
 	storno: 'Mögliche Stornierung / Absage',
+	reklamation: 'Reklamation / Beschwerde',
 	rueckruf: 'Rückrufbitte',
 	status: 'Frage zu einem Vorgang',
 	anhang: 'Inhalt nur im Anhang (nicht ausgewertet)',

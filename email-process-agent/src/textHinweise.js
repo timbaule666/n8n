@@ -19,7 +19,7 @@ function mehrereAuftraege(text) {
 	return { verdacht: plz.length > 2 || worte || nummern.length > 1, plz };
 }
 
-const STORNO = /\b(stornier\w*|storno\w*|absag\w*|sagen?\s+(\w+\s+){0,3}ab\b|hat sich (\w+\s+)?erledigt|nicht mehr (nötig|noetig|benötigt|benoetigt|erforderlich|gebraucht)|zurückzieh\w*|zurückgezogen|cancel\w*|no longer (needed|required))/i;
+const STORNO = /\b(stornier\w*|storno\w*|absag\w*|sagen?\s+(\w+\s+){0,3}ab\b|hat sich (\w+\s+)?erledigt|nicht mehr (nötig|noetig|benötigt|benoetigt|erforderlich|gebraucht)|zur(?:ü|ue)ckzieh\w*|zur(?:ü|ue)ckgezogen|cancel\w*|no longer (needed|required))/i;
 
 /** Zeile, in der der Kunde storniert bzw. absagt (gekürzt), sonst null. Zitierte Zeilen (">") zählen nicht. */
 function stornoStelle(text) {
@@ -79,23 +79,46 @@ const datumText = (d) => d.split('-').reverse().join('.');
  * Mailtext und Anhang nennen unterschiedliche Gewichte bzw. Daten (beide nennen eins, keins stimmt überein).
  * Die KI übernimmt still einen der Werte; der Mitarbeiter soll den Widerspruch sehen.
  */
-function widerspruecheAnhang(mail) {
+function widerspruecheAnhangDetails(mail) {
 	const m = mail || {};
-	const h = [];
+	const out = [];
 	const textGewicht = gewichteIn(m.text);
 	const textDatum = datenIn(m.text);
 	for (const a of m.anhaenge || []) {
 		if (!a || typeof a.text !== 'string' || !a.text.trim()) continue;
 		const g = gewichteIn(a.text);
-		if (textGewicht.length && g.length && !g.some((x) => textGewicht.includes(x))) {
-			h.push(`Mailtext und Anhang „${a.name}“ nennen unterschiedliche Gewichte: Mailtext ${textGewicht.join(' / ')} kg, Anhang ${g.join(' / ')} kg – bitte prüfen.`);
-		}
+		if (textGewicht.length && g.length && !g.some((x) => textGewicht.includes(x))) out.push({ art: 'gewicht', name: a.name, text: textGewicht, anhang: g });
 		const d = datenIn(a.text);
-		if (textDatum.length && d.length && !d.some((x) => textDatum.includes(x))) {
-			h.push(`Mailtext und Anhang „${a.name}“ nennen unterschiedliche Daten: Mailtext ${textDatum.map(datumText).join(' / ')}, Anhang ${d.map(datumText).join(' / ')} – bitte prüfen.`);
-		}
+		if (textDatum.length && d.length && !d.some((x) => textDatum.includes(x))) out.push({ art: 'datum', name: a.name, text: textDatum, anhang: d });
 	}
-	return h;
+	return out;
+}
+
+function widerspruecheAnhang(mail) {
+	return widerspruecheAnhangDetails(mail).map((w) => (w.art === 'gewicht'
+		? `Mailtext und Anhang „${w.name}“ nennen unterschiedliche Gewichte: Mailtext ${w.text.join(' / ')} kg, Anhang ${w.anhang.join(' / ')} kg – bitte prüfen.`
+		: `Mailtext und Anhang „${w.name}“ nennen unterschiedliche Daten: Mailtext ${w.text.map(datumText).join(' / ')}, Anhang ${w.anhang.map(datumText).join(' / ')} – bitte prüfen.`));
+}
+
+/**
+ * Pflichtfelder, bei denen Mailtext und Anhang sich widersprechen (Härtetest final, F15): Sie gelten als offen und
+ * werden beim Kunden bestätigt, statt dass der Vorgang mit einem der Werte als "bereit" gilt.
+ * Gewicht: Pflichtfeld vom Typ zahl, dessen Name "gewicht" enthält. Datum: das einzige Pflichtfeld vom Typ datum.
+ * @returns {object[]} Einträge für fehlende_felder: { feldname, anzeigename, grund, widerspruch: { werte } }
+ */
+function widerspruchFelder(mail, felder) {
+	const pf = (felder || []).filter((f) => f && f.pflicht);
+	const gewicht = pf.find((f) => f.typ === 'zahl' && /gewicht/i.test(String(f.feldname)));
+	const daten = pf.filter((f) => f.typ === 'datum');
+	const out = [];
+	for (const w of widerspruecheAnhangDetails(mail)) {
+		const f = w.art === 'gewicht' ? gewicht : daten.length === 1 ? daten[0] : null;
+		if (!f || out.some((o) => o.feldname === f.feldname)) continue;
+		const fmt = (x) => (w.art === 'gewicht' ? `${x} kg` : datumText(x));
+		const werte = [...w.text.map((x) => `${fmt(x)} (Mailtext)`), ...w.anhang.map((x) => `${fmt(x)} (Anhang)`)];
+		out.push({ feldname: f.feldname, anzeigename: f.anzeigename, grund: `widersprüchlich: ${werte.join(' / ')}`, widerspruch: { werte: werte.map((x) => x.replace(/ \((Mailtext|Anhang)\)$/, '')) } });
+	}
+	return out;
 }
 
 /** Mehrere Daten in einer Zeile, verbunden mit "oder", "bzw." …: der Kunde lässt die Wahl, erfasst wird nur eins. */
@@ -135,7 +158,9 @@ function alle(mail, optionen = {}) {
 
 // Mails ohne Anfrage, bei denen trotzdem jemand handeln muss (Härtetest 2: Stornierung ohne Bezug, Rückrufbitte,
 // Frage zum Stand, nur Foto im Anhang). Diese Mails werden gemeldet statt still ignoriert.
-const RUECKRUF = /(\bbitte\s+(\w+\s+){0,3}zurückrufen|\bruf(en)?\s+(sie\s+)?(mich|uns)\s+(\w+\s+){0,3}(an|zurück)\b|\b(um|erbitte\w*)\s+(einen\s+|ihren\s+)?rückruf|\brückruf\s+(erbeten|erwünscht|gewünscht)|\bcall\s+me(\s+back)?\b|\bgive\s+(me|us)\s+a\s+call\b|\bcall\s*back\b)/i;
+const RUECKRUF = /(\bbitte\s+(\w+\s+){0,3}zur(?:ü|ue)ckrufen|\bruf(en)?\s+(sie\s+)?(mich|uns)\s+(\w+\s+){0,3}(an|zur(?:ü|ue)ck)(?![\p{L}])|\b(um|erbitte\w*)\s+(einen\s+|ihren\s+)?r(?:ü|ue)ckruf|\br(?:ü|ue)ckruf\s+(erbeten|erw(?:ü|ue)nscht|gew(?:ü|ue)nscht)|\bcall\s+me(\s+back)?\b|\bgive\s+(me|us)\s+a\s+call\b|\bcall\s*back\b)/iu;
+// Reklamation/Beschwerde zu einer Lieferung oder Leistung (Härtetest final, F45): ein Mensch muss reagieren.
+const REKLAMATION = /(\breklamation\w*|\breklamier\w*|\bbeschwerde\w*|\bbeschädigt\w*|\bbeschaedigt\w*|\bdefekt\w*|\bkaputt\w*|\bmangelhaft\w*|\bfalsch(e|en)?\s+(ware|artikel|lieferung|geliefert)|\bfalsch\s+geliefert|\bfehlt\s+(\w+\s+){0,3}(in|bei)\s+der\s+lieferung|\bunvollständig\s+geliefert|\bunvollstaendig\s+geliefert|\bcomplaint\b|\bdamaged\b|\bdefective\b|\bwrong\s+(item|delivery|goods)\b)/i;
 const STAND = /(\bwie\s+ist\s+der\s+stand\b|\bstand\s+der\s+dinge\b|\bwie\s+weit\s+ist\b|\bgibt\s+es\s+(schon\s+)?(neuigkeiten|ein\s+update)\b|\bstatus\s+(zu|von|meiner|unserer|des|der|of)\b|\bany\s+update\b|\bwhat\s+is\s+the\s+status\b)/i;
 const ANHANG = /(\b(siehe|anbei|im|in\s+der)\s+(\w+\s+){0,2}(anhang|anlage|foto|bild|datei)\b|\b(see|find)\s+(\w+\s+){0,2}attach\w*|\battached\b)/i;
 const ANHANG_KI = /(foto|bild|anhang|attachment|ohne (text|inhalt))/i;
@@ -153,7 +178,7 @@ function zeileMit(text, re) {
  * Anlass, eine Mail ohne Anfrage trotzdem zu melden, sonst null.
  * @param {object} mail normalisierte Mail
  * @param {string} [begruendung] Begründung der Klassifizierung (nur Zusatzindiz für "nur Anhang")
- * @returns {{ anlass: 'storno'|'rueckruf'|'status'|'anhang', stelle: string|null, vorgangs_ids?: string[] }|null}
+ * @returns {{ anlass: 'storno'|'reklamation'|'rueckruf'|'status'|'anhang', stelle: string|null, vorgangs_ids?: string[] }|null}
  */
 function handlungKeineAnfrage(mail, begruendung) {
 	const m = mail || {};
@@ -161,6 +186,8 @@ function handlungKeineAnfrage(mail, begruendung) {
 	const text = String(m.text || '');
 	const storno = stornoStelle(text);
 	if (storno) return { anlass: 'storno', stelle: storno };
+	const reklamation = zeileMit(text, REKLAMATION);
+	if (reklamation) return { anlass: 'reklamation', stelle: reklamation };
 	const rueckruf = zeileMit(text, RUECKRUF);
 	if (rueckruf) return { anlass: 'rueckruf', stelle: rueckruf };
 	const ids = m.vorgangs_ids_erwaehnt || [];
@@ -173,4 +200,4 @@ function handlungKeineAnfrage(mail, begruendung) {
 	return null;
 }
 
-module.exports = { mehrereAuftraege, stornoStelle, mehrdeutigeDaten, alternativeDaten, widerspruecheAnhang, datenIn, gewichteIn, alle, handlungKeineAnfrage };
+module.exports = { mehrereAuftraege, stornoStelle, mehrdeutigeDaten, alternativeDaten, widerspruecheAnhang, widerspruecheAnhangDetails, widerspruchFelder, datenIn, gewichteIn, alle, handlungKeineAnfrage };

@@ -34,10 +34,31 @@ test('Merge: leer + gültig -> übernehmen; vorhandenes bleibt; vollständig', (
 	assert.deepEqual(m.konflikte, []);
 });
 
-test('Merge: gültig + abweichend gültig -> Konflikt, alter Wert bleibt', () => {
+test('Merge: gültig + abweichend gültig -> Konflikt, alter Wert bleibt, Pflichtfeld wird beim Kunden bestätigt', () => {
 	const m = merge({ Telefon: '0221 987654', Start_PLZ: '50668' });
 	assert.equal(m.daten.Start_PLZ.wert, '50667');
 	assert.deepEqual(m.konflikte_neu.map((k) => [k.feldname, k.alt, k.neu, k.message_id]), [['Start_PLZ', '50667', '50668', '<r2@x>']]);
+	// Härtetest final: ein Widerspruch in einem Pflichtfeld macht den Vorgang nicht "bereit"
+	assert.equal(m.vollstaendig, false);
+	assert.deepEqual(m.fehlende, [{ feldname: 'Start_PLZ', anzeigename: m.fehlende[0].anzeigename, grund: 'widersprüchlich: bisher "50667", jetzt "50668"', widerspruch: { werte: ['50667', '50668'] } }]);
+});
+
+test('Merge: Antwort auf die Bestätigungs-Rückfrage gilt und erledigt den Widerspruch', () => {
+	const konflikt = { feldname: 'Start_PLZ', anzeigename: 'PLZ', alt: '50667', neu: '50668' };
+	const m = merge({ Telefon: '0221 987654', Start_PLZ: '50668' }, BEKANNT, { angefragt: [{ feldname: 'Start_PLZ' }, { feldname: 'Telefon' }], konflikteBisher: [konflikt] });
+	assert.equal(m.daten.Start_PLZ.wert, '50668');
+	assert.deepEqual(m.konflikte_neu, []);
+	assert.deepEqual(m.konflikte, []);
+	assert.equal(m.vollstaendig, true);
+});
+
+test('Merge: fehlende PLZ samt neuem Ort derselben Gruppe wird als Ganzes übernommen (V-0012)', () => {
+	const alt = pruefe({ Start_Ort: 'Linz', Ziel_PLZ: '04109', Ziel_Ort: 'Leipzig', Abholdatum: '2026-10-30', Gewicht_kg: '1200', Ansprechpartner: 'Max Muster', Telefon: '0221 987654' }).daten;
+	const m = merge({ Start_PLZ: '84028', Start_Ort: 'Landshut' }, alt);
+	assert.equal(m.daten.Start_PLZ.wert, '84028');
+	assert.equal(m.daten.Start_Ort.wert, 'Landshut');
+	assert.deepEqual(m.konflikte_neu, []);
+	assert.deepEqual(m.uebernommen.map((u) => [u.feldname, u.alt, u.neu]).sort(), [['Start_Ort', 'Linz', 'Landshut'], ['Start_PLZ', null, '84028']]);
 	assert.equal(m.vollstaendig, true);
 });
 
@@ -190,4 +211,12 @@ test('Merge: Sammelwert "Sonstiges" gegen konkreten Wert ist kein Widerspruch', 
 	assert.deepEqual(m.konflikte_neu, []);
 	// ein anderer konkreter Wert bleibt ein Widerspruch
 	assert.equal(merge({ Ladungsart: 'Paket' }, alt).konflikte_neu[0].feldname, 'Ladungsart');
+});
+
+test('Meldung bei Stornierung in einer Antwort: Eskaliert, keine weitere Rückfrage', () => {
+	const m = merge({});
+	const html = a.meldungAntwort({ vorgangs_id: 'V-2026-0013', mail: { absender_adresse: 'k@x.de', betreff: 'Re: Anfrage' }, merge: m, entscheidung: { weg: 'storno', freigabe_ersetzen: true }, storno: 'bitte stornieren' });
+	assert.match(html, /Kunde storniert – bitte bearbeiten/);
+	assert.match(html, /Eskaliert \/ Manuell/);
+	assert.match(html, /deaktiviert/);
 });

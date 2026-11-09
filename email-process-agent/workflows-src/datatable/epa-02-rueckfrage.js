@@ -74,7 +74,7 @@ if (!fehlende.length) throw fehler('UNGUELTIGES_FORMAT', 'Keine fehlenden Felder
 let bs;
 // Antwortsprache = Sprache der Kundenmail, wenn die Config dafür Übersetzungen hat (sonst Hauptsprache).
 const cfg = entwurf.sprachConfig(config, v.sprache);
-try { bs = entwurf.bausteine(fehlende, felder, cfg.textbausteine); } catch (err) { throw fehler('KONFIGURATIONSFEHLER', err.message); }
+try { bs = entwurf.bausteine(fehlende, felder, cfg.textbausteine, cfg.sprache); } catch (err) { throw fehler('KONFIGURATIONSFEHLER', err.message); }
 // Erinnerung: gleiche Runde (die Rückfrage dieser Runde ist schon gesendet); der Rundenzähler steigt nicht.
 // Erneut: dieselbe Runde und Art wie die nicht zugestellte Nachricht.
 const runde = art === 'erneut' ? Number(alt.runde || v.rundenzaehler || 0) : Number(v.rundenzaehler || 0) + (art === 'erinnerung' ? 0 : 1);
