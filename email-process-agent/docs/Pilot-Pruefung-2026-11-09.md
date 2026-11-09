@@ -52,3 +52,7 @@ Alle Änderungen, die direkt in n8n gemacht wurden, sind jetzt im Repo und werde
 | Daten | Config-Spalten `kanaele`, `log_channel_id`; Tabelle `epa_plz_de` im Schema (Inhalt = deutsches PLZ-Verzeichnis, nur in der Cloud) |
 
 Längere Code-Blöcke liegen in `workflows-src/datatable/code/`. Abweichung zur Cloud: In `pflichtfelder` ist das geschützte Leerzeichen bei Zahlen („1 200 kg“) wiederhergestellt; es war in der Cloud-Fassung verloren gegangen.
+
+## Nachtrag 09.11. – Löschjob aktiv
+EPA-08 um Kalender-Termine (mit dem Vorgang und 30 Tage nach Link-Ablauf) und Übersicht-Zugänge (30 Tage nach Ablauf) ergänzt, ausgerollt und veröffentlicht; läuft täglich 02:15. Probelauf vorher: 0 Vorgänge (keiner älter als 365 Tage), 7 ersetzte Rückfrage-Entwürfe zum Entfernen aus dem Postfach, Fehlerlog-Grenze 11.08.2026, Link-Grenze 10.10.2026.
+Offen: Regel, wann „Bereit zur Bearbeitung“ zu „Abgeschlossen“ wird (sonst nie gelöscht); Aufbewahrung der n8n-Ausführungsdaten in den n8n-Einstellungen begrenzen.
