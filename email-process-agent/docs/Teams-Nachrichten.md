@@ -2,6 +2,20 @@
 
 Alle Nachrichten, die der Agent in Teams schicken kann, mit Testdaten (erzeugt aus dem aktuellen Code, Commit c73d104). Fett = **…**, kursiv = _…_, Links = [Linktext]. Zum Anpassen den Text direkt ändern; die Quelle zeigt, wo er im Code steht.
 
+## Kanäle (bei jedem Kunden gleich)
+
+Jedes Kunden-Team hat fünf Kanäle. „EPA SW Teams einrichten“ legt sie an und trägt die IDs in die Config ein (`kanaele`). Welche Meldung wohin geht, steht in `src/kanaele.js`; ein Test prüft, dass jede Meldungsart zugeordnet ist.
+
+| Kanal | Nachrichten (Nummern unten) | Für wen |
+|---|---|---|
+| 1 Vollständige Anfragen | 1, 2, 14, Kalender geprüft (frei/belegt); 16, wenn der Vorgang danach vollständig ist | Sachbearbeiter |
+| 2 Rückfragen | Freigabe-Karten mit Button (3, 15, 22–27), 4, 17, 30, 31; 16, wenn noch Angaben fehlen | Freigeber |
+| 3 Bitte ansehen | 5–13, 18–21, 29 | Sachbearbeiter |
+| 4 Systemmeldungen | 28, 32–34, Kalender-Fehler, Zustelltest | Betreiber / IT |
+| 5 Logs | Abschlusskarte je Vorgang | alle (Nachschlagen) |
+
+**Freigaben im Kanal:** Sobald „2 Rückfragen“ eingerichtet ist, gibt es pro Rückfrage einen Link als Karte im Kanal statt eines persönlichen Links im 1:1-Chat je Freigeber. Wer auf „Entwurf prüfen und freigeben“ klickt, wählt auf der Freigabe-Seite seinen Namen aus der Freigeber-Liste der Config; dieser Name steht im Protokoll. Der Link ist weiter nur einmal verwendbar, läuft ab und kann nicht doppelt senden. Kunden ohne Kanal „Rückfragen“ bekommen die Links wie bisher im 1:1-Chat.
+
 ## Neue Mail (EPA-01)
 
 ### 1. Vollständige Anfrage
