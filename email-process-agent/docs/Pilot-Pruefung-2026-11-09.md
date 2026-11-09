@@ -56,3 +56,4 @@ Längere Code-Blöcke liegen in `workflows-src/datatable/code/`. Abweichung zur 
 ## Nachtrag 09.11. – Löschjob aktiv
 EPA-08 um Kalender-Termine (mit dem Vorgang und 30 Tage nach Link-Ablauf) und Übersicht-Zugänge (30 Tage nach Ablauf) ergänzt, ausgerollt und veröffentlicht; läuft täglich 02:15. Probelauf vorher: 0 Vorgänge (keiner älter als 365 Tage), 7 ersetzte Rückfrage-Entwürfe zum Entfernen aus dem Postfach, Fehlerlog-Grenze 11.08.2026, Link-Grenze 10.10.2026.
 Offen: Regel, wann „Bereit zur Bearbeitung“ zu „Abgeschlossen“ wird (sonst nie gelöscht); Aufbewahrung der n8n-Ausführungsdaten in den n8n-Einstellungen begrenzen.
+Nachtrag: „Bereit zur Bearbeitung“ wird 30 Tage nach der letzten Änderung gelöscht (samt Freigaben, Links, Audit, Kalender-Terminen; Mails im Postfach bleiben). Probelauf heute: 0 Vorgänge; simuliert für 19.12.2026: 104 Vorgänge, 34 Freigaben, 4 zurückgestellt (erst Entwurf aus dem Postfach entfernen).
