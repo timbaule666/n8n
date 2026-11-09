@@ -15,7 +15,7 @@ module.exports = function () {
 	wf.notiz('Notiz Zweck', [1056, 192], [
 		'## EPA SW Teams einrichten',
 		'**Zweck:** legt im Teams-Team des Kunden die fünf Kanäle an (1 Vollständige Anfragen, 2 Rückfragen, 3 Bitte ansehen, 4 Systemmeldungen, 5 Logs) und trägt die IDs in epa_config_allgemein ein (kanaele, log_channel_id, benachrichtigung.channel_id = Systemmeldungen). Welche Meldung wohin geht, steht in src/kanaele.js. Sobald "2 Rückfragen" eingetragen ist, kommen die Freigaben als Karte in diesen Kanal statt in den 1:1-Chat.',
-		'**Einrichten pro Kunde:** im Knoten "Kunde eintragen" kunde_id und team_name setzen, dann ausführen. Mehrfaches Ausführen ist unschädlich: vorhandene Kanäle (gleicher Name ohne Nummer) werden wiederverwendet und auf die neue Nummer umbenannt (z. B. "3 Systemmeldungen" → "4 Systemmeldungen").',
+		'**Einrichten pro Kunde:** im Knoten "Kunde eintragen" kunde_id setzen, team_name nur, wenn das Team umbenannt werden soll (leer = Name bleibt), dann ausführen. Mehrfaches Ausführen ist unschädlich: vorhandene Kanäle (gleicher Name ohne Nummer) werden wiederverwendet und auf die neue Nummer umbenannt (z. B. "3 Systemmeldungen" → "4 Systemmeldungen").',
 		'**Rechte:** Das Teams-Credential muss im Tenant des Kunden Kanäle anlegen dürfen. Team und Kanal umbenennen sind optional (Fehler wird ignoriert).',
 	].join('\n'), { breite: 520, hoehe: 300 });
 	const start = wf.node('Start', 'n8n-nodes-base.manualTrigger', [0, 0], {});
@@ -40,7 +40,8 @@ module.exports = function () {
 		options: {},
 	});
 	const team = teams(wf, 'Team umbenennen', [1792, 0], 'PATCH', `={{ "${GRAPH}/teams/" + $("Ergebnis sammeln").first().json.team_id }}`,
-		'={{ JSON.stringify({ displayName: $("Ergebnis sammeln").first().json.team_name }) }}', { onError: 'continueRegularOutput' });
+		// Ohne team_name bleibt der Name unverändert (leerer Body); ein leerer displayName würde den Teamnamen löschen.
+		'={{ JSON.stringify(String($("Ergebnis sammeln").first().json.team_name || "").trim() ? { displayName: String($("Ergebnis sammeln").first().json.team_name).trim() } : {}) }}', { onError: 'continueRegularOutput' });
 	const namen = wf.code('Namen vorbereiten', [1700, 300], [], codeDatei('teams-namen-vorbereiten.js'));
 	const umbenennen = teams(wf, 'Kanäle umbenennen', [1920, 300], 'PATCH', '={{ $json.url }}', '={{ JSON.stringify({ displayName: $json.name }) }}');
 	const fertig = wf.node('Zusammenfassung', 'n8n-nodes-base.set', [2240, 0], {

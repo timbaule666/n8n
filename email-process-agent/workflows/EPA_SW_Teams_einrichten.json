@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## EPA SW Teams einrichten\n**Zweck:** legt im Teams-Team des Kunden die fünf Kanäle an (1 Vollständige Anfragen, 2 Rückfragen, 3 Bitte ansehen, 4 Systemmeldungen, 5 Logs) und trägt die IDs in epa_config_allgemein ein (kanaele, log_channel_id, benachrichtigung.channel_id = Systemmeldungen). Welche Meldung wohin geht, steht in src/kanaele.js. Sobald \"2 Rückfragen\" eingetragen ist, kommen die Freigaben als Karte in diesen Kanal statt in den 1:1-Chat.\n**Einrichten pro Kunde:** im Knoten \"Kunde eintragen\" kunde_id und team_name setzen, dann ausführen. Mehrfaches Ausführen ist unschädlich: vorhandene Kanäle (gleicher Name ohne Nummer) werden wiederverwendet und auf die neue Nummer umbenannt (z. B. \"3 Systemmeldungen\" → \"4 Systemmeldungen\").\n**Rechte:** Das Teams-Credential muss im Tenant des Kunden Kanäle anlegen dürfen. Team und Kanal umbenennen sind optional (Fehler wird ignoriert).",
+        "content": "## EPA SW Teams einrichten\n**Zweck:** legt im Teams-Team des Kunden die fünf Kanäle an (1 Vollständige Anfragen, 2 Rückfragen, 3 Bitte ansehen, 4 Systemmeldungen, 5 Logs) und trägt die IDs in epa_config_allgemein ein (kanaele, log_channel_id, benachrichtigung.channel_id = Systemmeldungen). Welche Meldung wohin geht, steht in src/kanaele.js. Sobald \"2 Rückfragen\" eingetragen ist, kommen die Freigaben als Karte in diesen Kanal statt in den 1:1-Chat.\n**Einrichten pro Kunde:** im Knoten \"Kunde eintragen\" kunde_id setzen, team_name nur, wenn das Team umbenannt werden soll (leer = Name bleibt), dann ausführen. Mehrfaches Ausführen ist unschädlich: vorhandene Kanäle (gleicher Name ohne Nummer) werden wiederverwendet und auf die neue Nummer umbenannt (z. B. \"3 Systemmeldungen\" → \"4 Systemmeldungen\").\n**Rechte:** Das Teams-Credential muss im Tenant des Kunden Kanäle anlegen dürfen. Team und Kanal umbenennen sind optional (Fehler wird ignoriert).",
         "width": 520,
         "height": 300,
         "color": 7
@@ -234,7 +234,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ displayName: $(\"Ergebnis sammeln\").first().json.team_name }) }}"
+        "jsonBody": "={{ JSON.stringify(String($(\"Ergebnis sammeln\").first().json.team_name || \"\").trim() ? { displayName: String($(\"Ergebnis sammeln\").first().json.team_name).trim() } : {}) }}"
       },
       "id": "57e8d29a-f4e6-49d4-a99e-9f4bf1305a25",
       "name": "Team umbenennen",
