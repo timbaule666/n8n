@@ -32,3 +32,6 @@
 3. Löschjob einschalten (inkl. Kalender-Tabelle).
 4. AVV und Datenschutz.
 5. Testdaten bereinigen, 1–2 Tage ohne Fehler laufen lassen, dann Pilot (Logistik, wenig Volumen).
+
+## Nachtrag 09.11., 14:05 – Blocker 1 behoben
+PLZ-Regel `laender` in EPA-04, EPA-06, EPA-11, EPA-13, EPA-14 und SW Regeln abgleichen nachgezogen (nur der eingebettete Config-Prüfer getauscht, sonst unverändert) und im Repo übernommen. Nachfass-Lauf 14:05 erfolgreich: 6 Aufgaben, 2 Kunden-Erinnerungen zur Freigabe, 3 Freigaben eskaliert, 1 Freigeber erinnert, keine ungültige Config mehr.
