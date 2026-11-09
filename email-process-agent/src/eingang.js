@@ -335,7 +335,7 @@ function manipulationBewerten(kiVerdacht, mail) {
 	const ki = kiVerdacht === true;
 	if (starkeStellen(mail).length) return { stufe: 'sperren', ki, muster: true };
 	if (ki && verdaechtigeStellen(mail).length) return { stufe: 'sperren', ki, muster: true };
-	if (ki) return { stufe: 'hinweis', ki, muster: false };
+	// Meldet nur die KI etwas, gibt es keinen Hinweis: nur die feste Mustererkennung (starke Muster oder KI plus auffaellige Stelle) loest eine Warnung aus.
 	return { stufe: 'keine', ki, muster: false };
 }
 

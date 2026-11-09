@@ -1,5 +1,5 @@
 'use strict';
-const { Workflow, bedingung, bedingungen } = require('../../tools/lib/n8n');
+const { Workflow, bedingung, bedingungen, codeDatei } = require('../../tools/lib/n8n');
 
 module.exports = function () {
 	const wf = new Workflow('EPA SW Benachrichtigen');
@@ -65,7 +65,7 @@ return [{ json: { ...e, kanal, vorgangs_id: vid } }];
 		['vorgangs_id', 'string', "={{ $('Eingabe prüfen').first().json.vorgangs_id || '' }}"],
 		['html', 'string', "={{ $('Eingabe prüfen').first().json.nachricht_html }}"],
 		['team_id', 'string', "={{ $('Eingabe prüfen').first().json.team_id }}"],
-		['channel_id', 'string', "={{ $('Eingabe prüfen').first().json.channel_id }}"],
+		['channel_id', 'string', "={{ $json.ziel_channel_id || $('Eingabe prüfen').first().json.channel_id }}"],
 	], { onError: 'continueRegularOutput', alwaysOutputData: true });
 
 	const pruefen = wf.code('Versand prüfen', [1100, 0], ['fehlerklassen'], `
@@ -105,7 +105,9 @@ return [{ json: { gesendet: v.gesendet, fehler_id: p && p.id !== undefined ? p.i
 	wf.verbinde(welcherKanal, telegramSenden, 0);
 	wf.verbinde(welcherKanal, kunde, 1);
 	wf.kette(telegramSenden, pruefen);
-	wf.kette(kunde, senden, pruefen, fehlgeschlagen);
+	// Kanal je Meldungsart (Config kanaele: anfragen, rueckfragen, system, logs); ohne kanaele der übergebene Kanal.
+	const kanal = wf.code('Kanal wählen', [770, 80], [], codeDatei('benachrichtigen-kanal-waehlen.js'));
+	wf.kette(kunde, kanal, senden, pruefen, fehlgeschlagen);
 	wf.verbinde(fehlgeschlagen, fehlerZeile, 0);
 	wf.verbinde(fehlgeschlagen, melden, 1);
 	wf.kette(fehlerZeile, protokoll, melden);

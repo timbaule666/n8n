@@ -1,5 +1,5 @@
 'use strict';
-const { Workflow, bedingung, bedingungen } = require('../../tools/lib/n8n');
+const { Workflow, bedingung, bedingungen, codeDatei } = require('../../tools/lib/n8n');
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 const MAIL_FELDER = [
@@ -316,52 +316,41 @@ return [{ json: { ok: status === 200, status, meldung: status === 200 ? '' : gru
 `);
 
 	// ---------------------------------------------------------------- Aktion: Teams-Meldung in den Kanal des Kunden
-	const kanalPruefen = wf.code('Kanalmeldung prüfen', [440, 2400], [], `
-const e = $('Bei Einzelaufruf').first().json;
-if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(e.team_id || ''))) throw new Error('[EPA:424:KONFIGURATIONSFEHLER:' + (e.vorgangs_id || '-') + '] team_id muss eine GUID sein');
-if (!String(e.channel_id || '').trim()) throw new Error('[EPA:424:KONFIGURATIONSFEHLER:' + (e.vorgangs_id || '-') + '] channel_id fehlt');
-if (!String(e.html || '').trim()) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Nachricht fehlt');
-return [{ json: { team_id: e.team_id.trim(), channel_id: e.channel_id.trim(), html: e.html } }];
-`);
+	// Meldung als Adaptive Card (aus dem HTML gebaut); eine fertige Karte per Marker <!--EPA_KARTE:base64--> hat Vorrang.
+	// Nimmt Teams die Karte nicht an, geht die bisherige Textnachricht als Rückfall raus.
+	const kanalPruefen = wf.code('Kanalmeldung prüfen', [440, 2400], [], codeDatei('postfach-kanalmeldung-pruefen.js'));
+	const markerKarte = wf.code('Marker-Karte', [550, 2400], [], codeDatei('postfach-marker-karte.js'));
 	const kanalSenden = teamsGraph(wf, 'Kanalmeldung senden', [660, 2400], 'POST',
 		`=${GRAPH}/teams/{{ encodeURIComponent($json.team_id) }}/channels/{{ encodeURIComponent($json.channel_id) }}/messages`,
-		"={{ JSON.stringify({ body: { contentType: 'html', content: $json.html } }) }}");
-	const kanalMelden = wf.code('Kanalmeldung melden', [880, 2400], [], `
-const r = $input.first().json || {};
-const status = Number(r.statusCode) || null;
-const ok = status === 201 && !r.error;
-const meldung = ok ? '' : (r.error ? String(r.error.message || r.error) : String((r.body && r.body.error && (r.body.error.code + ': ' + r.body.error.message)) || 'HTTP ' + status)).slice(0, 200);
-return [{ json: { gesendet: ok, status, meldung } }];
-`);
+		'={{ JSON.stringify($json.payload) }}');
+	const kanalKarteOk = wf.node('Kanal-Karte zugestellt?', 'n8n-nodes-base.if', [770, 2400], {
+		conditions: { ...bedingungen([bedingung("={{ !$('Kanalmeldung prüfen').first().json.mit_karte || Number($json.statusCode) === 201 }}", { type: 'boolean', operation: 'true', singleValue: true })]), options: { caseSensitive: true, leftValue: '', typeValidation: 'loose', version: 3 } },
+		options: {},
+	});
+	const kanalText = teamsGraph(wf, 'Kanal-Text senden', [880, 2540], 'POST',
+		`=${GRAPH}/teams/{{ encodeURIComponent($('Kanalmeldung prüfen').first().json.team_id) }}/channels/{{ encodeURIComponent($('Kanalmeldung prüfen').first().json.channel_id) }}/messages`,
+		"={{ JSON.stringify({ body: { contentType: 'html', content: $('Kanalmeldung prüfen').first().json.html } }) }}");
+	const kanalMelden = wf.code('Kanalmeldung melden', [990, 2400], [], codeDatei('postfach-kanalmeldung-melden.js'));
 
 	// ---------------------------------------------------------------- Aktion: Freigabe-Link im 1:1-Teams-Chat
 	// Chat zwischen dem Konto dieses Credentials (Agent) und dem Freigeber; beide im Tenant des Kunden.
-	const chatPruefen = wf.code('Chat-Empfänger prüfen', [440, 2600], [], `
-const e = $('Bei Einzelaufruf').first().json;
-if (!/^[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}$/.test(String(e.empfaenger || ''))) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Freigeber ist keine gültige Adresse');
-if (!String(e.html || '').trim()) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Nachricht fehlt');
-return [{ json: { empfaenger: e.empfaenger.trim().toLowerCase(), html: e.html } }];
-`);
+	const chatPruefen = wf.code('Chat-Empfänger prüfen', [440, 2600], [], codeDatei('postfach-chat-empfaenger-pruefen.js'));
 	const chatIch = teamsGraph(wf, 'Teams-Konto lesen', [660, 2600], 'GET', `${GRAPH}/me?$select=id`);
 	const chatOeffnen = teamsGraph(wf, 'Chat öffnen', [880, 2600], 'POST', `${GRAPH}/chats`, `={{ JSON.stringify({ chatType: 'oneOnOne', members: [
   { '@odata.type': '#microsoft.graph.aadUserConversationMember', roles: ['owner'], 'user@odata.bind': ${JSON.stringify(GRAPH)} + "/users('" + (($json.body || {}).id || 'unbekannt') + "')" },
   { '@odata.type': '#microsoft.graph.aadUserConversationMember', roles: ['owner'], 'user@odata.bind': ${JSON.stringify(GRAPH)} + "/users('" + $('Chat-Empfänger prüfen').first().json.empfaenger.replace(/'/g, "''") + "')" }
 ] }) }}`);
 	const chatSenden = teamsGraph(wf, 'Chat-Nachricht senden', [1100, 2600], 'POST', `=${GRAPH}/chats/{{ encodeURIComponent(($json.body || {}).id || 'unbekannt') }}/messages`,
+		"={{ JSON.stringify($('Chat-Empfänger prüfen').first().json.payload) }}");
+	// Ja, wenn die Karte ankam (201) oder keine Karte verlangt war; sonst geht die Textnachricht als Rückfall raus.
+	const chatKarteOk = wf.node('Karte zugestellt?', 'n8n-nodes-base.if', [1210, 2600], {
+		conditions: bedingungen([bedingung("={{ !$('Chat-Empfänger prüfen').first().json.mit_karte || Number($json.statusCode) === 201 }}", { type: 'boolean', operation: 'true', singleValue: true }, '')]),
+		options: {},
+	});
+	const chatText = teamsGraph(wf, 'Text-Nachricht senden', [1320, 2740], 'POST',
+		`=${GRAPH}/chats/{{ encodeURIComponent((($('Chat öffnen').first().json.body) || {}).id || 'unbekannt') }}/messages`,
 		"={{ JSON.stringify({ body: { contentType: 'html', content: $('Chat-Empfänger prüfen').first().json.html } }) }}");
-	const chatMelden = wf.code('Chat melden', [1320, 2600], [], `
-const schritte = [['Teams-Konto lesen', 200], ['Chat öffnen', 201], ['Chat-Nachricht senden', 201]];
-for (const [name, soll] of schritte) {
-	const r = $(name).first().json || {};
-	const status = Number(r.statusCode) || null;
-	// Ein bestehender 1:1-Chat liefert 200 statt 201
-	if (r.error || (status !== soll && !(name === 'Chat öffnen' && status === 200))) {
-		const grund = r.error ? String(r.error.message || r.error) : String((r.body && r.body.error && (r.body.error.code + ': ' + r.body.error.message)) || 'HTTP ' + status);
-		return [{ json: { gesendet: false, status, meldung: (name + ': ' + grund).slice(0, 200) } }];
-	}
-}
-return [{ json: { gesendet: true, status: 201, meldung: '' } }];
-`);
+	const chatMelden = wf.code('Chat melden', [1430, 2600], [], codeDatei('postfach-chat-melden.js'));
 
 	// ---------------------------------------------------------------- Aktion: Zustelltest senden (EPA-11)
 	// Kontrollmail an das Prüfpostfach des Betreibers. Nur mit Zustelltest-Betreff, kein freier Versand; ohne Ablage
@@ -517,9 +506,15 @@ return [{ json: { geaendert: r.filter((s) => s === 200).length, fehler: r.filter
 	wf.verbinde(aktion, entwurfLesen, 5);
 	wf.kette(posteingang, teamsKonto, verbindung);
 	wf.verbinde(aktion, kanalPruefen, 9);
-	wf.kette(kanalPruefen, kanalSenden, kanalMelden);
+	wf.kette(kanalPruefen, markerKarte, kanalSenden, kanalKarteOk);
+	wf.verbinde(kanalKarteOk, kanalMelden, 0);
+	wf.verbinde(kanalKarteOk, kanalText, 1);
+	wf.kette(kanalText, kanalMelden);
 	wf.verbinde(aktion, chatPruefen, 10);
-	wf.kette(chatPruefen, chatIch, chatOeffnen, chatSenden, chatMelden);
+	wf.kette(chatPruefen, chatIch, chatOeffnen, chatSenden, chatKarteOk);
+	wf.verbinde(chatKarteOk, chatMelden, 0);
+	wf.verbinde(chatKarteOk, chatText, 1);
+	wf.kette(chatText, chatMelden);
 	wf.verbinde(aktion, testPruefen, 7);
 	wf.kette(testPruefen, testSenden, testMelden);
 	wf.verbinde(aktion, versandSuchen, 8);

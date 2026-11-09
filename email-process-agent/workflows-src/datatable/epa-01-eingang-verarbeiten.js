@@ -1,5 +1,5 @@
 'use strict';
-const { Workflow, bedingung, bedingungen } = require('../../tools/lib/n8n');
+const { Workflow, bedingung, bedingungen, codeDatei } = require('../../tools/lib/n8n');
 
 const C = "$('Config laden').first().json.config";
 const N = "$('Mail normalisieren').first().json";
@@ -393,48 +393,14 @@ return [{ json: {
 		['aufgabe', 'string', 'extraktion'],
 		['prompt_version', 'string', `={{ ${C}.prompt_versionen.extraktion }}`],
 		['profil', 'object', `={{ ${C}.llm_profil.extraktion }}`],
-		['kontext', 'object', `={{ { mail: ${M}, felder: ${C}.vorgangstypen[${K}.vorgangstyp], heute: ${N}.heute, hinweise: ${N}.hinweise_extraktion } }}`],
+		['kontext', 'object', `={{ { mail: ${M}, felder: (${C}.vorgangstypen[${K}.vorgangstyp] || []).map(function (f) { return f.typ === 'plz' ? Object.assign({}, f, { validierungsregel: {} }) : f; }), heute: ${N}.heute, hinweise: ${N}.hinweise_extraktion } }}`],
 		['fehler_als_ergebnis', 'boolean', '={{ false }}'],
 	]);
-	const pruefen = wf.code('Pflichtfelder prüfen', [3960, 120], ['pflichtfelder', 'eingang'], `
-const config = $('Config laden').first().json.config;
-const k = $('Klasse auswerten').first().json;
-const n = $('Mail normalisieren').first().json;
-const llm = $input.first().json;
-const felder = config.vorgangstypen[k.vorgangstyp];
-if (!llm.ok) {
-	return [{ json: {
-		weg: 'extraktion_fehlgeschlagen', status: 'Eskaliert / Manuell', fehlercode: llm.code,
-		speichern: { vorgangstyp: k.vorgangstyp, sprache: k.details.sprache || null },
-		details: { grund: 'Extraktion fehlgeschlagen', fehlercode: llm.code, fehler: llm.fehler },
-	} }];
-}
-const p = pflichtfelder.pruefen(llm.ergebnis.felder, felder, { heute: n.heute, quelltext: pflichtfelder.quelltextAus(n.mail), absenderName: n.mail.absender_name });
-const kiVerdacht = llm.ergebnis.verdacht_manipulation === true || k.details.verdacht_manipulation === true;
-// KI-Einschätzung + feste Musterprüfung: Bei bestätigtem Verdacht keine Rückfrage, keine Freigabe – nur die
-// Systemwarnung, ein Mensch prüft die Mail. Meldet nur die KI etwas, läuft die Mail normal mit Hinweis weiter.
-const bewertung = eingang.manipulationBewerten(kiVerdacht, n.mail);
-const manipulation = bewertung.stufe === 'sperren';
-const weg = manipulation ? 'manipulation' : p.vollstaendig ? 'bereit' : 'luecken';
-return [{ json: {
-	weg,
-	status: { manipulation: 'Eskaliert / Manuell', bereit: 'Bereit zur Bearbeitung', luecken: 'Lücken erkannt' }[weg],
-	pruefung: p,
-	besonderheiten: typeof llm.ergebnis.besonderheiten === 'string' ? llm.ergebnis.besonderheiten : null,
-	verdacht_manipulation: manipulation,
-	manipulation_hinweis: bewertung.stufe === 'hinweis',
-	manipulation_quellen: eingang.manipulationQuellen(bewertung, k.details.verdacht_manipulation === true ? 'Klassifizierung' : 'Datenauslesen'),
-	speichern: { vorgangstyp: k.vorgangstyp, sprache: k.details.sprache || null, extrahierte_daten: p.daten, fehlende_felder: p.fehlende },
-	details: {
-		fehlende: p.fehlende.map((f) => f.feldname),
-		verworfen: p.hinweise.map((f) => f.feldname),
-		unsicher: p.unsicher.map((f) => f.feldname),
-		verdacht_manipulation: manipulation,
-		manipulation: bewertung,
-		llm: { modell: llm.modell, prompt_version: llm.prompt_version, versuche: llm.versuche, korrekturen: llm.korrekturen },
-	},
-} }];
-`);
+	// PLZ im deutschen PLZ-Verzeichnis nachschlagen (nur fünfstellige Werte); Fehler stören die Prüfung nicht.
+	const plz = wf.aufruf('PLZ nachschlagen', [3850, 120], 'EPA SW PLZ nachschlagen', [
+		['plz_liste', 'array', "={{ ($json.ok && $json.ergebnis && $json.ergebnis.felder) ? Object.values($json.ergebnis.felder).map(function (e) { return e && e.wert !== null && e.wert !== undefined ? String(e.wert).replace(/\\s/g, '') : ''; }).filter(function (s) { return /^[0-9]{5}$/.test(s); }) : [] }}"],
+	], { onError: 'continueRegularOutput' });
+	const pruefen = wf.code('Pflichtfelder prüfen', [3960, 120], ['pflichtfelder', 'eingang'], codeDatei('epa01-pflichtfelder-pruefen.js'));
 	const speichern = wf.aufruf('Daten speichern', [4180, 120], 'EPA SW Vorgang verwalten', [
 		['aktion', 'string', 'aktualisieren'],
 		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
@@ -634,7 +600,7 @@ return [{ json: {
 	wf.kette(kiIgnoriert, kiMelden);
 	wf.verbinde(kiMelden, informieren, 0);
 	wf.verbinde(kiMelden, abschluss, 1);
-	wf.kette(extrahieren, pruefen, speichern, statusPruefung, lueckenFrage);
+	wf.kette(extrahieren, plz, pruefen, speichern, statusPruefung, lueckenFrage);
 	wf.verbinde(lueckenFrage, uebersicht, 0);
 	wf.verbinde(lueckenFrage, mGeprueft, 1);
 	wf.kette(uebersicht, rueckfrage, mGeprueft, meldenFrage);

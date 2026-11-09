@@ -1,0 +1,162 @@
+{
+  "name": "EPA SW PLZ nachschlagen",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## EPA SW PLZ nachschlagen\n**Zweck:** Prüft bis zu drei fünfstellige Postleitzahlen gegen das deutsche PLZ-Verzeichnis (Data Table epa_plz_de: plz, ort, bundesland).\n**Trigger:** Aufruf durch EPA-01 und EPA-03 vor der Pflichtfeldprüfung.\n**Eingabe:** plz_liste (Liste). **Ausgabe:** { ok, plz_info: { \"<plz>\": { gefunden, ort, bundesland } } }.\n**Wirkung:** Bei Feldern mit validierungsregel { \"laender\": [\"DE\"] } gilt eine nicht gefundene PLZ als ungültig (\"PLZ existiert in Deutschland nicht\"). Bei Lesefehlern ok = false; dann wird nicht geprüft.",
+        "width": 680,
+        "height": 240,
+        "color": 7
+      },
+      "id": "fedad861-271f-4909-af8b-35489e0f8f42",
+      "name": "Notiz Zweck",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "plz_liste",
+              "type": "array"
+            }
+          ]
+        }
+      },
+      "id": "c81dd63b-5167-4dd8-a09c-b02ba38172e7",
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst roh = $input.first().json.plz_liste;\nconst liste = Array.isArray(roh) ? roh : [];\nconst sauber = [];\nfor (const x of liste) {\n  const s = String(x === null || x === undefined ? '' : x).trim();\n  if (/^[0-9]{5}$/.test(s) && !sauber.includes(s)) sauber.push(s);\n}\nconst l = sauber.slice(0, 3);\nreturn [{ json: { liste: l, p1: l[0] || '00000x', p2: l[1] || '00000x', p3: l[2] || '00000x' } }];\n"
+      },
+      "id": "14e7f350-03ad-40da-ac48-c7308f665ae0",
+      "name": "PLZ normalisieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_plz_de"
+        },
+        "matchType": "anyCondition",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "plz",
+              "condition": "eq",
+              "keyValue": "={{ $json.p1 }}"
+            },
+            {
+              "keyName": "plz",
+              "condition": "eq",
+              "keyValue": "={{ $json.p2 }}"
+            },
+            {
+              "keyName": "plz",
+              "condition": "eq",
+              "keyValue": "={{ $json.p3 }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "fe45627a-edc5-4214-a447-ead03f96fb85",
+      "name": "PLZ nachschlagen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst angefragt = $('PLZ normalisieren').first().json.liste;\nconst info = {};\nfor (const p of angefragt) info[p] = { gefunden: false };\nlet fehler = false;\nfor (const i of $input.all()) {\n  const j = i.json || {};\n  if (j.error) { fehler = true; continue; }\n  if (j.plz && info[j.plz]) info[j.plz] = { gefunden: true, ort: j.ort || '', bundesland: j.bundesland || '' };\n}\nreturn [{ json: { ok: !fehler, plz_info: fehler ? {} : info } }];\n"
+      },
+      "id": "134c8e5f-f55e-4669-ae2c-ebc76c7f4dc9",
+      "name": "Ergebnis bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "PLZ normalisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PLZ normalisieren": {
+      "main": [
+        [
+          {
+            "node": "PLZ nachschlagen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PLZ nachschlagen": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

@@ -1,5 +1,5 @@
 'use strict';
-const { Workflow, bedingung, bedingungen } = require('../../tools/lib/n8n');
+const { Workflow, bedingung, bedingungen, codeDatei } = require('../../tools/lib/n8n');
 
 const C = "$('Config laden').first().json.config";
 const V = "$('Vorgang lesen').first().json.vorgang";
@@ -247,6 +247,8 @@ return z.tokens.map((t) => ({ json: {
 	nachricht_html: freigabe.nachrichtFreigeber({ vorgang: v, freigabe: r.art === 'erneut' ? { ...fg, grund: r.vorige.grund } : fg, fehlende: r.fehlende.map((f) => ({ anzeigename: f.anzeigename || f.feldname })), link: freigabe.link(basis, t.token), ablaufText, art: r.freigabe_art, anlass: r.art === 'erneut' ? 'freigabe_nach_unzustellbar' : undefined, kontext_html: r.art === 'rueckfrage' ? $('Bei Aufruf').first().json.kontext_html : null }),
 } }));
 `);
+	// Teams-Karte zur Freigabe-Nachricht (Marker <!--EPA_KARTE:base64-->); der Text bleibt als Rückfall.
+	const karte = wf.code('Karte anhängen', [3410, 120], [], codeDatei('epa02-karte-anhaengen.js'));
 	const senden = wf.aufruf('Freigeber benachrichtigen', [3520, 120], 'EPA SW Freigabe senden', [
 		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
 		['vorgangs_id', 'string', `={{ ${V}.vorgangs_id }}`],
@@ -290,7 +292,7 @@ return [{ json: { ergebnis: 'freigabe_angefordert', art: $('Rückfrage vorbereit
 	wf.verbinde(vorlage, llm, 1);
 	wf.kette(statusEsk, meldungEsk, infoEsk, ergebnisEsk);
 	wf.kette(llm, zusammensetzen);
-	wf.kette(zusammensetzen, anlegen, freigabeZeile, freigabeSpeichern, tokenZeilen, tokensSpeichern, vermerken, statusFreigabe, nachrichten, senden, zustellung, niemand);
+	wf.kette(zusammensetzen, anlegen, freigabeZeile, freigabeSpeichern, tokenZeilen, tokensSpeichern, vermerken, statusFreigabe, nachrichten, karte, senden, zustellung, niemand);
 	wf.verbinde(niemand, kanal, 0);
 	wf.verbinde(niemand, ergebnis, 1);
 	wf.kette(kanal, ergebnis);

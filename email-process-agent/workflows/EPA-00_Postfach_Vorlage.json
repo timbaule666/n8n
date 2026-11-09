@@ -1422,7 +1422,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Bei Einzelaufruf').first().json;\nif (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(e.team_id || ''))) throw new Error('[EPA:424:KONFIGURATIONSFEHLER:' + (e.vorgangs_id || '-') + '] team_id muss eine GUID sein');\nif (!String(e.channel_id || '').trim()) throw new Error('[EPA:424:KONFIGURATIONSFEHLER:' + (e.vorgangs_id || '-') + '] channel_id fehlt');\nif (!String(e.html || '').trim()) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Nachricht fehlt');\nreturn [{ json: { team_id: e.team_id.trim(), channel_id: e.channel_id.trim(), html: e.html } }];\n"
+        "jsCode": "\n// ----- Node-Logik -----\n// Wandelt eine Teams-HTML-Meldung in eine Adaptive Card (v1.4). Wirft nie; gibt bei Problemen null zurück.\nfunction htmlZuKarte(html) {\n\ttry {\n\t\tconst dec = (s) => s.replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&#39;/g, \"'\").replace(/&amp;/g, '&');\n\t\tlet s = String(html || '').replace(/<!--[\\s\\S]*?-->/g, '').replace(/[\\r\\n]+/g, ' ');\n\t\tconst links = [];\n\t\ts = s.replace(/<a\\b[^>]*href\\s*=\\s*\"([^\"]+)\"[^>]*>([\\s\\S]*?)<\\/a>/gi, (m, href, text) => {\n\t\t\tconst t = dec(text.replace(/<[^>]+>/g, '')).trim();\n\t\t\tif (/^https?:\\/\\//i.test(href)) links.push({ url: dec(href), title: t || 'Öffnen' });\n\t\t\treturn '';\n\t\t});\n\t\ts = s.replace(/<(b|strong)>([\\s\\S]*?)<\\/\\1>/gi, '\\u0001$2\\u0002').replace(/<(i|em)>([\\s\\S]*?)<\\/\\1>/gi, '\\u0003$2\\u0004');\n\t\ts = s.replace(/<br\\s*\\/?>/gi, '\\n').replace(/<\\/(p|div|li|h[1-6])>/gi, '\\n').replace(/<li[^>]*>/gi, '• ').replace(/<[^>]+>/g, '');\n\t\ts = dec(s).replace(/[ \\t]+\\n/g, '\\n');\n\t\tconst md = (t) => t.replace(/\\u0001([^\\u0002]*)\\u0002/g, (m, x) => (x.trim() ? '**' + x.trim() + '**' : '')).replace(/\\u0003([^\\u0004]*)\\u0004/g, (m, x) => (x.trim() ? '_' + x.trim() + '_' : '')).replace(/[\\u0001-\\u0004]/g, '');\n\t\tconst zeilen = s.split('\\n').map((z) => z.trim());\n\t\t// Absätze: Leerzeile trennt\n\t\tconst bloecke = []; let cur = [];\n\t\tfor (const z of zeilen) { if (!z) { if (cur.length) { bloecke.push(cur); cur = []; } } else cur.push(z); }\n\t\tif (cur.length) bloecke.push(cur);\n\t\tif (!bloecke.length) return null;\n\t\tconst titelRoh = bloecke[0][0];\n\t\tconst titel = md(titelRoh).replace(/\\*\\*/g, '').trim();\n\t\tconst rest0 = bloecke[0].slice(1);\n\t\tlet farbe = 'default';\n\t\tif (/🚨|❌|fehler|alarm/i.test(titel)) farbe = 'attention'; else if (/⏰|⚠️|erinnerung|eskalation/i.test(titel)) farbe = 'warning'; else if (/✅|bereit|erledigt|gesendet/i.test(titel)) farbe = 'good';\n\t\tconst body = [{ type: 'TextBlock', text: titel.slice(0, 200), weight: 'bolder', size: 'medium', wrap: true, color: farbe }];\n\t\tconst text = (t, extra) => ({ type: 'TextBlock', text: t, wrap: true, spacing: 'Small', ...(extra || {}) });\n\t\tif (rest0.length) body.push(text(rest0.map(md).join('\\n\\n').slice(0, 1500)));\n\t\tfor (const b of bloecke.slice(1)) {\n\t\t\tconst kopf = md(b[0]);\n\t\t\tif (b.length > 1 && /^\\*\\*[^*]+\\*\\*$/.test(kopf)) {\n\t\t\t\tbody.push({ type: 'Container', style: 'emphasis', spacing: 'Medium', items: [text(kopf.replace(/\\*\\*/g, '').toUpperCase(), { isSubtle: true, size: 'small', weight: 'bolder', spacing: 'None' }), ...b.slice(1).map((z) => text(md(z).slice(0, 600)))] });\n\t\t\t} else {\n\t\t\t\tbody.push(text(b.map(md).join('\\n\\n').slice(0, 1500), { spacing: 'Medium' }));\n\t\t\t}\n\t\t}\n\t\tconst actions = links.slice(0, 4).map((l, i) => ({ type: 'Action.OpenUrl', title: l.title.slice(0, 60), url: l.url, ...(i === 0 ? { style: 'positive' } : {}) }));\n\t\treturn { type: 'AdaptiveCard', $schema: 'http://adaptivecards.io/schemas/adaptive-card.json', version: '1.4', body, ...(actions.length ? { actions } : {}) };\n\t} catch (err) { return null; }\n}\nconst e = $('Bei Einzelaufruf').first().json;\nif (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(e.team_id || ''))) throw new Error('[EPA:424:KONFIGURATIONSFEHLER:' + (e.vorgangs_id || '-') + '] team_id muss eine GUID sein');\nif (!String(e.channel_id || '').trim()) throw new Error('[EPA:424:KONFIGURATIONSFEHLER:' + (e.vorgangs_id || '-') + '] channel_id fehlt');\nif (!String(e.html || '').trim()) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Nachricht fehlt');\nconst html = String(e.html).replace(/<!--EPA_KARTE:[A-Za-z0-9+\\/=]*-->/g, '').trim();\nconst k = htmlZuKarte(html);\nconst payload = k\n\t? { body: { contentType: 'html', content: '<attachment id=\"karte1\"></attachment>' }, attachments: [{ id: 'karte1', contentType: 'application/vnd.microsoft.card.adaptive', contentUrl: null, content: JSON.stringify(k) }] }\n\t: { body: { contentType: 'html', content: html } };\nreturn [{ json: { team_id: e.team_id.trim(), channel_id: e.channel_id.trim(), html, payload, mit_karte: Boolean(k) } }];\n"
       },
       "id": "a3eebf20-d2bc-441b-abc3-717a96444c69",
       "name": "Kanalmeldung prüfen",
@@ -1430,6 +1430,21 @@
       "typeVersion": 2,
       "position": [
         440,
+        2400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\n// Fertige Karte per Marker <!--EPA_KARTE:base64--> hat Vorrang vor der automatisch aus dem HTML gebauten.\nconst j = $input.first().json;\nconst raw = String($('Bei Einzelaufruf').first().json.html || '');\nconst m = raw.match(/<!--EPA_KARTE:([A-Za-z0-9+\\/=]+)-->/);\nif (!m) return [{ json: j }];\ntry {\n\tconst t = Buffer.from(m[1], 'base64').toString('utf8');\n\tJSON.parse(t);\n\treturn [{ json: { ...j, mit_karte: true, payload: { body: { contentType: 'html', content: '<attachment id=\"karte1\"></attachment>' }, attachments: [{ id: 'karte1', contentType: 'application/vnd.microsoft.card.adaptive', contentUrl: null, content: t }] } } }];\n} catch (err) {\n\treturn [{ json: j }];\n}\n"
+      },
+      "id": "bb123b22-c6d1-4fd3-a6c1-a2606914d160",
+      "name": "Marker-Karte",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        550,
         2400
       ]
     },
@@ -1451,7 +1466,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ body: { contentType: 'html', content: $json.html } }) }}"
+        "jsonBody": "={{ JSON.stringify($json.payload) }}"
       },
       "id": "4fe38fa0-e436-480c-a866-830d5144c46a",
       "name": "Kanalmeldung senden",
@@ -1466,16 +1481,80 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ae889771-ee1b-4fc0-a790-ffeb00643fd0",
+              "leftValue": "={{ !$('Kanalmeldung prüfen').first().json.mit_karte || Number($json.statusCode) === 201 }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "18af83c5-27e9-4c55-acb7-328db2191436",
+      "name": "Kanal-Karte zugestellt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        770,
+        2400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.microsoft.com/v1.0/teams/{{ encodeURIComponent($('Kanalmeldung prüfen').first().json.team_id) }}/channels/{{ encodeURIComponent($('Kanalmeldung prüfen').first().json.channel_id) }}/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftTeamsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 20000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ body: { contentType: 'html', content: $('Kanalmeldung prüfen').first().json.html } }) }}"
+      },
+      "id": "20d41164-ef97-4882-a39e-75917e37c682",
+      "name": "Kanal-Text senden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        2540
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "\n// ----- Node-Logik -----\nconst r = $input.first().json || {};\nconst status = Number(r.statusCode) || null;\nconst ok = status === 201 && !r.error;\nconst meldung = ok ? '' : (r.error ? String(r.error.message || r.error) : String((r.body && r.body.error && (r.body.error.code + ': ' + r.body.error.message)) || 'HTTP ' + status)).slice(0, 200);\nreturn [{ json: { gesendet: ok, status, meldung } }];\n"
+        "jsCode": "\n// ----- Node-Logik -----\n// Bei Karten-Fehler hat \"Kanal-Text senden\" die Meldung ersetzt; dann zählt dessen Ergebnis.\nconst r = ($('Kanal-Text senden').isExecuted ? $('Kanal-Text senden') : $('Kanalmeldung senden')).first().json || {};\nconst status = Number(r.statusCode) || null;\nconst ok = status === 201 && !r.error;\nconst meldung = ok ? '' : (r.error ? String(r.error.message || r.error) : String((r.body && r.body.error && (r.body.error.code + ': ' + r.body.error.message)) || 'HTTP ' + status)).slice(0, 200);\nreturn [{ json: { gesendet: ok, status, meldung } }];\n"
       },
       "id": "750aaf3e-51f7-4396-abdf-12e0b183931d",
       "name": "Kanalmeldung melden",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        880,
+        990,
         2400
       ]
     },
@@ -1483,7 +1562,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Bei Einzelaufruf').first().json;\nif (!/^[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}$/.test(String(e.empfaenger || ''))) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Freigeber ist keine gültige Adresse');\nif (!String(e.html || '').trim()) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Nachricht fehlt');\nreturn [{ json: { empfaenger: e.empfaenger.trim().toLowerCase(), html: e.html } }];\n"
+        "jsCode": "\n// ----- Node-Logik -----\n// Wandelt eine Teams-HTML-Meldung in eine Adaptive Card (v1.4). Wirft nie; gibt bei Problemen null zurück.\nfunction htmlZuKarte(html) {\n\ttry {\n\t\tconst dec = (s) => s.replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&#39;/g, \"'\").replace(/&amp;/g, '&');\n\t\tlet s = String(html || '').replace(/<!--[\\s\\S]*?-->/g, '').replace(/[\\r\\n]+/g, ' ');\n\t\tconst links = [];\n\t\ts = s.replace(/<a\\b[^>]*href\\s*=\\s*\"([^\"]+)\"[^>]*>([\\s\\S]*?)<\\/a>/gi, (m, href, text) => {\n\t\t\tconst t = dec(text.replace(/<[^>]+>/g, '')).trim();\n\t\t\tif (/^https?:\\/\\//i.test(href)) links.push({ url: dec(href), title: t || 'Öffnen' });\n\t\t\treturn '';\n\t\t});\n\t\ts = s.replace(/<(b|strong)>([\\s\\S]*?)<\\/\\1>/gi, '\\u0001$2\\u0002').replace(/<(i|em)>([\\s\\S]*?)<\\/\\1>/gi, '\\u0003$2\\u0004');\n\t\ts = s.replace(/<br\\s*\\/?>/gi, '\\n').replace(/<\\/(p|div|li|h[1-6])>/gi, '\\n').replace(/<li[^>]*>/gi, '• ').replace(/<[^>]+>/g, '');\n\t\ts = dec(s).replace(/[ \\t]+\\n/g, '\\n');\n\t\tconst md = (t) => t.replace(/\\u0001([^\\u0002]*)\\u0002/g, (m, x) => (x.trim() ? '**' + x.trim() + '**' : '')).replace(/\\u0003([^\\u0004]*)\\u0004/g, (m, x) => (x.trim() ? '_' + x.trim() + '_' : '')).replace(/[\\u0001-\\u0004]/g, '');\n\t\tconst zeilen = s.split('\\n').map((z) => z.trim());\n\t\t// Absätze: Leerzeile trennt\n\t\tconst bloecke = []; let cur = [];\n\t\tfor (const z of zeilen) { if (!z) { if (cur.length) { bloecke.push(cur); cur = []; } } else cur.push(z); }\n\t\tif (cur.length) bloecke.push(cur);\n\t\tif (!bloecke.length) return null;\n\t\tconst titelRoh = bloecke[0][0];\n\t\tconst titel = md(titelRoh).replace(/\\*\\*/g, '').trim();\n\t\tconst rest0 = bloecke[0].slice(1);\n\t\tlet farbe = 'default';\n\t\tif (/🚨|❌|fehler|alarm/i.test(titel)) farbe = 'attention'; else if (/⏰|⚠️|erinnerung|eskalation/i.test(titel)) farbe = 'warning'; else if (/✅|bereit|erledigt|gesendet/i.test(titel)) farbe = 'good';\n\t\tconst body = [{ type: 'TextBlock', text: titel.slice(0, 200), weight: 'bolder', size: 'medium', wrap: true, color: farbe }];\n\t\tconst text = (t, extra) => ({ type: 'TextBlock', text: t, wrap: true, spacing: 'Small', ...(extra || {}) });\n\t\tif (rest0.length) body.push(text(rest0.map(md).join('\\n\\n').slice(0, 1500)));\n\t\tfor (const b of bloecke.slice(1)) {\n\t\t\tconst kopf = md(b[0]);\n\t\t\tif (b.length > 1 && /^\\*\\*[^*]+\\*\\*$/.test(kopf)) {\n\t\t\t\tbody.push({ type: 'Container', style: 'emphasis', spacing: 'Medium', items: [text(kopf.replace(/\\*\\*/g, '').toUpperCase(), { isSubtle: true, size: 'small', weight: 'bolder', spacing: 'None' }), ...b.slice(1).map((z) => text(md(z).slice(0, 600)))] });\n\t\t\t} else {\n\t\t\t\tbody.push(text(b.map(md).join('\\n\\n').slice(0, 1500), { spacing: 'Medium' }));\n\t\t\t}\n\t\t}\n\t\tconst actions = links.slice(0, 4).map((l, i) => ({ type: 'Action.OpenUrl', title: l.title.slice(0, 60), url: l.url, ...(i === 0 ? { style: 'positive' } : {}) }));\n\t\treturn { type: 'AdaptiveCard', $schema: 'http://adaptivecards.io/schemas/adaptive-card.json', version: '1.4', body, ...(actions.length ? { actions } : {}) };\n\t} catch (err) { return null; }\n}\nconst e = $('Bei Einzelaufruf').first().json;\nif (!/^[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}$/.test(String(e.empfaenger || ''))) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Freigeber ist keine gültige Adresse');\nif (!String(e.html || '').trim()) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Nachricht fehlt');\n// Karte: entweder fertige Karte per Marker <!--EPA_KARTE:base64--> oder automatisch aus dem HTML gebaut. Fallback bleibt die Textnachricht.\nconst roh = String(e.html);\nconst m = roh.match(/<!--EPA_KARTE:([A-Za-z0-9+\\/=]+)-->/);\nconst html = roh.replace(/<!--EPA_KARTE:[A-Za-z0-9+\\/=]*-->/g, '').trim();\nlet karte = null;\nif (m) { try { const t = Buffer.from(m[1], 'base64').toString('utf8'); JSON.parse(t); karte = t; } catch (err) { karte = null; } }\nif (!karte) { const k = htmlZuKarte(html); if (k) karte = JSON.stringify(k); }\nconst payload = karte\n\t? { body: { contentType: 'html', content: '<attachment id=\"karte1\"></attachment>' }, attachments: [{ id: 'karte1', contentType: 'application/vnd.microsoft.card.adaptive', contentUrl: null, content: karte }] }\n\t: { body: { contentType: 'html', content: html } };\nreturn [{ json: { empfaenger: e.empfaenger.trim().toLowerCase(), html, payload, mit_karte: Boolean(karte) } }];\n"
       },
       "id": "7a899f09-e48b-4058-ab43-e9237794d6d8",
       "name": "Chat-Empfänger prüfen",
@@ -1571,7 +1650,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ body: { contentType: 'html', content: $('Chat-Empfänger prüfen').first().json.html } }) }}"
+        "jsonBody": "={{ JSON.stringify($('Chat-Empfänger prüfen').first().json.payload) }}"
       },
       "id": "4df9a827-c99c-47b2-aea9-16f5a99988cb",
       "name": "Chat-Nachricht senden",
@@ -1586,16 +1665,81 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b83d01c8-088a-4db5-a9da-2fb4023a5129",
+              "leftValue": "={{ !$('Chat-Empfänger prüfen').first().json.mit_karte || Number($json.statusCode) === 201 }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4024126f-9dbe-4057-a124-d1bb18fec956",
+      "name": "Karte zugestellt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1210,
+        2600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.microsoft.com/v1.0/chats/{{ encodeURIComponent((($('Chat öffnen').first().json.body) || {}).id || 'unbekannt') }}/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftTeamsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 20000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ body: { contentType: 'html', content: $('Chat-Empfänger prüfen').first().json.html } }) }}"
+      },
+      "id": "d9a48687-bf36-4a83-a8dc-34be597e47ad",
+      "name": "Text-Nachricht senden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        2740
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "\n// ----- Node-Logik -----\nconst schritte = [['Teams-Konto lesen', 200], ['Chat öffnen', 201], ['Chat-Nachricht senden', 201]];\nfor (const [name, soll] of schritte) {\n\tconst r = $(name).first().json || {};\n\tconst status = Number(r.statusCode) || null;\n\t// Ein bestehender 1:1-Chat liefert 200 statt 201\n\tif (r.error || (status !== soll && !(name === 'Chat öffnen' && status === 200))) {\n\t\tconst grund = r.error ? String(r.error.message || r.error) : String((r.body && r.body.error && (r.body.error.code + ': ' + r.body.error.message)) || 'HTTP ' + status);\n\t\treturn [{ json: { gesendet: false, status, meldung: (name + ': ' + grund).slice(0, 200) } }];\n\t}\n}\nreturn [{ json: { gesendet: true, status: 201, meldung: '' } }];\n"
+        "jsCode": "\n// ----- Node-Logik -----\n// Bei Karten-Fehler hat \"Text-Nachricht senden\" die Nachricht ersetzt; dann zählt dessen Ergebnis.\nconst nachricht = $('Text-Nachricht senden').isExecuted ? 'Text-Nachricht senden' : 'Chat-Nachricht senden';\nconst schritte = [['Teams-Konto lesen', 200], ['Chat öffnen', 201], [nachricht, 201]];\nfor (const [name, soll] of schritte) {\n\tconst r = $(name).first().json || {};\n\tconst status = Number(r.statusCode) || null;\n\t// Ein bestehender 1:1-Chat liefert 200 statt 201\n\tif (r.error || (status !== soll && !(name === 'Chat öffnen' && status === 200))) {\n\t\tconst grund = r.error ? String(r.error.message || r.error) : String((r.body && r.body.error && (r.body.error.code + ': ' + r.body.error.message)) || 'HTTP ' + status);\n\t\treturn [{ json: { gesendet: false, status, meldung: (name + ': ' + grund).slice(0, 200) } }];\n\t}\n}\nreturn [{ json: { gesendet: true, status: 201, meldung: '' } }];\n"
       },
       "id": "349dfa10-554a-42f8-a485-c97d0af808b3",
       "name": "Chat melden",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1320,
+        1430,
         2600
       ]
     },
@@ -2461,6 +2605,17 @@
       "main": [
         [
           {
+            "node": "Marker-Karte",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marker-Karte": {
+      "main": [
+        [
+          {
             "node": "Kanalmeldung senden",
             "type": "main",
             "index": 0
@@ -2469,6 +2624,35 @@
       ]
     },
     "Kanalmeldung senden": {
+      "main": [
+        [
+          {
+            "node": "Kanal-Karte zugestellt?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kanal-Karte zugestellt?": {
+      "main": [
+        [
+          {
+            "node": "Kanalmeldung melden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Kanal-Text senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kanal-Text senden": {
       "main": [
         [
           {
@@ -2513,6 +2697,35 @@
       ]
     },
     "Chat-Nachricht senden": {
+      "main": [
+        [
+          {
+            "node": "Karte zugestellt?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Karte zugestellt?": {
+      "main": [
+        [
+          {
+            "node": "Chat melden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Text-Nachricht senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text-Nachricht senden": {
       "main": [
         [
           {

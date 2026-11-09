@@ -14,6 +14,39 @@ const STANDARD_REGELN = Object.freeze({
 	telefon: { min_ziffern: 6, max_ziffern: 20 },
 });
 
+const PLZ_LAENDER = Object.freeze({
+	DE: { re: /^\d{5}$/, pre: ['D', 'DE'] },
+	AT: { re: /^\d{4}$/, pre: ['A', 'AT'] },
+	CH: { re: /^\d{4}$/, pre: ['CH'] },
+	NL: { re: /^\d{4}[A-Z]{2}$/, pre: ['NL'] },
+	BE: { re: /^\d{4}$/, pre: ['B', 'BE'] },
+	LU: { re: /^\d{4}$/, pre: ['L', 'LU'] },
+	DK: { re: /^\d{4}$/, pre: ['DK'] },
+	FR: { re: /^\d{5}$/, pre: ['F', 'FR'] },
+	IT: { re: /^\d{5}$/, pre: ['I', 'IT'] },
+	PL: { re: /^\d{5}$/, pre: ['PL'] },
+	CZ: { re: /^\d{5}$/, pre: ['CZ'] },
+});
+const PLZ_STANDARD_LAENDER = ['DE', 'AT', 'CH', 'NL', 'BE', 'LU', 'DK', 'FR', 'IT', 'PL', 'CZ'];
+
+/** Postleitzahl je Land prüfen. Länder je Kunde über validierungsregel.laender, sonst Standardliste. */
+function plzLandPruefen(roh, laender) {
+	const erlaubt = (Array.isArray(laender) && laender.length ? laender : PLZ_STANDARD_LAENDER)
+		.map((x) => String(x).toUpperCase()).filter((x) => PLZ_LAENDER[x]);
+	const fehler = { ok: false, grund: 'keine gültige Postleitzahl' };
+	let s = String(roh).trim().toUpperCase();
+	let land = null;
+	const m = s.match(/^([A-Z]{1,2})[-–\s]\s*(?=\d)/);
+	if (m) {
+		land = erlaubt.find((k) => PLZ_LAENDER[k].pre.includes(m[1])) || null;
+		if (!land) return fehler;
+		s = s.slice(m[0].length);
+	}
+	s = s.replace(/[\s-]+/g, '');
+	const treffer = land ? PLZ_LAENDER[land].re.test(s) : erlaubt.some((k) => PLZ_LAENDER[k].re.test(s));
+	return treffer ? { ok: true, wert: s } : fehler;
+}
+
 const UNSICHER_UNTER = 0.5;
 
 // Regel "person" für Textfelder (z. B. Ansprechpartner).
@@ -107,6 +140,7 @@ function feldPruefen(feld, roh, { heute } = {}) {
 			return { ok: true, wert: s };
 		}
 		case 'plz': {
+			if (!(feld.validierungsregel && feld.validierungsregel.regex)) return plzLandPruefen(roh, regel.laender);
 			const s = String(roh).trim().toUpperCase().replace(/^(D|DE)[-\s]?/, '').replace(/\s+/g, '');
 			if (!new RegExp(regel.regex).test(s)) return fehler('keine gültige Postleitzahl');
 			return { ok: true, wert: s };
@@ -197,7 +231,7 @@ function nameVervollstaendigen(wert, absenderName) {
 function wertImText(typ, wert, quelltext) {
 	const text = String(quelltext || '');
 	if (!text) return true;
-	if (typ === 'plz') return new RegExp(`(^|[^\\d])${String(wert).replace(/[^\dA-Za-z]/g, '')}([^\\d]|$)`).test(text.replace(/(\d)\s+(?=\d)/g, '$1'));
+	if (typ === 'plz') return new RegExp(`(^|[^\\d])${String(wert).replace(/[^\dA-Za-z]/g, '')}([^\\d]|$)`).test(text.replace(/(\d)[\s-]+(?=\d)/g, '$1').replace(/(\d)\s+(?=[A-Za-z]{2}\b)/g, '$1'));
 	if (typ === 'telefon') {
 		const t = text.replace(/(\d)[\s/().\-–]+(?=\d)/g, '$1');
 		const w = String(wert).replace(/^\+/, '');
@@ -222,6 +256,16 @@ function quelltextAus(mail) {
  *   quelltext = Betreff, Mailtext und Anhangtexte (für die Prüfung von Daten ohne Jahr);
  *   absenderName = Anzeigename des Absenders (ergänzt einen Ansprechpartner, der nur mit Vornamen genannt ist)
  */
+function plzUnbekannt(wert, feld, optionen) {
+	const info = optionen && optionen.plzInfo;
+	if (!info || info.ok !== true || !info.plz_info) return false;
+	const regel = feld.validierungsregel || {};
+	const nurDe = Array.isArray(regel.laender) && regel.laender.length === 1 && String(regel.laender[0]).toUpperCase() === 'DE';
+	if (!nurDe) return false;
+	const s = String(wert).replace(/\s/g, '');
+	const e = info.plz_info[s];
+	return /^[0-9]{5}$/.test(s) && !!e && e.gefunden === false;
+}
 function pruefen(extrakt, felder, optionen = {}) {
 	const daten = {};
 	const fehlende = [];
@@ -242,6 +286,7 @@ function pruefen(extrakt, felder, optionen = {}) {
 			if (f.typ === 'text' && f.validierungsregel && f.validierungsregel.person === true && optionen.absenderName) eingabe = nameVervollstaendigen(roh, optionen.absenderName) || roh;
 			const r = feldPruefen(f, eingabe, optionen);
 			if (r.ok && optionen.quelltext && !wertImText(f.typ, r.wert, optionen.quelltext)) grund = 'ungültig: steht so nicht in der Mail';
+			else if (r.ok && f.typ === 'plz' && plzUnbekannt(r.wert, f, optionen)) grund = 'ungültig: PLZ existiert in Deutschland nicht';
 			else if (r.ok) wert = r.wert;
 			else grund = `ungültig: ${r.grund}`;
 		}

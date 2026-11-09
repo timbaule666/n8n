@@ -1,0 +1,450 @@
+{
+  "name": "EPA SW Log-Karte",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## EPA SW Log-Karte\n**Zweck:** Schickt bei \"Bereit zur Bearbeitung\" oder \"Abgeschlossen\" eine Abschlusskarte (Adaptive Card) mit erfassten Daten und Zeitleiste aus dem Audit-Log in den Teams-Kanal \"Logs\" des Kunden.\n**Trigger:** Aufruf durch \"EPA SW Status setzen\" (wartet nicht auf das Ende).\n**Eingaben:** kunde_id, vorgangs_id, neuer_status.\n**Config:** epa_config_allgemein.log_channel_id (leer = keine Karte), benachrichtigung.team_id.\n**Fehler:** Wirft nie nach außen; ohne Kanal oder bei Fehlern wird nichts gesendet.",
+        "width": 680,
+        "height": 260,
+        "color": 7
+      },
+      "id": "dc105715-8578-45e9-acdf-f1a8459656e5",
+      "name": "Notiz Zweck",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "kunde_id",
+              "type": "string"
+            },
+            {
+              "name": "vorgangs_id",
+              "type": "string"
+            },
+            {
+              "name": "neuer_status",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "421a5314-6038-41e6-a9f4-3ef01630b47b",
+      "name": "Bei Aufruf",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst e = $input.first().json;\nconst weiter = ['Bereit zur Bearbeitung', 'Abgeschlossen'].includes(e.neuer_status) && Boolean(e.vorgangs_id) && Boolean(e.kunde_id);\nreturn [{ json: { weiter, kunde_id: e.kunde_id || '', vorgangs_id: e.vorgangs_id || '', neuer_status: e.neuer_status || '' } }];\n"
+      },
+      "id": "0aef4537-902f-49b3-a6f2-2752290d55de",
+      "name": "Status prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c846106c-f835-479c-ab14-bc74199e9fbc",
+              "leftValue": "={{ $json.weiter }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b785c46e-5a96-452f-aaf4-0b6ca8045f6c",
+      "name": "Abschluss-Status?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_config_allgemein"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Status prüfen').first().json.kunde_id }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "id": "00fe1c00-ecad-4ffe-aabf-f88c9249bf26",
+      "name": "Kunde lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_vorgaenge"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "vorgangs_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Status prüfen').first().json.vorgangs_id }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "id": "5213c33a-1d98-4304-a570-6aaada0f97c1",
+      "name": "Vorgang lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        896,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_audit_log"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "vorgangs_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Status prüfen').first().json.vorgangs_id }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "b051063c-1fcf-49a1-ab52-06c2eca55e43",
+      "name": "Audit lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\n// Baut die Abschlusskarte (Adaptive Card 1.4) mit Zeitleiste für einen Vorgang. Wirft nie nach außen.\nconst cfgRow = ($('Kunde lesen').first() || { json: {} }).json || {};\nconst v = ($('Vorgang lesen').first() || { json: {} }).json || {};\nconst audit = $('Audit lesen').all().map((i) => i.json).filter((r) => r && r.typ);\nconst ein = $('Status prüfen').first().json;\nconst leer = (grund) => [{ json: { ok: false, grund } }];\ntry {\n\tconst channel = String(cfgRow.log_channel_id || '').trim();\n\tlet ben = {};\n\ttry { ben = JSON.parse(cfgRow.benachrichtigung || '{}'); } catch (e) { ben = {}; }\n\tif (!channel) return leer('kein log_channel_id in der Config');\n\tif (!/^[0-9a-f-]{36}$/i.test(String(ben.team_id || ''))) return leer('team_id fehlt');\n\tif (!v.vorgangs_id) return leer('Vorgang nicht gefunden');\n\tconst tz = cfgRow.zeitzone || 'Europe/Berlin';\n\tconst fmtZeit = (iso) => new Intl.DateTimeFormat('de-DE', { timeZone: tz, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));\n\tconst fmtLang = (iso) => new Intl.DateTimeFormat('de-DE', { timeZone: tz, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));\n\tconst pj = (s) => { try { return JSON.parse(s || '{}') || {}; } catch (e) { return {}; } };\n\tconst nice = (f) => String(f).replace(/_/g, ' ');\n\tconst name = (a) => String(a || '').replace(/^Mitarbeiter:/, '').split('@')[0].replace(/[._]/g, ' ').replace(/\\b\\w/g, (c) => c.toUpperCase());\n\taudit.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));\n\tconst zeilen = [];\n\tlet merge = [];\n\tlet mergeZeit = null;\n\tconst flush = () => { if (merge.length) { zeilen.push([mergeZeit, 'Angaben aus der Antwort übernommen: ' + merge.map(nice).join(', ')]); merge = []; } };\n\tfor (const r of audit) {\n\t\tconst d = pj(r.details);\n\t\tif (r.typ === 'MERGE') { if (!merge.length) mergeZeit = r.createdAt; if (d.feld) merge.push(d.feld); continue; }\n\t\tflush();\n\t\tif (r.typ === 'ZUORDNUNG') { zeilen.push([r.createdAt, 'Mail dem Vorgang zugeordnet (' + (d.ergebnis || 'eindeutig') + ')']); continue; }\n\t\tif (r.typ !== 'STATUS') continue;\n\t\tconst neu = r.neu; const alt = r.alt;\n\t\tlet t;\n\t\tif (neu === 'Neu') t = 'Mail empfangen, Vorgang angelegt';\n\t\telse if (neu === 'In Prüfung' && d.klasse) t = 'Als Anfrage erkannt' + (d.konfidenz ? ' (Sicherheit ' + Math.round(d.konfidenz * 100) + ' %)' : '');\n\t\telse if (neu === 'In Prüfung') t = 'Kundenantwort eingegangen, wird ausgewertet';\n\t\telse if (neu === 'Lücken erkannt') t = 'Fehlende Angaben erkannt: ' + (d.fehlende || []).map(nice).join(', ');\n\t\telse if (neu === 'Freigabe ausstehend') t = 'Rückfrage entworfen, zur Freigabe an ' + ((d.freigeber || []).length || 1) + ' Freigeber geschickt (Runde ' + (d.runde || 1) + ')';\n\t\telse if (neu === 'Warten auf Kunde') t = 'Rückfrage' + (String(r.ausloeser).startsWith('Mitarbeiter:') ? ' von ' + name(r.ausloeser) + (d.bearbeitet ? ' bearbeitet und' : '') + ' freigegeben und gesendet' : ' gesendet');\n\t\telse if (neu === 'Bereit zur Bearbeitung') t = 'Alle Pflichtangaben vorhanden, bereit zur Bearbeitung';\n\t\telse if (neu === 'Eskaliert / Manuell') t = 'Zur manuellen Klärung übergeben';\n\t\telse if (neu === 'Abgeschlossen') t = 'Vorgang abgeschlossen';\n\t\telse t = 'Status: ' + (alt || '–') + ' → ' + neu;\n\t\tzeilen.push([r.createdAt, t]);\n\t}\n\tflush();\n\tconst farbe = ein.neuer_status === 'Abgeschlossen' ? 'accent' : 'good';\n\tconst daten = pj(v.extrahierte_daten);\n\tconst felder = Object.keys(daten).filter((k) => daten[k] && daten[k].wert !== null && daten[k].wert !== undefined && daten[k].wert !== '');\n\tconst first = audit.length ? audit[0].createdAt : v.createdAt;\n\tconst last = audit.length ? audit[audit.length - 1].createdAt : v.updatedAt;\n\tconst min = Math.max(0, Math.round((new Date(last) - new Date(first)) / 60000));\n\tconst dauer = min < 60 ? min + ' Min.' : min < 2880 ? Math.round(min / 60) + ' Std.' : Math.round(min / 1440) + ' Tage';\n\tconst tb = (text, extra) => Object.assign({ type: 'TextBlock', text, wrap: true, spacing: 'Small' }, extra || {});\n\tconst body = [\n\t\t{ type: 'ColumnSet', columns: [\n\t\t\t{ type: 'Column', width: 'stretch', items: [tb('Vorgang ' + v.vorgangs_id, { weight: 'bolder', size: 'medium', spacing: 'None' })] },\n\t\t\t{ type: 'Column', width: 'auto', items: [tb(String(ein.neuer_status).toUpperCase(), { weight: 'bolder', size: 'small', color: farbe, spacing: 'None' })] },\n\t\t] },\n\t\ttb('**' + (v.absender_name || v.absender_adresse || 'Absender unbekannt') + '** · ' + (v.betreff || '(ohne Betreff)') + (v.vorgangstyp ? ' · ' + v.vorgangstyp : '')),\n\t];\n\tif (felder.length) {\n\t\tbody.push({ type: 'Container', style: 'emphasis', spacing: 'Medium', items: [tb('ERFASSTE DATEN', { isSubtle: true, size: 'small', weight: 'bolder', spacing: 'None' })].concat(felder.slice(0, 14).map((k) => tb(nice(k) + ': **' + String(daten[k].wert).slice(0, 80) + '**'))) });\n\t}\n\tbody.push(tb('ABLAUF', { isSubtle: true, size: 'small', weight: 'bolder', spacing: 'Medium' }));\n\tfor (const [zeit, text] of zeilen.slice(0, 24)) {\n\t\tbody.push({ type: 'ColumnSet', spacing: 'Small', columns: [\n\t\t\t{ type: 'Column', width: '90px', items: [tb(fmtZeit(zeit), { isSubtle: true, size: 'small', spacing: 'None' })] },\n\t\t\t{ type: 'Column', width: 'stretch', items: [tb(String(text).slice(0, 300), { spacing: 'None' })] },\n\t\t] });\n\t}\n\tbody.push(tb('Dauer von Eingang bis ' + ein.neuer_status + ': ' + dauer + ' · Rückfrage-Runden: ' + (v.rundenzaehler || 0) + ' · protokolliert ' + fmtLang(new Date().toISOString()), { isSubtle: true, size: 'small', spacing: 'Medium' }));\n\tconst karte = { type: 'AdaptiveCard', $schema: 'http://adaptivecards.io/schemas/adaptive-card.json', version: '1.4', body };\n\tconst marker = Buffer.from(JSON.stringify(karte), 'utf8').toString('base64');\n\tconst html = '<b>📋 Vorgang ' + v.vorgangs_id + ': ' + ein.neuer_status + '</b><br>' + zeilen.slice(0, 24).map((z) => fmtZeit(z[0]) + ' ' + z[1]).join('<br>') + '<!--EPA_KARTE:' + marker + '-->';\n\treturn [{ json: { ok: true, html, team_id: ben.team_id, channel_id: channel, postfach: cfgRow.postfach || '', postfach_workflow_id: cfgRow.postfach_workflow_id || '', vorgangs_id: v.vorgangs_id } }];\n} catch (err) {\n\treturn leer('Fehler beim Bauen: ' + String(err && err.message).slice(0, 150));\n}\n"
+      },
+      "id": "486b3490-f539-4e57-a84a-74b4a9fa73b1",
+      "name": "Karte bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8033ccf6-a93f-4972-af89-9dd44ef6df92",
+              "leftValue": "={{ $json.ok }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f342a725-8552-4494-ab0d-1ed9accef4e3",
+      "name": "Karte bereit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1568,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ /^[A-Za-z0-9]{8,32}$/.test(String($json.postfach_workflow_id || '')) ? $json.postfach_workflow_id : 'keineId0' }}"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "aktion": "teams_kanal",
+            "postfach": "={{ $json.postfach }}",
+            "vorgangs_id": "={{ $json.vorgangs_id }}",
+            "html": "={{ $json.html }}",
+            "team_id": "={{ $json.team_id }}",
+            "channel_id": "={{ $json.channel_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "aktion",
+              "displayName": "aktion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "postfach",
+              "displayName": "postfach",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "html",
+              "displayName": "html",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "team_id",
+              "displayName": "team_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "channel_id",
+              "displayName": "channel_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "31a70201-600d-477e-af8e-89fae7c04496",
+      "name": "Log-Karte senden",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1792,
+        0
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Bei Aufruf": {
+      "main": [
+        [
+          {
+            "node": "Status prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status prüfen": {
+      "main": [
+        [
+          {
+            "node": "Abschluss-Status?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Abschluss-Status?": {
+      "main": [
+        [
+          {
+            "node": "Kunde lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kunde lesen": {
+      "main": [
+        [
+          {
+            "node": "Vorgang lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorgang lesen": {
+      "main": [
+        [
+          {
+            "node": "Audit lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audit lesen": {
+      "main": [
+        [
+          {
+            "node": "Karte bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Karte bauen": {
+      "main": [
+        [
+          {
+            "node": "Karte bereit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Karte bereit?": {
+      "main": [
+        [
+          {
+            "node": "Log-Karte senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

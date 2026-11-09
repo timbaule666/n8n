@@ -21,6 +21,7 @@ const VERSIONEN = Object.freeze({
 	'n8n-nodes-base.webhook': 2,
 	'n8n-nodes-base.respondToWebhook': 1.5,
 	'n8n-nodes-base.httpRequest': 4.2,
+	'n8n-nodes-base.set': 3.4, // nur SW Teams einrichten
 	'n8n-nodes-base.wait': 1.1,
 	'n8n-nodes-base.extractFromFile': 1.1,
 	'n8n-nodes-base.microsoftOutlookTrigger': 1,
@@ -47,6 +48,11 @@ function modul(name) {
 		'})();',
 		`// ===== Ende src/${name}.js =====`,
 	].join('\n');
+}
+
+/** Node-Logik aus workflows-src/datatable/code/<name>.js (längere Code-Blöcke, die nicht in den Generator passen). */
+function codeDatei(name) {
+	return fs.readFileSync(path.join(ROOT, 'workflows-src', 'datatable', 'code', name), 'utf8');
 }
 
 /** Code-Node-Quelltext aus Modulen und eigener Logik. */
@@ -260,4 +266,4 @@ function bedingungen(liste, combinator = 'and') {
 	};
 }
 
-module.exports = { Workflow, VERSIONEN, modul, codeMit, sql, sqlKopf, uuid, bedingung, bedingungen, ROOT };
+module.exports = { Workflow, VERSIONEN, modul, codeMit, codeDatei, sql, sqlKopf, uuid, bedingung, bedingungen, ROOT };

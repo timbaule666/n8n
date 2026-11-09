@@ -194,3 +194,18 @@ test('Telefon: (0) nach der Ländervorwahl wird entfernt', () => {
 	assert.deepEqual(pf.feldPruefen(feld('Telefon'), '+43 662 5557061'), { ok: true, wert: '+436625557061' });
 	assert.equal(pf.wertImText('telefon', '+493815557014', 'Tel. +49 (0) 381 / 555 70 14'), true);
 });
+
+test('PLZ je Land (validierungsregel.laender) und PLZ-Verzeichnis', () => {
+	const pf = require('../src/pflichtfelder');
+	const feld = (laender) => ({ feldname: 'Start_PLZ', anzeigename: 'PLZ', typ: 'plz', pflicht: true, validierungsregel: laender ? { laender } : {} });
+	assert.deepEqual(pf.feldPruefen(feld(['DE']), '44135'), { ok: true, wert: '44135' });
+	assert.equal(pf.feldPruefen(feld(['DE']), '5020').ok, false, 'österreichische PLZ nur mit AT erlaubt');
+	assert.deepEqual(pf.feldPruefen(feld(['DE', 'AT']), 'A-5020'), { ok: true, wert: '5020' });
+	assert.deepEqual(pf.feldPruefen(feld(null), 'NL 1012 AB'), { ok: true, wert: '1012AB' });
+	assert.equal(pf.feldPruefen(feld(['DE']), 'F-75001').ok, false);
+	const felder = [{ ...feld(['DE']), reihenfolge: 1 }];
+	const unbekannt = pf.pruefen({ Start_PLZ: { wert: '00000' } }, felder, { plzInfo: { ok: true, plz_info: { '00000': { gefunden: false } } } });
+	assert.match(unbekannt.fehlende[0].grund, /existiert in Deutschland nicht/);
+	const bekannt = pf.pruefen({ Start_PLZ: { wert: '44135' } }, felder, { plzInfo: { ok: true, plz_info: { 44135: { gefunden: true } } } });
+	assert.equal(bekannt.daten.Start_PLZ.wert, '44135');
+});

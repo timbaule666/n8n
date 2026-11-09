@@ -382,6 +382,71 @@
         2420,
         -100
       ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "EPA_REF:EPA SW Log-Karte",
+          "cachedResultName": "EPA SW Log-Karte"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kunde_id": "={{ $('Übergang prüfen').first().json.kunde_id }}",
+            "vorgangs_id": "={{ $('Übergang prüfen').first().json.vorgangs_id }}",
+            "neuer_status": "={{ $('Übergang prüfen').first().json.neuer_status }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "kunde_id",
+              "displayName": "kunde_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "vorgangs_id",
+              "displayName": "vorgangs_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "neuer_status",
+              "displayName": "neuer_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "dc528d47-2c55-47c4-aedc-c33269ae17de",
+      "name": "Log-Karte senden",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        2200,
+        140
+      ]
     }
   ],
   "connections": {
@@ -496,6 +561,11 @@
         [
           {
             "node": "Outlook markieren",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log-Karte senden",
             "type": "main",
             "index": 0
           }

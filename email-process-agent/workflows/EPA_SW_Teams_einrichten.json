@@ -1,0 +1,469 @@
+{
+  "name": "EPA SW Teams einrichten",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## EPA SW Teams einrichten\n**Zweck:** legt im Teams-Team des Kunden die vier Kanäle an (Vollständige Anfragen, Rückfragen, Systemmeldungen, Logs) und trägt die IDs in epa_config_allgemein ein (kanaele, log_channel_id, benachrichtigung.channel_id).\n**Einrichten pro Kunde:** im Knoten \"Kunde eintragen\" kunde_id und team_name setzen, dann ausführen. Mehrfaches Ausführen ist unschädlich: vorhandene Kanäle (gleicher Name) werden wiederverwendet.\n**Rechte:** Das Teams-Credential muss im Tenant des Kunden Kanäle anlegen dürfen. Team und Kanal umbenennen sind optional (Fehler wird ignoriert).",
+        "width": 520,
+        "height": 300,
+        "color": 7
+      },
+      "id": "a3f079f7-f54a-4fe5-a77c-22bca5b99c56",
+      "name": "Notiz Zweck",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1056,
+        192
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "b6c2ec08-a1c8-402e-a287-aa656072638c",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "kunde_id",
+              "value": "<kunde_id>",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "team_name",
+              "value": "<Teamname>",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b6cfe133-5b0f-4c7e-a818-d98e9ed00e8c",
+      "name": "Kunde eintragen",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_config_allgemein"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.kunde_id }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "id": "6c80ddc9-44cf-45da-a3f4-c892da00fe5c",
+      "name": "Kunde lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ \"https://graph.microsoft.com/v1.0/teams/\" + JSON.parse($json.benachrichtigung).team_id + \"/channels\" }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftTeamsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "id": "4b7143ea-7a1d-44b8-a2b9-82f0c3c914b8",
+      "name": "Kanäle lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst k = $('Kunde lesen').first().json;\nif (!k || !k.kunde_id) throw new Error('Kunde nicht in epa_config_allgemein gefunden');\nlet b = {};\ntry { b = JSON.parse(k.benachrichtigung); } catch (e) { b = {}; }\nif (!b.team_id) throw new Error('team_id fehlt in benachrichtigung');\nconst res = $input.first().json;\nif (res.statusCode !== 200) throw new Error('Kanäle konnten nicht gelesen werden: ' + JSON.stringify(res.body).slice(0, 200));\nconst vorh = (res.body && res.body.value) || [];\nconst soll = [\n  { art: 'anfragen', name: '1 Vollständige Anfragen', text: 'Anfragen, die vollständig sind und bearbeitet werden können' },\n  { art: 'rueckfragen', name: '2 Rückfragen', text: 'Alles, was auf eine Antwort oder Entscheidung wartet' },\n  { art: 'system', name: '3 Systemmeldungen', text: 'Warnungen, Eskalationen und Fehler des Agenten' },\n  { art: 'logs', name: '4 Logs', text: 'Protokoll: eine Abschlusskarte pro Vorgang' },\n];\nfunction rein(s) { return String(s).replace(/^\\d+\\s+/, '').toLowerCase(); }\nreturn soll.map(function (s) {\n  const f = vorh.find(function (x) { return rein(x.displayName) === rein(s.name); });\n  return { json: { team_id: b.team_id, art: s.art, name: s.name, beschreibung: s.text, kanal_id: f ? f.id : '', alt_name: f ? f.displayName : s.name } };\n});\n"
+      },
+      "id": "44756348-ed26-4f46-a984-5273ee884979",
+      "name": "Kanäle planen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ \"https://graph.microsoft.com/v1.0/teams/\" + $json.team_id + \"/channels\" }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftTeamsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 20000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ displayName: $json.kanal_id ? $json.alt_name : $json.name, description: $json.beschreibung, membershipType: \"standard\" }) }}"
+      },
+      "id": "62c5dc93-241d-4405-a234-0438056246fb",
+      "name": "Kanal anlegen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst plan = $('Kanäle planen').all().map(function (i) { return i.json; });\nconst antw = $input.all().map(function (i) { return i.json; });\nconst k = $('Kunde lesen').first().json;\nlet b = {};\ntry { b = JSON.parse(k.benachrichtigung); } catch (e) { b = {}; }\nconst ids = {};\nconst fehler = [];\nplan.forEach(function (p, i) {\n  const a = antw[i] || {};\n  const id = p.kanal_id || (a.body && a.body.id ? a.body.id : '');\n  if (id) ids[p.art] = id;\n  else fehler.push(p.name + ': ' + (a.body && a.body.error ? a.body.error.code + ' ' + a.body.error.message : 'keine Antwort'));\n});\nif (fehler.length) throw new Error('Kanäle nicht angelegt: ' + fehler.join(' | '));\nconst nb = Object.assign({}, b, { channel_id: ids.system });\nconst kunde = $('Kunde eintragen').first().json;\nreturn [{ json: {\n  kunde_id: k.kunde_id,\n  team_id: b.team_id,\n  team_name: kunde.team_name || '',\n  kanaele: JSON.stringify(ids),\n  log_channel_id: ids.logs,\n  benachrichtigung: JSON.stringify(nb),\n  kanal_ids: ids,\n} }];\n"
+      },
+      "id": "ceca6470-0ccd-4384-a96e-39cdc1fe63ad",
+      "name": "Ergebnis sammeln",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "epa_config_allgemein"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "kunde_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.kunde_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "kanaele": "={{ $json.kanaele }}",
+            "log_channel_id": "={{ $json.log_channel_id }}",
+            "benachrichtigung": "={{ $json.benachrichtigung }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "8d211b77-fd04-42df-a790-9d8a7616bf81",
+      "name": "Config speichern",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1568,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ \"https://graph.microsoft.com/v1.0/teams/\" + $(\"Ergebnis sammeln\").first().json.team_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftTeamsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 20000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ displayName: $(\"Ergebnis sammeln\").first().json.team_name }) }}"
+      },
+      "id": "57e8d29a-f4e6-49d4-a99e-9f4bf1305a25",
+      "name": "Team umbenennen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1792,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Ergebnis sammeln').first().json;\nconst plan = $('Kanäle planen').all().map(function (i) { return i.json; });\nreturn plan.map(function (p) {\n  return { json: { url: 'https://graph.microsoft.com/v1.0/teams/' + e.team_id + '/channels/' + e.kanal_ids[p.art], name: p.name } };\n});\n"
+      },
+      "id": "fdaa3c0e-3dcd-45b4-a7ae-cce6a8edfc2f",
+      "name": "Namen vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftTeamsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 20000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ displayName: $json.name }) }}"
+      },
+      "id": "fb5b2dc3-93ab-4ab4-a980-0d150adef5a4",
+      "name": "Kanäle umbenennen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1920,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "z1",
+              "name": "kunde_id",
+              "value": "={{ $(\"Ergebnis sammeln\").first().json.kunde_id }}",
+              "type": "string"
+            },
+            {
+              "id": "z2",
+              "name": "kanaele",
+              "value": "={{ $(\"Ergebnis sammeln\").first().json.kanaele }}",
+              "type": "string"
+            },
+            {
+              "id": "z3",
+              "name": "team_umbenannt",
+              "value": "={{ $(\"Team umbenennen\").first().json.statusCode }}",
+              "type": "string"
+            },
+            {
+              "id": "z4",
+              "name": "kanaele_umbenannt",
+              "type": "string",
+              "value": "={{ $('Kanäle umbenennen').all().map(function (i) { return i.json.statusCode; }).join(',') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bd49d317-f734-417e-a6cd-a3c915648652",
+      "name": "Zusammenfassung",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2240,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Kunde eintragen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kunde eintragen": {
+      "main": [
+        [
+          {
+            "node": "Kunde lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kunde lesen": {
+      "main": [
+        [
+          {
+            "node": "Kanäle lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kanäle lesen": {
+      "main": [
+        [
+          {
+            "node": "Kanäle planen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kanäle planen": {
+      "main": [
+        [
+          {
+            "node": "Kanal anlegen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kanal anlegen": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis sammeln",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ergebnis sammeln": {
+      "main": [
+        [
+          {
+            "node": "Config speichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config speichern": {
+      "main": [
+        [
+          {
+            "node": "Team umbenennen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Team umbenennen": {
+      "main": [
+        [
+          {
+            "node": "Namen vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Namen vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Kanäle umbenennen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kanäle umbenennen": {
+      "main": [
+        [
+          {
+            "node": "Zusammenfassung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

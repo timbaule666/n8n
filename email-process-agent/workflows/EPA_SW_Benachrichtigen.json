@@ -226,7 +226,7 @@
             "vorgangs_id": "={{ $('Eingabe prüfen').first().json.vorgangs_id || '' }}",
             "html": "={{ $('Eingabe prüfen').first().json.nachricht_html }}",
             "team_id": "={{ $('Eingabe prüfen').first().json.team_id }}",
-            "channel_id": "={{ $('Eingabe prüfen').first().json.channel_id }}"
+            "channel_id": "={{ $json.ziel_channel_id || $('Eingabe prüfen').first().json.channel_id }}"
           },
           "matchingColumns": [],
           "schema": [
@@ -454,6 +454,21 @@
         1760,
         0
       ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\n// Wählt den Teams-Kanal nach Meldungsart. Fehlt kanaele in der Config, bleibt der übergebene Kanal.\nconst eingabe = $('Eingabe prüfen').first().json;\nconst row = $input.first().json || {};\nlet kanaele = {};\ntry { kanaele = typeof row.kanaele === 'string' && row.kanaele ? JSON.parse(row.kanaele) : (row.kanaele || {}); } catch (e) { kanaele = {}; }\nconst html = String(eingabe.nachricht_html || '');\nconst titel = (html.split(/<br\\s*\\/?>|<\\/b>/i)[0] || '').replace(/<[^>]+>/g, '').toLowerCase();\nlet art = 'system';\nif (/anfrage vollständig|bereit zur bearbeitung|terminanfrage – kalender geprüft/.test(titel)) art = 'anfragen';\nelse if (/neue anfrage|pflichtangaben fehlen|rückfrage direkt|kunde reagiert nicht|maximale anzahl rückfragen|stornierung|absage|antwort eingegangen/.test(titel)) art = 'rueckfragen';\nconst ziel = kanaele[art] || '';\nreturn [{ json: { ...row, ziel_channel_id: ziel, kanal_art: ziel ? art : 'standard' } }];\n"
+      },
+      "id": "53434717-72b3-4cd2-a5fe-0d2c671e8853",
+      "name": "Kanal wählen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        770,
+        80
+      ]
     }
   ],
   "connections": {
@@ -509,6 +524,17 @@
       ]
     },
     "Kunde lesen": {
+      "main": [
+        [
+          {
+            "node": "Kanal wählen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kanal wählen": {
       "main": [
         [
           {

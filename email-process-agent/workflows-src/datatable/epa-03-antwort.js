@@ -1,5 +1,5 @@
 'use strict';
-const { Workflow, bedingung, bedingungen } = require('../../tools/lib/n8n');
+const { Workflow, bedingung, bedingungen, codeDatei } = require('../../tools/lib/n8n');
 
 const E = "$('Bei Aufruf').first().json";
 const C = "$('Config laden').first().json.config";
@@ -107,7 +107,7 @@ return [{ json: { anlass: 'antwort_gemeldet', nachricht_html: antwort.meldungAnt
 		['aufgabe', 'string', 'extraktion'],
 		['prompt_version', 'string', `={{ ${C}.prompt_versionen.extraktion }}`],
 		['profil', 'object', `={{ ${C}.llm_profil.extraktion }}`],
-		['kontext', 'object', `={{ { mail: ${E}.mail, felder: ${C}.vorgangstypen[${V}.vorgangstyp], heute: $now.setZone(${C}.zeitzone).toISODate(), hinweise: $('Hinweise vorbereiten').first().json.hinweise } }}`],
+		['kontext', 'object', `={{ { mail: ${E}.mail, felder: (${C}.vorgangstypen[${V}.vorgangstyp] || []).map(function (f) { return f.typ === 'plz' ? Object.assign({}, f, { validierungsregel: {} }) : f; }), heute: $now.setZone(${C}.zeitzone).toISODate(), hinweise: $('Hinweise vorbereiten').first().json.hinweise } }}`],
 		['fehler_als_ergebnis', 'boolean', '={{ false }}'],
 	]);
 	const hinweise = wf.code('Hinweise vorbereiten', [1320, -60], ['antwort', 'eingang'], `
@@ -117,55 +117,11 @@ const mail = $('Bei Aufruf').first().json.mail;
 if (!config.vorgangstypen[v.vorgangstyp]) throw new Error('[EPA:424:KONFIGURATIONSFEHLER:' + v.vorgangs_id + '] Vorgangstyp "' + v.vorgangstyp + '" fehlt in der Config');
 return [{ json: { hinweise: [...antwort.extraktionsHinweise(v, config.vorgangstypen[v.vorgangstyp]), ...eingang.extraktionsHinweise(mail)] } }];
 `);
-	const zusammen = wf.code('Zusammenführen', [1540, 100], ['antwort', 'pflichtfelder', 'fristen', 'eingang'], `
-const config = $('Config laden').first().json.config;
-const v = $('Vorgang lesen').first().json.vorgang;
-const mail = $('Bei Aufruf').first().json.mail;
-const llm = $input.first().json;
-const felder = config.vorgangstypen[v.vorgangstyp];
-if (!llm.ok) return [{ json: { weg: 'extraktion_fehlgeschlagen', fehlercode: llm.code, fehler: llm.fehler } }];
-const heute = DateTime.now().setZone(config.zeitzone).toISODate();
-const neu = pflichtfelder.pruefen(llm.ergebnis.felder, felder, { heute, quelltext: pflichtfelder.quelltextAus(mail), absenderName: mail.absender_name });
-const m = antwort.zusammenfuehren(v.extrahierte_daten, neu, felder, {
-	istPlatzhalter: pflichtfelder.istPlatzhalter, konflikteBisher: v.konflikte, message_id: mail.message_id, runde: Number(v.rundenzaehler || 0),
-	// Name des Antwortenden bzw. des ursprünglichen Absenders (z. B. Weiterleitender) ist kein neuer Ansprechpartner
-	absenderNamen: [mail.absender_name, v.absender_name],
-});
-const ent = antwort.entscheiden(m, v);
-let fristNeu = null;
-if (ent.weg === 'keine_daten' && v.status === 'Warten auf Kunde' && Number(config.leerantwort_fristverlaengerung_stunden) > 0) {
-	const kandidat = fristen.berechneFrist(new Date().toISOString(), config.leerantwort_fristverlaengerung_stunden, config);
-	const f = antwort.fristVerlaengern(v.antwort_frist, kandidat);
-	if (f !== v.antwort_frist) fristNeu = f;
-}
-// KI-Einschätzung + feste Musterprüfung (eingang.manipulationBewerten). Bestätigter Verdacht: keine neue Rückfrage,
-// keine Freigabe, Vorgang auf "Eskaliert / Manuell" – nur die Systemwarnung (EPA-01), ein Mensch prüft.
-// Meldet nur die KI etwas, wird die Antwort normal ausgewertet und die Meldung trägt einen Hinweis.
-const bewertung = eingang.manipulationBewerten(llm.ergebnis.verdacht_manipulation === true, mail);
-const sperren = bewertung.stufe === 'sperren';
-const manipulation = sperren;
-// Wichtige Zusatzinformation aus der Antwort (z. B. Gefahrgut, Hebebühne): immer melden, auch ohne neue Feldwerte.
-const besonderheiten = typeof llm.ergebnis.besonderheiten === 'string' && llm.ergebnis.besonderheiten.trim() ? llm.ergebnis.besonderheiten.trim().slice(0, 400) : null;
-return [{ json: {
-	weg: ent.weg === 'keine_daten' && !sperren ? 'keine_daten' : 'auswerten',
-	ergebnis: sperren ? 'manipulation' : ent.weg,
-	zielstatus: sperren ? 'Eskaliert / Manuell' : ent.zielstatus,
-	freigabe_ersetzen: ent.freigabe_ersetzen,
-	merge: m,
-	frist_neu: fristNeu,
-	verdacht_manipulation: manipulation,
-	manipulation_hinweis: bewertung.stufe === 'hinweis',
-	manipulation: bewertung,
-	besonderheiten,
-	speichern: { extrahierte_daten: m.daten, fehlende_felder: m.fehlende, konflikte: m.konflikte },
-	details: {
-		anlass: 'Kundenantwort', message_id: mail.message_id,
-		uebernommen: m.uebernommen.map((u) => u.feldname), konflikte_neu: m.konflikte_neu.map((k) => k.feldname),
-		fehlende: m.fehlende.map((f) => f.feldname), verdacht_manipulation: manipulation, manipulation: bewertung, besonderheiten,
-		llm: { modell: llm.modell, prompt_version: llm.prompt_version, versuche: llm.versuche, korrekturen: llm.korrekturen },
-	},
-} }];
-`);
+	// PLZ im deutschen PLZ-Verzeichnis nachschlagen (nur fünfstellige Werte); Fehler stören die Auswertung nicht.
+	const plz = wf.aufruf('PLZ nachschlagen', [1430, 100], 'EPA SW PLZ nachschlagen', [
+		['plz_liste', 'array', "={{ ($json.ok && $json.ergebnis && $json.ergebnis.felder) ? Object.values($json.ergebnis.felder).map(function (e) { return e && e.wert !== null && e.wert !== undefined ? String(e.wert).replace(/\\s/g, '') : ''; }).filter(function (s) { return /^[0-9]{5}$/.test(s); }) : [] }}"],
+	], { onError: 'continueRegularOutput' });
+	const zusammen = wf.code('Zusammenführen', [1540, 100], ['antwort', 'pflichtfelder', 'fristen', 'eingang'], codeDatei('epa03-zusammenfuehren.js'));
 	const wWeg = weiche(wf, 'Nach Merge', [1760, 100], '={{ $json.weg }}', ['auswerten', 'keine_daten', 'extraktion_fehlgeschlagen']);
 
 	// ---------------------------------------------------------------- keine Daten (Vertröstung)
@@ -327,7 +283,7 @@ return [{ json: { ergebnis: $(quelle).first().json.ergebnis, vorgangs_id: $('Vor
 	wf.kette(trigger, config, vorgang, weg, anhaengen, verarbeiten);
 	wf.verbinde(verarbeiten, hinweise, 0);
 	wf.verbinde(verarbeiten, mNur, 1);
-	wf.kette(hinweise, extrahieren, zusammen, wWeg);
+	wf.kette(hinweise, extrahieren, plz, zusammen, wWeg);
 	wf.verbinde(wWeg, ersetzenFrage, 0);
 	wf.verbinde(wWeg, fristFrage, 1);
 	wf.verbinde(wWeg, statusFehl, 2);

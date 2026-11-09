@@ -42,6 +42,8 @@
       "outlook_kategorien": "string",
       "vorgangsarten": "string",
       "kalender": "string",
+      "log_channel_id": "string",
+      "kanaele": "string",
       "config_sheet": "string"
     },
     "epa_config_pflichtfelder": {
@@ -222,6 +224,11 @@
       "entschieden_am": "date",
       "event_id": "string",
       "fehler": "string"
+    },
+    "epa_plz_de": {
+      "plz": "string",
+      "ort": "string",
+      "bundesland": "string"
     }
   }
 }

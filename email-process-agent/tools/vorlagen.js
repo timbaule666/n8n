@@ -54,6 +54,8 @@ const ALLGEMEIN = {
 	outlook_kategorien: '',
 	vorgangsarten: '',
 	kalender: '',
+	log_channel_id: '',
+	kanaele: '',
 	config_sheet: '',
 };
 

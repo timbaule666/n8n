@@ -35,3 +35,20 @@
 
 ## Nachtrag 09.11., 14:05 – Blocker 1 behoben
 PLZ-Regel `laender` in EPA-04, EPA-06, EPA-11, EPA-13, EPA-14 und SW Regeln abgleichen nachgezogen (nur der eingebettete Config-Prüfer getauscht, sonst unverändert) und im Repo übernommen. Nachfass-Lauf 14:05 erfolgreich: 6 Aufgaben, 2 Kunden-Erinnerungen zur Freigabe, 3 Freigaben eskaliert, 1 Freigeber erinnert, keine ungültige Config mehr.
+
+## Nachtrag 09.11. – Blocker 2 behoben: Cloud-Stand im Code
+Alle Änderungen, die direkt in n8n gemacht wurden, sind jetzt im Repo und werden beim Bauen wieder genauso erzeugt:
+
+| Bereich | Übernommen |
+|---|---|
+| Module | `pflichtfelder` (PLZ je Land über `validierungsregel.laender`, PLZ-Verzeichnis), `eingang` (reiner KI-Verdacht ohne auffällige Stelle löst keinen Hinweis mehr aus) |
+| EPA-01, EPA-03 | Node „PLZ nachschlagen“ vor der Pflichtfeldprüfung; Extraktion bekommt PLZ-Felder ohne Regel |
+| EPA-02 | Node „Karte anhängen“ (Freigabe als Teams-Karte, Text als Rückfall) |
+| EPA-00 Postfach | Kanal- und Chat-Meldungen als Adaptive Card mit Text-Rückfall („Marker-Karte“, „Kanal-Karte zugestellt?“, „Kanal-Text senden“, „Karte zugestellt?“, „Text-Nachricht senden“, „Chat melden“ angepasst) |
+| SW Benachrichtigen | Node „Kanal wählen“ (Kanal je Meldungsart aus Config `kanaele`) |
+| SW Status setzen | Node „Log-Karte senden“ |
+| SW Vorgang verwalten | Node „Schwache Altfälle aussortieren“ |
+| Neu | EPA SW PLZ nachschlagen, EPA SW Log-Karte, EPA SW Teams einrichten |
+| Daten | Config-Spalten `kanaele`, `log_channel_id`; Tabelle `epa_plz_de` im Schema (Inhalt = deutsches PLZ-Verzeichnis, nur in der Cloud) |
+
+Längere Code-Blöcke liegen in `workflows-src/datatable/code/`. Abweichung zur Cloud: In `pflichtfelder` ist das geschützte Leerzeichen bei Zahlen („1 200 kg“) wiederhergestellt; es war in der Cloud-Fassung verloren gegangen.

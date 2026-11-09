@@ -41,7 +41,9 @@
    "outlook_kategorien": "{\"Bereit zur Bearbeitung\": {\"name\": \"AI Geprüft\", \"farbe\": \"preset4\"}, \"Freigabe ausstehend\": {\"name\": \"AI Rückfragen\", \"farbe\": \"preset0\"}, \"Warten auf Kunde\": {\"name\": \"AI Rückfragen\", \"farbe\": \"preset0\"}}",
    "config_sheet": "",
    "vorgangsarten": "{\"transport\": {\"name\": \"Angebotsanfrage\", \"beschreibung\": \"Kunde möchte einen Preis oder ein Angebot für einen Transport (Abholung, Ziel, Ware, Termin).\"}, \"bestellung\": {\"name\": \"Bestellung\", \"beschreibung\": \"Kunde bestellt oder beauftragt verbindlich Ware oder eine Leistung, z. B. mit Menge, Liefertermin, Lieferadresse oder Bestellnummer.\"}, \"termin\": {\"name\": \"Terminanfrage\", \"beschreibung\": \"Kunde möchte einen Termin vereinbaren, verschieben oder anfragen, z. B. Besichtigung, Beratung, Anlieferung oder Abholung zu einer bestimmten Zeit.\"}}",
-   "kalender": "{\"aktiv\": true, \"vorgangstyp\": \"termin\", \"datum_feld\": \"Wunschtermin\", \"uhrzeit_feld\": \"Uhrzeit\", \"titel_feld\": \"Terminanlass\", \"ort_feld\": \"Terminort\", \"dauer_minuten\": 60, \"gueltig_stunden\": 72}"
+   "kalender": "{\"aktiv\": true, \"vorgangstyp\": \"termin\", \"datum_feld\": \"Wunschtermin\", \"uhrzeit_feld\": \"Uhrzeit\", \"titel_feld\": \"Terminanlass\", \"ort_feld\": \"Terminort\", \"dauer_minuten\": 60, \"gueltig_stunden\": 72}",
+   "log_channel_id": "",
+   "kanaele": ""
   }
  ],
  "epa_config_pflichtfelder": [

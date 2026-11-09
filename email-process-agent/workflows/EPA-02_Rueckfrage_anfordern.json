@@ -1202,6 +1202,21 @@
     },
     {
       "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\n// Teams-Karte zur Freigabe-Nachricht (Marker <!--EPA_KARTE:base64-->); der Text bleibt als Rückfall erhalten.\nconst config = $('Config laden').first().json.config;\nconst items = $input.all();\nif (!config.benachrichtigung || config.benachrichtigung.kanal !== 'teams') return items;\ntry {\n\tconst v = $('Vorgang lesen').first().json.vorgang;\n\tconst r = $('Rückfrage vorbereiten').first().json;\n\tconst z = $('Entwurf zusammensetzen').first().json;\n\tconst kontext = String((($('Bei Aufruf').first().json) || {}).kontext_html || '');\n\tconst entsch = (s) => String(s).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&#39;/g, \"'\").replace(/&amp;/g, '&');\n\tconst ablaufText = DateTime.fromISO(z.ablauf).setZone(config.zeitzone).toFormat('dd.LL.yyyy, HH:mm');\n\tconst felderDef = config.vorgangstypen[v.vorgangstyp] || [];\n\tlet daten = v.extrahierte_daten || {};\n\tif (typeof daten === 'string') { try { daten = JSON.parse(daten); } catch (err) { daten = {}; } }\n\tconst fehlt = new Set((r.fehlende || []).map((f) => f.feldname));\n\tconst wertText = (f) => {\n\t\tconst w = (daten[f.feldname] || {}).wert;\n\t\tif (w === null || w === undefined || w === '') return '';\n\t\tif (f.typ === 'datum' && /^\\d{4}-\\d{2}-\\d{2}$/.test(String(w))) { const [j, m, t] = String(w).split('-'); return t + '.' + m + '.' + j; }\n\t\treturn String(w);\n\t};\n\tconst zeile = (t) => ({ type: 'TextBlock', text: t, wrap: true, spacing: 'Small' });\n\tlet vorhanden = felderDef.filter((f) => !fehlt.has(f.feldname) && wertText(f)).map((f) => '✅ ' + (f.anzeigename || f.feldname) + ': ' + wertText(f));\n\tif (vorhanden.length > 10) vorhanden = vorhanden.slice(0, 10).concat(['… und weitere']);\n\tconst fehlend = (r.fehlende || []).map((f) => '❌ ' + (f.anzeigename || f.feldname));\n\tconst warnungen = kontext.split('<br>').filter((s) => s.includes('⚠️')).map((s) => entsch(s.replace(/<[^>]+>/g, '')).trim()).filter(Boolean);\n\tconst erinnerung = r.freigabe_art === 'erinnerung';\n\tconst erneut = r.art === 'erneut';\n\tconst absender = v.absender_name || v.absender_adresse || '';\n\tconst entwurfText = String(z.text || '').slice(0, 800);\n\tconst out = items.map((it) => {\n\t\tconst html = String((it.json || {}).nachricht_html || '');\n\t\tconst m = html.match(/<a href=\"([^\"]+)\">Entwurf ansehen/);\n\t\tif (!m) return it;\n\t\tconst url = entsch(m[1]);\n\t\tconst body = [\n\t\t\t{ type: 'ColumnSet', columns: [\n\t\t\t\t{ type: 'Column', width: 'stretch', items: [{ type: 'TextBlock', text: 'Freigabe erforderlich', weight: 'Bolder', size: 'Medium', wrap: true }] },\n\t\t\t\t{ type: 'Column', width: 'auto', items: [{ type: 'TextBlock', text: erinnerung ? 'ERINNERUNG' : 'RÜCKFRAGE', weight: 'Bolder', size: 'Small', color: 'Attention' }] },\n\t\t\t] },\n\t\t];\n\t\tif (erneut) body.push({ type: 'TextBlock', text: '🔁 Erneut zur Freigabe: Die Nachricht kam beim Kunden nicht an.', wrap: true, color: 'Warning', weight: 'Bolder', spacing: 'Small' });\n\t\tbody.push({ type: 'TextBlock', text: '**' + absender + '** · ' + (v.betreff || '') + ' (' + v.vorgangs_id + ')', wrap: true, spacing: 'Small' });\n\t\tbody.push({ type: 'ColumnSet', spacing: 'Medium', columns: [\n\t\t\t{ type: 'Column', width: 'stretch', items: [{ type: 'TextBlock', text: 'VORHANDEN', weight: 'Bolder', size: 'Small', color: 'Good' }].concat(vorhanden.length ? vorhanden.map(zeile) : [zeile('–')]) },\n\t\t\t{ type: 'Column', width: 'stretch', items: [{ type: 'TextBlock', text: 'FEHLT NOCH', weight: 'Bolder', size: 'Small', color: 'Attention' }].concat(fehlend.map(zeile)) },\n\t\t] });\n\t\tif (warnungen.length) body.push({ type: 'TextBlock', text: warnungen.map((w) => '⚠️ ' + w).join('\\n\\n'), wrap: true, color: 'Warning', spacing: 'Medium' });\n\t\tbody.push({ type: 'Container', style: 'emphasis', spacing: 'Medium', items: [\n\t\t\t{ type: 'TextBlock', text: 'ENTWURF DER RÜCKFRAGE', weight: 'Bolder', size: 'Small', isSubtle: true },\n\t\t\t{ type: 'TextBlock', text: entwurfText, wrap: true },\n\t\t] });\n\t\tbody.push({ type: 'TextBlock', text: 'Persönlicher Link, einmal verwendbar, gültig bis ' + ablaufText + '. Bitte nicht weiterleiten. Es wird nichts ohne Ihren Klick versendet.', isSubtle: true, size: 'Small', wrap: true, spacing: 'Medium' });\n\t\tconst karte = { type: 'AdaptiveCard', '$schema': 'http://adaptivecards.io/schemas/adaptive-card.json', version: '1.4', body, actions: [{ type: 'Action.OpenUrl', title: 'Entwurf prüfen und freigeben', url, style: 'positive' }] };\n\t\tconst b64 = Buffer.from(JSON.stringify(karte), 'utf8').toString('base64');\n\t\treturn { json: { ...it.json, nachricht_html: html + '<!--EPA_KARTE:' + b64 + '-->' } };\n\t});\n\treturn out;\n} catch (err) {\n\treturn items;\n}\n"
+      },
+      "id": "dc2097f2-9c7d-43da-a575-94ba14cc8dfb",
+      "name": "Karte anhängen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3410,
+        120
+      ]
+    },
+    {
+      "parameters": {
         "workflowId": {
           "__rl": true,
           "mode": "list",
@@ -1729,6 +1744,17 @@
       ]
     },
     "Freigabe-Nachrichten vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Karte anhängen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Karte anhängen": {
       "main": [
         [
           {

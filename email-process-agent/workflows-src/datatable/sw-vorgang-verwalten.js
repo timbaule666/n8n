@@ -1,5 +1,5 @@
 'use strict';
-const { Workflow, bedingung, bedingungen } = require('../../tools/lib/n8n');
+const { Workflow, bedingung, bedingungen, codeDatei } = require('../../tools/lib/n8n');
 
 const AKTIONEN = ['lesen', 'anlegen', 'aktualisieren', 'kandidaten_suchen', 'sperren', 'entsperren'];
 
@@ -244,7 +244,9 @@ return [{ json: { entsperrt: Boolean(r && r.id !== undefined) } }];
 	wf.kette(lLesen, lErgebnis);
 	wf.kette(aKunde, aVorbereiten, aEinfuegen, aId, aIdSchreiben, aAudit, aAuditSchreiben, aErgebnis);
 	wf.kette(uLesen, uBerechnen, uSchreiben, uPruefen, uAudit, uErgebnis);
-	wf.kette(kLesen, kFiltern);
+	// Schwache Treffer (nur Absender/Betreff) ohne bereits erledigte, ungeklärte oder alte Fälle.
+	const kAlt = wf.code('Schwache Altfälle aussortieren', [1140, 0], [], codeDatei('vorgang-schwache-altfaelle.js'));
+	wf.kette(kLesen, kFiltern, kAlt);
 	wf.kette(sLesen, sEntscheiden, sWeiche);
 	wf.verbinde(sWeiche, sDaten, 0);
 	wf.verbinde(sWeiche, sBelegt, 1);

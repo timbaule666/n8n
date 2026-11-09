@@ -149,6 +149,14 @@ return [{ json: {
 return [{ json: $('Ergebnis melden').first().json }];
 `);
 
+	// Abschlusskarte mit Zeitleiste in den Teams-Kanal "Logs" (bei Bereit/Abgeschlossen), ohne auf das Ende zu warten.
+	const logKarte = wf.aufruf('Log-Karte senden', [2200, 140], 'EPA SW Log-Karte', [
+		['kunde_id', 'string', "={{ $('Übergang prüfen').first().json.kunde_id }}"],
+		['vorgangs_id', 'string', "={{ $('Übergang prüfen').first().json.vorgangs_id }}"],
+		['neuer_status', 'string', "={{ $('Übergang prüfen').first().json.neuer_status }}"],
+	]);
+	wf.nodes.find((n) => n.name === logKarte).parameters.options.waitForSubWorkflow = false;
 	wf.kette(vorbereiten, schreiben, ergebnis, audit, melden, markieren, zurueck);
+	wf.verbinde(melden, logKarte);
 	return wf;
 };

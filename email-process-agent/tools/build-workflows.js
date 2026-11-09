@@ -40,6 +40,10 @@ const M2 = [
 	// Terminanfragen: Kalender prüfen und nach Klick eintragen
 	['sw-kalender-pruefen', 'EPA_SW_Kalender_pruefen.json'],
 	['epa-15-kalender', 'EPA-15_Kalender-Endpunkt.json'],
+	// Teams-Kanäle je Meldungsart, Log-Karte, PLZ-Verzeichnis
+	['sw-plz-nachschlagen', 'EPA_SW_PLZ_nachschlagen.json'],
+	['sw-log-karte', 'EPA_SW_Log-Karte.json'],
+	['sw-teams-einrichten', 'EPA_SW_Teams_einrichten.json'],
 	// Testphase: KI-Qualitäts-Prüfstand (keine Nebenwirkungen)
 	['epa-t1-ki-qualitaet', 'EPA-T1_KI-Qualitaet_pruefen.json'],
 	// Nur interne Tests ohne Microsoft-365-Lizenz (Kunden nutzen Teams)

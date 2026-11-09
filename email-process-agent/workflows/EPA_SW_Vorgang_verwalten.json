@@ -931,6 +931,21 @@
         1140,
         380
       ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\n// Nur Absender/Betreff gleich (schwacher Treffer): bereits übergebene, ungeklärte oder alte Fälle sind keine Kandidaten.\n// Starke Hinweise (Message-ID, Vorgangs-ID, Konversation) bleiben immer erhalten.\nconst e = $('Eingabe prüfen').first().json;\nconst k = (e && e.daten) || {};\nconst ids = new Set(k.message_ids || []);\nconst vids = new Set(k.vorgangs_ids || []);\nconst ALT_TAGE = 14;\nconst grenze = Date.now() - ALT_TAGE * 24 * 3600 * 1000;\nconst fertig = ['Bereit zur Bearbeitung', 'Zuordnung unklar'];\nconst liste = ($input.first().json.kandidaten || []).filter(function (v) {\n  let ml = v.bekannte_message_ids;\n  if (typeof ml === 'string') { try { ml = JSON.parse(ml); } catch (x) { ml = []; } }\n  const stark = (ml || []).some(function (m) { return ids.has(m); }) || vids.has(v.vorgangs_id) || Boolean(k.conversation_id && v.conversation_id === k.conversation_id);\n  if (stark) return true;\n  if (fertig.indexOf(v.status) >= 0) return false;\n  const t = v.geaendert_am ? new Date(v.geaendert_am).getTime() : 0;\n  return t >= grenze;\n});\nreturn [{ json: { kandidaten: liste } }];\n"
+      },
+      "id": "c1c98226-dbe3-4123-a597-3435ce5d541f",
+      "name": "Schwache Altfälle aussortieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        0
+      ]
     }
   ],
   "connections": {
@@ -1150,6 +1165,17 @@
         [
           {
             "node": "Kandidaten filtern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kandidaten filtern": {
+      "main": [
+        [
+          {
+            "node": "Schwache Altfälle aussortieren",
             "type": "main",
             "index": 0
           }
