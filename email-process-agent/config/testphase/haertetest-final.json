@@ -382,7 +382,7 @@
   "absender_name": "Ulf Raab",
   "pdf": null,
   "png": false,
-  "erwartet": "termin, bereit, Anlass Anlieferung"
+  "erwartet": "keine Terminanfrage (Config: Anlieferungen sind keine Terminanfragen) → ignoriert oder Meldung"
  },
  {
   "nr": "F36",
