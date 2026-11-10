@@ -27,7 +27,7 @@ Jedes Kunden-Team hat fünf Kanäle. „EPA SW Teams einrichten“ legt sie an u
 | ↩️ Nicht mehr nötig | Kunde hat geantwortet, bevor freigegeben wurde (EPA-03) |
 | ⏰ Dieser Link gilt nicht mehr | Neuer Link nach Ablauf oder Eskalation; die neue Karte steht weiter unten |
 
-Die Teams-Nachricht wird an der Freigabe gespeichert (`epa_freigaben.teams_nachricht`). Gilt nur für Karten im Kanal, nicht für 1:1-Chats. Schlägt das Ändern fehl, bleibt die alte Karte stehen; an Freigabe und Versand ändert das nichts. Microsoft zeigt die Karte danach als „Bearbeitet“.
+Die Teams-Nachricht wird an der Freigabe gespeichert (`epa_freigaben.teams_nachricht`). Gilt nur für Karten im Kanal, nicht für 1:1-Chats. Schlägt das Ändern fehl, bleibt die alte Karte stehen; an Freigabe und Versand ändert das nichts.
 
 ## Neue Mail (EPA-01)
 
