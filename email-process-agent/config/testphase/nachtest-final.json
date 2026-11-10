@@ -1,0 +1,46 @@
+[
+ {
+  "nr": "N1",
+  "art": "neu",
+  "kategorie": "Nachtest",
+  "betreff": "Reklamation Lieferung vom 06.11.",
+  "text": "Guten Tag,\n\nbei Ihrer Lieferung vom 06.11.2026 waren 3 Kartons beschädigt, die Ware ist teilweise kaputt. Bitte melden Sie sich bei uns.\n\nMit freundlichen Grüßen\nBirgit Lang\n0201 5557401",
+  "absender_name": "Birgit Lang",
+  "pdf": null,
+  "png": false,
+  "erwartet": "keine Anfrage, Meldung Reklamation / Beschwerde (Kanal Bitte ansehen)"
+ },
+ {
+  "nr": "N2",
+  "art": "neu",
+  "kategorie": "Nachtest",
+  "betreff": "Transportauftrag Erfurt – Suhl (Anhang)",
+  "text": "Guten Tag,\n\nanbei der Auftrag. Abholung bitte am 03.12.2026 in 99084 Erfurt, Lieferung nach 98527 Suhl, 2 Paletten mit 600 kg.\n\nGruß Peter Graf, 0361 5557402",
+  "absender_name": "Peter Graf",
+  "pdf": "AUFTRAG\nAbholung: 99084 Erfurt, 03.12.2026\nLieferung: 98527 Suhl\n2 Paletten, 900 kg\nAnsprechpartner: Peter Graf\nTelefon: 0361 5557402",
+  "png": false,
+  "erwartet": "luecken: Bestätigungs-Rückfrage Gewicht 600 kg / 900 kg"
+ },
+ {
+  "nr": "N3",
+  "art": "neu",
+  "kategorie": "Nachtest",
+  "betreff": "Transport Linz – Passau",
+  "text": "Hallo,\n\nAbholung 14.12.2026 in 4020 Linz, Lieferung 94032 Passau, 2 Paletten 800 kg.\nFranz Huber, +43 732 5557403",
+  "absender_name": "Franz Huber",
+  "pdf": null,
+  "png": false,
+  "erwartet": "Rückfrage PLZ Abholort"
+ },
+ {
+  "nr": "N4",
+  "art": "neu",
+  "kategorie": "Nachtest",
+  "betreff": "Transport Mainz – Wiesbaden",
+  "text": "Guten Tag,\n\nam 15.12.2026 bitte 3 Paletten (900 kg) von 55116 Mainz nach 65183 Wiesbaden.\n\nGruß Jens Albrecht",
+  "absender_name": "Jens Albrecht",
+  "pdf": null,
+  "png": false,
+  "erwartet": "Rückfrage Telefon"
+ }
+]
