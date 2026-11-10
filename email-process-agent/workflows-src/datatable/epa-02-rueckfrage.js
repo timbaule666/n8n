@@ -258,6 +258,7 @@ return z.tokens.map((t) => ({ json: {
 		['chat_id', 'string', `={{ (${C}.benachrichtigung.freigeber_chat_ids || {})[String($json.freigeber).toLowerCase()] || ${C}.benachrichtigung.chat_id || '' }}`],
 		['telegram_workflow_id', 'string', `={{ ${C}.benachrichtigung.telegram_workflow_id || '' }}`],
 		['nachricht_html', 'string', '={{ $json.nachricht_html }}'],
+		['freigabe_id', 'string', "={{ $('Entwurf zusammensetzen').first().json.freigabe_id }}"],
 	], {}, 'each');
 	const zustellung = wf.code('Zustellung auswerten', [3740, 120], ['entwurf'], `
 const v = $('Vorgang lesen').first().json.vorgang;

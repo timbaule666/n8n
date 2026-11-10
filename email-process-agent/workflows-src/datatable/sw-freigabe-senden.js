@@ -11,7 +11,8 @@ module.exports = function () {
 		'## EPA SW Freigabe senden',
 		'**Zweck:** Schickt den Freigabe-Link nach Teams. Ist in der Config der Kanal "Rückfragen" eingerichtet (kanaele.rueckfragen), kommt freigeber = "kanal": eine Karte im Kanal für alle Freigeber; wer entscheidet, wählt auf der Freigabe-Seite seinen Namen. Sonst (ältere Kunden) der persönliche Link im 1:1-Chat an jeden Freigeber.',
 		'**Trigger:** Aufruf durch EPA-02 und SW Nachfassen (je Link ein Aufruf).',
-		'**Eingaben:** kunde_id, vorgangs_id, freigeber (E-Mail/UPN), kanal, chat_id, nachricht_html.',
+		'**Eingaben:** kunde_id, vorgangs_id, freigeber (E-Mail/UPN), kanal, chat_id, nachricht_html, freigabe_id.',
+		'**Karte im Kanal:** Die Teams-Nachricht der Karte wird an der Freigabe gespeichert (teams_nachricht), damit „EPA SW Freigabe-Karte“ sie nach der Entscheidung ersetzen kann. Gab es für diese Freigabe schon eine Karte (neuer Link nach Ablauf/Eskalation), wird die alte als „⏰ Link ersetzt“ markiert.',
 		'**Nur für interne Tests:** kanal = "telegram_test" schickt den Link über "EPA-T2 Telegram senden (Test)" an chat_id (Zuordnung je Freigeber in benachrichtigung.freigeber_chat_ids, sonst benachrichtigung.chat_id). Kunden nutzen immer Teams.',
 		'**Ausgabe:** { gesendet, fehler_id }. Ein Fehler bricht nichts ab; er landet im Fehlerlog, EPA-02 meldet dann im Kanal, dass die Freigabe nicht zugestellt wurde.',
 		'**Teams je Kunde:** Der Chat läuft über die Postfach-Kopie des Kunden (Aktion teams_chat). Dort steckt das Teams-Credential aus dem Tenant des Kunden; Agent-Konto und Freigeber müssen in diesem Tenant zwei verschiedene Benutzer sein.',
@@ -26,6 +27,7 @@ module.exports = function () {
 		['chat_id', 'string'],
 		['telegram_workflow_id', 'string'],
 		['nachricht_html', 'string'],
+		['freigabe_id', 'string'],
 	]);
 	const eingabe = wf.code('Eingabe prüfen', [220, 0], ['fehlerklassen', 'telegram'], `
 const e = $input.first().json;
@@ -96,7 +98,35 @@ return [{ json: {
 return [{ json: $input.first().json.fehler }];
 `);
 	const protokoll = wf.tabelle('Fehler protokollieren', [1980, -100], 'insert', 'epa_fehler_log', {}, { onError: 'continueRegularOutput' });
-	const melden = wf.code('Ergebnis melden', [2200, 0], [], `
+	// Karte im Kanal merken (nur Kanal-Freigaben mit freigabe_id); eine ältere Karte derselben Freigabe als ersetzt markieren.
+	const kOpt = { alwaysOutputData: true, onError: 'continueRegularOutput' };
+	const kFg = wf.tabelle('Freigabe zur Karte lesen', [1760, 120], 'get', 'epa_freigaben', { bedingungen: [['freigabe_id', 'eq', "={{ $('Eingabe prüfen').first().json.freigabe_id || '__keine__' }}"]] }, kOpt);
+	const kPlan = wf.code('Karte merken (Plan)', [1980, 120], ['freigabe'], `
+const e = $('Eingabe prüfen').first().json;
+const r = $('Freigabe-Chat senden').isExecuted ? ($('Freigabe-Chat senden').first().json || {}) : {};
+const f = $input.first().json || {};
+const neu = e.freigeber === freigabe.KANAL && f.freigabe_id ? freigabe.teamsNachrichtLesen({ team_id: r.team_id, channel_id: r.channel_id, id: r.nachricht_id }) : null;
+const alt = f.freigabe_id ? freigabe.teamsNachrichtLesen(f.teams_nachricht) : null;
+return [{ json: { merken: Boolean(neu), alt_ersetzen: Boolean(neu && alt && alt.id !== neu.id), alt: alt ? JSON.stringify(alt) : '', teams_nachricht: neu ? JSON.stringify(neu) : '' } }];
+`, kOpt);
+	const kMerken = wf.node('Karte merken?', 'n8n-nodes-base.if', [2200, 120], {
+		conditions: bedingungen([bedingung('={{ $json.merken }}', { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: {},
+	});
+	const kAlt = wf.node('Alte Karte vorhanden?', 'n8n-nodes-base.if', [2420, 40], {
+		conditions: bedingungen([bedingung("={{ $('Karte merken (Plan)').first().json.alt_ersetzen }}", { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: {},
+	});
+	const kAltAendern = wf.aufruf('Alte Karte als ersetzt markieren', [2640, -40], 'EPA SW Freigabe-Karte', [
+		['freigabe_id', 'string', "={{ $('Eingabe prüfen').first().json.freigabe_id }}"],
+		['zustand', 'string', 'erneuert'],
+		['teams_nachricht', 'string', "={{ $('Karte merken (Plan)').first().json.alt }}"],
+	], kOpt);
+	const kDaten = wf.code('Teams-Nachricht (Daten)', [2860, 40], [], `
+return [{ json: { teams_nachricht: $('Karte merken (Plan)').first().json.teams_nachricht } }];
+`);
+	const kSpeichern = wf.tabelle('Teams-Nachricht speichern', [3080, 40], 'update', 'epa_freigaben', { bedingungen: [['freigabe_id', 'eq', "={{ $('Eingabe prüfen').first().json.freigabe_id }}"]] }, kOpt);
+	const melden = wf.code('Ergebnis melden', [3300, 0], [], `
 const p = $('Fehler protokollieren').isExecuted ? $('Fehler protokollieren').first().json : null;
 return [{ json: { gesendet: $('Zustellung prüfen').first().json.gesendet, fehler_id: p && p.id !== undefined ? p.id : null } }];
 `);
@@ -107,7 +137,13 @@ return [{ json: { gesendet: $('Zustellung prüfen').first().json.gesendet, fehle
 	wf.kette(telegramSenden, pruefen);
 	wf.kette(kunde, chat, pruefen, fehlgeschlagen);
 	wf.verbinde(fehlgeschlagen, zeile, 0);
-	wf.verbinde(fehlgeschlagen, melden, 1);
+	wf.verbinde(fehlgeschlagen, kFg, 1);
+	wf.kette(kFg, kPlan, kMerken);
+	wf.verbinde(kMerken, kAlt, 0);
+	wf.verbinde(kMerken, melden, 1);
+	wf.verbinde(kAlt, kAltAendern, 0);
+	wf.verbinde(kAlt, kDaten, 1);
+	wf.kette(kAltAendern, kDaten, kSpeichern, melden);
 	wf.kette(zeile, protokoll, melden);
 	return wf;
 };

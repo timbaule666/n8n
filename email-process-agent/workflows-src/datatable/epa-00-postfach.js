@@ -10,7 +10,7 @@ const MAIL_FELDER = [
 const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
 // Eigene Mail-Eigenschaft (Extended Property, PS_PUBLIC_STRINGS) zur Wiedererkennung gesendeter Rückfragen.
 const PROP_FREIGABE = 'String {00020329-0000-0000-C000-000000000046} Name EPA-Freigabe-ID';
-const AKTIONEN = ['eingang', 'entwurf_anlegen', 'entwurf_aktualisieren', 'entwurf_senden', 'verbindung_pruefen', 'entwurf_loeschen', 'kategorien_setzen', 'zustelltest_senden', 'versand_pruefen', 'teams_kanal', 'teams_chat', 'kalender_pruefen', 'kalender_eintragen'];
+const AKTIONEN = ['eingang', 'entwurf_anlegen', 'entwurf_aktualisieren', 'entwurf_senden', 'verbindung_pruefen', 'entwurf_loeschen', 'kategorien_setzen', 'zustelltest_senden', 'versand_pruefen', 'teams_kanal', 'teams_chat', 'kalender_pruefen', 'kalender_eintragen', 'teams_kanal_aendern'];
 const E = "$('Bei Einzelaufruf').first().json";
 const P = `{{ encodeURIComponent(${E}.postfach) }}`;
 
@@ -62,7 +62,7 @@ module.exports = function () {
 		'**Zweck:** Holt neue Mails aus dem Posteingang (Polling, Bauplan 5.1), lädt Header und Anhänge über Microsoft Graph, liest PDF-Text und bereitet Bilder für die KI auf und übergibt alles an "EPA-01 Eingang verarbeiten". Aussortierte Mails (Newsletter, Auto-Replies, Blockliste) werden danach in den Archivordner verschoben, nie gelöscht.',
 		'**Trigger:** Microsoft Outlook Trigger (jede Minute, nur Posteingang). Jede Mail wird als eigene Ausführung dieses Workflows verarbeitet (Aufruf von sich selbst), damit ein Fehler nur diese eine Mail betrifft.',
 		'**Einrichten:** 1) Workflow duplizieren und umbenennen (z. B. "EPA-00 Postfach anfragen@kunde.de"). 2) Im Node "Postfach festlegen" die Adresse eintragen (muss in epa_config_allgemein.postfach stehen). 3) Outlook-Credential (Microsoft Outlook OAuth2, bei Shared Mailbox mit "Use Shared Mailbox") im Trigger und in allen Graph-Nodes zuweisen. 4) Archivordner (Config: archivordner) als Ordner auf oberster Ebene im Postfach anlegen. 5) Veröffentlichen.',
-		'**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread; Vorgangs-ID nur mit betreff_mit_id im Betreff, sonst im Mailtext; Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). kategorien_setzen: Outlook-Kategorie (z. B. "AI Geprüft") an den Kundenmails eines Vorgangs setzen oder entfernen; legt die Kategorie mit Farbe an, wenn die Berechtigung reicht. Fehler hier stören die Verarbeitung nie. zustelltest_senden (EPA-11): Kontrollmail mit Zustelltest-Betreff an das Prüfpostfach. versand_pruefen (EPA-04): Liegt der Entwurf einer offenen Freigabe schon in "Gesendete Elemente" (direkt in Outlook gesendet)? Teams des Kunden (eigenes Teams-Credential in dieser Kopie): teams_kanal (Meldung in den Kanal team_id/channel_id), teams_chat (Freigabe-Link im 1:1-Chat an empfaenger); kalender_pruefen (belegte Zeiten im Kalender des Postfachs, daten = { von, bis }) und kalender_eintragen (Termin anlegen, daten = Graph-Event; nur nach Klick in EPA-15); verbindung_pruefen prüft Postfach und Teams. Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.',
+		'**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread; Vorgangs-ID nur mit betreff_mit_id im Betreff, sonst im Mailtext; Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). kategorien_setzen: Outlook-Kategorie (z. B. "AI Geprüft") an den Kundenmails eines Vorgangs setzen oder entfernen; legt die Kategorie mit Farbe an, wenn die Berechtigung reicht. Fehler hier stören die Verarbeitung nie. zustelltest_senden (EPA-11): Kontrollmail mit Zustelltest-Betreff an das Prüfpostfach. versand_pruefen (EPA-04): Liegt der Entwurf einer offenen Freigabe schon in "Gesendete Elemente" (direkt in Outlook gesendet)? Teams des Kunden (eigenes Teams-Credential in dieser Kopie): teams_kanal (Meldung in den Kanal team_id/channel_id; liefert nachricht_id), teams_kanal_aendern (gesendete Kanal-Karte graph_id durch die Karte im Marker ersetzen, z. B. Freigabe erledigt), teams_chat (Freigabe-Link im 1:1-Chat an empfaenger); kalender_pruefen (belegte Zeiten im Kalender des Postfachs, daten = { von, bis }) und kalender_eintragen (Termin anlegen, daten = Graph-Event; nur nach Klick in EPA-15); verbindung_pruefen prüft Postfach und Teams. Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.',
 		'**Hinweis:** Der Trigger liefert nur die Message-ID; Header (In-Reply-To, References, Auto-Submitted, Authentication-Results) holt "Mail laden", weil der Trigger sie nicht ausgibt.',
 	].join('\n'), { breite: 900, hoehe: 380 });
 
@@ -332,6 +332,19 @@ return [{ json: { ok: status === 200, status, meldung: status === 200 ? '' : gru
 		"={{ JSON.stringify({ body: { contentType: 'html', content: $('Kanalmeldung prüfen').first().json.html } }) }}");
 	const kanalMelden = wf.code('Kanalmeldung melden', [990, 2400], [], codeDatei('postfach-kanalmeldung-melden.js'));
 
+	// ---------------------------------------------------------------- Aktion: Kanal-Karte ändern (Freigabe erledigt)
+	// Ersetzt eine bereits gesendete Karte (graph_id = Nachrichten-ID) durch die Karte im Marker. Microsoft antwortet mit 204.
+	const aendernPruefen = wf.code('Kartenänderung prüfen', [440, 2300], [], codeDatei('postfach-kartenaenderung-pruefen.js'));
+	const aendern = teamsGraph(wf, 'Kanal-Karte ändern', [660, 2300], 'PATCH',
+		`=${GRAPH}/teams/{{ encodeURIComponent($json.team_id) }}/channels/{{ encodeURIComponent($json.channel_id) }}/messages/{{ encodeURIComponent($json.nachricht_id) }}`,
+		'={{ JSON.stringify($json.payload) }}');
+	const aendernMelden = wf.code('Kartenänderung melden', [880, 2300], [], `
+const r = $input.first().json || {};
+const status = Number(r.statusCode) || null;
+const ok = (status === 204 || status === 200) && !r.error;
+return [{ json: { geaendert: ok, status, meldung: ok ? '' : String(r.error ? (r.error.message || r.error) : ((r.body && r.body.error && (r.body.error.code + ': ' + r.body.error.message)) || 'HTTP ' + status)).slice(0, 200) } }];
+`);
+
 	// ---------------------------------------------------------------- Aktion: Freigabe-Link im 1:1-Teams-Chat
 	// Chat zwischen dem Konto dieses Credentials (Agent) und dem Freigeber; beide im Tenant des Kunden.
 	const chatPruefen = wf.code('Chat-Empfänger prüfen', [440, 2600], [], codeDatei('postfach-chat-empfaenger-pruefen.js'));
@@ -510,6 +523,8 @@ return [{ json: { geaendert: r.filter((s) => s === 200).length, fehler: r.filter
 	wf.verbinde(kanalKarteOk, kanalMelden, 0);
 	wf.verbinde(kanalKarteOk, kanalText, 1);
 	wf.kette(kanalText, kanalMelden);
+	wf.verbinde(aktion, aendernPruefen, 13);
+	wf.kette(aendernPruefen, aendern, aendernMelden);
 	wf.verbinde(aktion, chatPruefen, 10);
 	wf.kette(chatPruefen, chatIch, chatOeffnen, chatSenden, chatKarteOk);
 	wf.verbinde(chatKarteOk, chatMelden, 0);

@@ -20,6 +20,7 @@ const M2 = [
 	['epa-01-eingang-verarbeiten', 'EPA-01_Eingang_verarbeiten.json'],
 	['epa-00-postfach', 'EPA-00_Postfach_Vorlage.json'],
 	['sw-freigabe-senden', 'EPA_SW_Freigabe_senden.json'],
+	['sw-freigabe-karte', 'EPA_SW_Freigabe-Karte.json'],
 	['epa-02-rueckfrage', 'EPA-02_Rueckfrage_anfordern.json'],
 	['epa-07-freigabe', 'EPA-07_Freigabe-Endpunkt.json'],
 	['epa-03-antwort', 'EPA-03_Antwort_verarbeiten.json'],

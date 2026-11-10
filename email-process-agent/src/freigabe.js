@@ -187,7 +187,76 @@ function nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText
 		(liste ? `<b>Fehlende Angaben</b><br>${liste}<br><br>` : '') + link;
 }
 
+/** Teams-Nachricht einer Freigabe-Karte (Spalte teams_nachricht: JSON { team_id, channel_id, id }). */
+function teamsNachrichtLesen(wert) {
+	let o = wert;
+	if (typeof o === 'string') { try { o = JSON.parse(o); } catch (e) { return null; } }
+	if (!o || typeof o !== 'object') return null;
+	const team = String(o.team_id || '').trim();
+	const kanal = String(o.channel_id || '').trim();
+	const id = String(o.id || '').trim();
+	if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(team) || !/^19:[^\s]+@thread\.[a-z0-9]+$/i.test(kanal) || !/^\d{6,20}$/.test(id)) return null;
+	return { team_id: team, channel_id: kanal, id };
+}
+
+function zeitText(iso, zeitzone) {
+	const d = new Date(iso);
+	if (!iso || Number.isNaN(d.getTime())) return '';
+	try { return d.toLocaleString('de-DE', { timeZone: zeitzone || 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return d.toISOString(); }
+}
+
+/**
+ * Karte, die eine Freigabe-Karte im Kanal nach der Entscheidung ersetzt (ohne Link).
+ * zustand: Status der Freigabe (gesendet, abgelehnt, fehler, ersetzt, unzustellbar) oder "erneuert" (neuer Link verschickt).
+ * Gibt null zurück, wenn die Karte (noch) nicht geändert werden soll (offen, in_versand, unbekannt).
+ */
+function karteZustand(fg, { zustand, zeitzone, jetzt } = {}) {
+	const f = fg || {};
+	const z = String(zustand || f.status || '');
+	const wer = String(f.entscheider || '').trim();
+	let titel; let stil; let zeilen = [];
+	if (z === 'gesendet') {
+		const manuell = f.entscheidung === 'manuell_gesendet';
+		titel = manuell ? '✅ Direkt in Outlook gesendet' : f.bearbeitet ? '✅ Bearbeitet und gesendet' : '✅ Freigegeben und gesendet';
+		stil = 'good';
+		zeilen = [(manuell || !wer ? '' : 'Von ' + wer + ' · ') + zeitText(f.gesendet_am || jetzt, zeitzone)];
+	} else if (z === 'abgelehnt') {
+		titel = '❌ Abgelehnt'; stil = 'attention';
+		zeilen = [(wer ? 'Von ' + wer + ' · ' : '') + zeitText(jetzt, zeitzone), f.grund ? 'Grund: ' + String(f.grund).slice(0, 300) : '', 'Der Vorgang liegt jetzt bei einem Mitarbeiter (Eskaliert / Manuell).'];
+	} else if (z === 'fehler') {
+		titel = '⚠️ Versand fehlgeschlagen'; stil = 'warning';
+		zeilen = [(wer ? 'Freigegeben von ' + wer + ' · ' : '') + zeitText(jetzt, zeitzone), 'Die Mail wurde nicht gesendet. Nach Behebung kommt sie automatisch mit neuem Link erneut zur Freigabe.'];
+	} else if (z === 'ersetzt') {
+		titel = '↩️ Nicht mehr nötig'; stil = 'emphasis';
+		zeilen = ['Der Kunde hat geantwortet, bevor die Rückfrage freigegeben wurde. Die Antwort wird verarbeitet.', zeitText(jetzt, zeitzone)];
+	} else if (z === 'erneuert') {
+		titel = '⏰ Dieser Link gilt nicht mehr'; stil = 'warning';
+		zeilen = ['Ein neuer Freigabe-Link für diesen Vorgang steht weiter unten im Kanal.', zeitText(jetzt, zeitzone)];
+	} else if (z === 'unzustellbar') {
+		titel = '📭 Gesendet, aber nicht zugestellt'; stil = 'attention';
+		zeilen = ['Die Mail kam beim Kunden nicht an. Siehe Meldung im Kanal „Bitte ansehen“.', zeitText(jetzt, zeitzone)];
+	} else {
+		return null;
+	}
+	const was = f.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage' + (Number(f.runde) > 0 ? ' (Runde ' + Number(f.runde) + ')' : '');
+	const fakten = [{ title: 'Vorgang', value: String(f.vorgangs_id || '–') }, { title: 'Art', value: was }];
+	if (f.betreff) fakten.push({ title: 'Betreff', value: String(f.betreff).slice(0, 150) });
+	const tb = (text, extra) => ({ type: 'TextBlock', text, wrap: true, ...(extra || {}) });
+	const karte = {
+		type: 'AdaptiveCard', $schema: 'http://adaptivecards.io/schemas/adaptive-card.json', version: '1.4',
+		body: [
+			{ type: 'Container', style: stil, bleed: true, items: [tb(titel, { weight: 'bolder', size: 'medium' })] },
+			{ type: 'FactSet', facts: fakten, spacing: 'Medium' },
+			...zeilen.filter(Boolean).map((t) => tb(t, { spacing: 'Small', isSubtle: true })),
+		],
+	};
+	const marker = Buffer.from(JSON.stringify(karte), 'utf8').toString('base64');
+	const html = `<b>${esc(titel)}</b><br>Vorgang ${esc(f.vorgangs_id || '')}<br>${zeilen.filter(Boolean).map(esc).join('<br>')}<!--EPA_KARTE:${marker}-->`;
+	return { titel, karte, html };
+}
+
 module.exports = {
 	TOKEN_MUSTER, AKTIONEN, KANAL, linkEmpfaenger, freigeberErlaubt, entscheiderBestimmen, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,
 	freigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber, ANLASS,
+	teamsNachrichtLesen, karteZustand,
 };

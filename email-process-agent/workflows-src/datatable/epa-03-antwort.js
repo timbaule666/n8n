@@ -179,6 +179,12 @@ return [{ json: { status: 'ersetzt' } }];
 	const ersetzen = wf.tabelle('Offene Freigabe ersetzen', [2420, -120], 'update', 'epa_freigaben', {
 		bedingungen: [['freigabe_id', 'eq', `={{ ${V}.freigabe_id_aktuell }}`], ['status', 'eq', 'offen']],
 	}, { alwaysOutputData: true });
+	// Karte im Teams-Kanal: "↩️ Nicht mehr nötig" (nur wenn die Freigabe wirklich ersetzt wurde; sonst ändert der Baustein nichts).
+	const karteErsetzt = wf.aufruf('Freigabe-Karte als ersetzt markieren', [2530, -200], 'EPA SW Freigabe-Karte', [
+		['freigabe_id', 'string', `={{ ${V}.freigabe_id_aktuell }}`],
+		['zustand', 'string', ''],
+		['teams_nachricht', 'string', ''],
+	], { alwaysOutputData: true, onError: 'continueRegularOutput' });
 	const statusPruef = STATUS(wf, 'Status: In Prüfung', [2640, -40], 'In Prüfung',
 		`={{ { anlass: 'Kundenantwort', message_id: ${E}.mail.message_id, vorher: ${V}.status, freigabe_ersetzt: ${Z}.freigabe_ersetzen ? ${V}.freigabe_id_aktuell : null } }}`,
 		"={{ $('Nachricht anhängen').first().json.vorgang.version }}");
@@ -293,7 +299,7 @@ return [{ json: { ergebnis: $(quelle).first().json.ergebnis, vorgangs_id: $('Vor
 	wf.kette(statusFehl, mFehl, informieren);
 	wf.verbinde(ersetzenFrage, ersetzenDaten, 0);
 	wf.verbinde(ersetzenFrage, statusPruef, 1);
-	wf.kette(ersetzenDaten, ersetzen, statusPruef, speichern, mergeZeilen, mergeFrage);
+	wf.kette(ersetzenDaten, ersetzen, karteErsetzt, statusPruef, speichern, mergeZeilen, mergeFrage);
 	wf.verbinde(mergeFrage, statusZiel, 0);
 	wf.verbinde(mergeFrage, mergeAudit, 1);
 	wf.kette(mergeAudit, statusZiel, lueckenFrage);

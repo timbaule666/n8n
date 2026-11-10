@@ -268,13 +268,24 @@ return [{ json: { status: 502, nachmelden: true, vorgangs_id: p.vorgangs_id, mel
 		responseBody: '={{ $json.html }}',
 		options: { responseCode: '={{ $json.status }}', responseHeaders: SEITE_HEADER },
 	});
-	const nachmelden = wf.node('Fehler nachmelden?', 'n8n-nodes-base.if', [5720, 0], {
-		conditions: bedingungen([bedingung('={{ $json.nachmelden }}', { type: 'boolean', operation: 'true', singleValue: true })]),
+	// Nach der Antwort an den Browser: Karte im Teams-Kanal als erledigt markieren (nur wenn diese Anfrage entschieden hat).
+	const KARTE = "($('Freigabe ablehnen').isExecuted && $('Freigabe ablehnen').first().json.id !== undefined) || $('Freigabe als gesendet vermerken').isExecuted || $('Freigabe als fehlgeschlagen vermerken').isExecuted";
+	const karteFrage = wf.node('Karte aktualisieren?', 'n8n-nodes-base.if', [5720, 0], {
+		conditions: bedingungen([bedingung(`={{ ${KARTE} }}`, { type: 'boolean', operation: 'true', singleValue: true })]),
 		options: { looseTypeValidation: true },
 	});
-	const ausloesen = wf.code('Fehler an EPA-05', [5940, -80], ['fehlerklassen'], `
+	const karteAendern = wf.aufruf('Freigabe-Karte aktualisieren', [5940, -80], 'EPA SW Freigabe-Karte', [
+		['freigabe_id', 'string', `={{ ${P}.freigabe_id }}`],
+		['zustand', 'string', ''],
+		['teams_nachricht', 'string', ''],
+	], { alwaysOutputData: true, onError: 'continueRegularOutput' });
+	const nachmelden = wf.node('Fehler nachmelden?', 'n8n-nodes-base.if', [6160, 0], {
+		conditions: bedingungen([bedingung("={{ $('Seite ausliefern').first().json.nachmelden }}", { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: { looseTypeValidation: true },
+	});
+	const ausloesen = wf.code('Fehler an EPA-05', [6380, -80], ['fehlerklassen'], `
 // Erst nach der Antwort an den Browser: Fehler auslösen, damit EPA-05 protokolliert, alarmiert und den Vorgang sichert.
-const j = $input.first().json;
+const j = $('Seite ausliefern').first().json;
 throw fehlerklassen.epaFehler('UPSTREAM_FEHLER', j.vorgangs_id || null, j.meldung || 'Freigabe-Versand fehlgeschlagen');
 `);
 
@@ -308,7 +319,10 @@ throw fehlerklassen.epaFehler('UPSTREAM_FEHLER', j.vorgangs_id || null, j.meldun
 	wf.verbinde(sGesendet, fVorb, 1);
 	wf.kette(gVorb, gSchreiben, gStatus, gConfig, gFrist, gVorgang, gSeite, antwort);
 	wf.kette(fVorb, fSchreiben, fSeite, antwort);
-	wf.kette(antwort, nachmelden);
+	wf.kette(antwort, karteFrage);
+	wf.verbinde(karteFrage, karteAendern, 0);
+	wf.verbinde(karteFrage, nachmelden, 1);
+	wf.kette(karteAendern, nachmelden);
 	wf.verbinde(nachmelden, ausloesen, 0);
 	return wf;
 };

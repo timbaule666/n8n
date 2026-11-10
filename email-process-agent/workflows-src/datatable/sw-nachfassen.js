@@ -237,6 +237,7 @@ return a.tokens.map((t) => ({ json: {
 		['chat_id', 'string', `={{ (${C}.benachrichtigung.freigeber_chat_ids || {})[String($json.freigeber).toLowerCase()] || ${C}.benachrichtigung.chat_id || '' }}`],
 		['telegram_workflow_id', 'string', `={{ ${C}.benachrichtigung.telegram_workflow_id || '' }}`],
 		['nachricht_html', 'string', '={{ $json.nachricht_html }}'],
+		['freigabe_id', 'string', `={{ ${E}.freigabe_id }}`],
 	], {}, 'each');
 	const zustellung = wf.code('Zustellung auswerten', [3740, 40], ['entwurf'], `
 const e = $('Bei Aufruf').first().json;
@@ -358,6 +359,11 @@ return [{ json: { nachricht_html: nachfassen.meldungManuellGesendet({ vorgang: $
 		['nachricht_html', 'string', '={{ $json.nachricht_html }}'],
 		['anlass', 'string', 'manuell_gesendet'],
 	]);
+	const vKarte = wf.aufruf('Freigabe-Karte (direkt gesendet)', [4070, 280], 'EPA SW Freigabe-Karte', [
+		['freigabe_id', 'string', `={{ ${E}.freigabe_id }}`],
+		['zustand', 'string', ''],
+		['teams_nachricht', 'string', ''],
+	], { alwaysOutputData: true, onError: 'continueRegularOutput' });
 	const vErg = wf.code('Ergebnis: direkt gesendet', [4180, 400], [], `
 return [{ json: { ergebnis: 'manuell_gesendet' } }];
 `);
@@ -429,7 +435,7 @@ return [{ json: { ergebnis: 'entfaellt_' + (p.ok ? 'parallel_bearbeitet' : p.gru
 	wf.kette(vDaten, vSchreiben, vOk);
 	wf.verbinde(vOk, vSperrDaten, 0);
 	wf.verbinde(vOk, vErgNein, 1);
-	wf.kette(vSperrDaten, vSperren, vStatus, vFrist, vVorgang, vMeldung, vInfo, vErg);
+	wf.kette(vSperrDaten, vSperren, vStatus, vFrist, vVorgang, vMeldung, vInfo, vKarte, vErg);
 	wf.kette(erinnerung, ergErinnerung);
 	wf.kette(eskPruefen, eskOk);
 	wf.verbinde(eskOk, gesendete, 0);

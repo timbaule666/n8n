@@ -1169,6 +1169,73 @@
         "workflowId": {
           "__rl": true,
           "mode": "list",
+          "value": "EPA_REF:EPA SW Freigabe-Karte",
+          "cachedResultName": "EPA SW Freigabe-Karte"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "freigabe_id": "={{ $('Vorgang lesen').first().json.vorgang.freigabe_id_aktuell }}",
+            "zustand": "",
+            "teams_nachricht": ""
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "freigabe_id",
+              "displayName": "freigabe_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "zustand",
+              "displayName": "zustand",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "teams_nachricht",
+              "displayName": "teams_nachricht",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "08f7066d-4e68-46e5-a5e3-398b8a7cfa46",
+      "name": "Freigabe-Karte als ersetzt markieren",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        2530,
+        -200
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
           "value": "EPA_REF:EPA SW Status setzen",
           "cachedResultName": "EPA SW Status setzen"
         },
@@ -2369,6 +2436,17 @@
       ]
     },
     "Offene Freigabe ersetzen": {
+      "main": [
+        [
+          {
+            "node": "Freigabe-Karte als ersetzt markieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigabe-Karte als ersetzt markieren": {
       "main": [
         [
           {
