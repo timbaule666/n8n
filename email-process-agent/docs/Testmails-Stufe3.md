@@ -913,3 +913,21 @@ Runde 1: vier neue Mails (`config/testphase/nachtest-final.json`). Danach Freiga
 Nebenbefund behoben (Commit `36ebd5c`, EPA-03 veröffentlicht): Die Storno-Meldung enthielt oben noch „Der Vorgang wurde nicht automatisch geändert“, obwohl er eskaliert war. Der Satz entfällt jetzt in diesem Fall.
 
 Ergebnis: 4 von 4 Korrekturen live bestätigt.
+
+## Reklamation als Vorgangsart – Live-Test (10.11.2026)
+
+Kunde epa-m365, Klassifizierung Prompt v4, 5 Mails im 2-Minuten-Takt (`config/testphase/reklamation-test.json`).
+
+| Nr | Fall | Vorgang | Ergebnis | Bewertung |
+|---|---|---|---|---|
+| R1 | Vollständige Reklamation (Datum, Lieferschein, Kontakt) | V-2026-0069 | reklamation, „Bereit zur Bearbeitung“, alle 6 Felder korrekt | ✅ |
+| R2 | „Defekt, ich erwarte Ersatz und Gutschrift“, ohne Datum/Telefon | V-2026-0070 | reklamation, Rückfrage Lieferdatum + Telefon; Entwurf ohne jede Zusage | ✅ |
+| R3 | Englisch, falsche Ware, ohne Datum | V-2026-0071 | reklamation, Sprache en, Rückfrage Lieferdatum auf Englisch (sichere Vorlage, weil die KI-Hülle nicht englisch war) | ✅ |
+| R4 | Stornierung | V-2026-0072 | keine Anfrage („Stornierung, keine erlaubte Vorgangsart“), nicht als Reklamation erkannt | ✅ |
+| R5 | Reklamation + Nachbestellung in einer Mail | V-2026-0073 | reklamation erkannt; **Lieferdatum falsch**: KI nahm den Liefertermin der Nachbestellung (01.12.) statt 04.11. → als Zukunftsdatum verworfen, Rückfrage nach dem Datum, obwohl genannt. Nachbestellung nicht gesondert gemeldet | ⚠️ |
+
+**Ergebnis: 4/5 korrekt, 0 Zusagen, keine Mail ohne Freigabe.** R5 ging sicher aus (Datum verworfen, nachgefragt statt übernommen), war aber unnötig.
+
+Korrektur: Extraktionshinweis Lieferdatum ergänzt („Nicht der Liefer- oder Wunschtermin einer neuen Bestellung in derselben Mail“), in Repo und Cloud.
+
+Offen (Vorschlag): Mischmails mit zwei Anliegen (Reklamation + Bestellung) – zweites Anliegen als Hinweis „enthält zusätzlich eine Bestellung“ melden.

@@ -57,7 +57,7 @@ FELDER = [
          "Welche Ware oder Leistung betroffen ist, mit Menge, wie geschrieben (z. B. 3 Kartons Etiketten)", 20, "Reklamation", "Ware / Menge"),
     feld("reklamation", "Lieferdatum", "Datum der Lieferung / Leistung", "datum", True, {"min_tage_ab_heute": -365, "max_tage_ab_heute": 0},
          "Bitte teilen Sie uns mit, wann die Lieferung bzw. Leistung erfolgt ist.",
-         "Datum der bemängelten Lieferung oder Leistung als JJJJ-MM-TT, nur wenn ein konkretes Datum genannt ist; fehlt das Jahr, das zurückliegende Datum", 30, "Reklamation", "Lieferdatum"),
+         "Datum der bemängelten Lieferung oder Leistung als JJJJ-MM-TT, nur wenn ein konkretes Datum genannt ist; fehlt das Jahr, das zurückliegende Datum. Nicht der Liefer- oder Wunschtermin einer neuen Bestellung in derselben Mail", 30, "Reklamation", "Lieferdatum"),
     feld("reklamation", "Referenznummer", "Lieferschein- / Bestellnummer", "text", False, {"min_laenge": 1, "max_laenge": 60},
          "Bitte nennen Sie uns, falls vorhanden, die Lieferschein-, Bestell- oder Auftragsnummer.",
          "Lieferschein-, Bestell-, Auftrags- oder Rechnungsnummer, nur wenn ausdrücklich genannt", 40, "Reklamation", "Nummer"),

@@ -248,7 +248,7 @@ Jeder Wechsel wird im Audit protokolliert.
   - Härtetest 2: 121 Fälle, Nachtest 19/20.
   - **Finaler Härtetest** (60 neue Mails im 30-Sekunden-Takt plus zweite Runde mit Kundenantworten): 66 von 75 Prüfpunkten erfüllt (88 %). Sicherheit: keine Mail ohne Freigabe, 0 Fehlalarme.
 - **Nachtest der vier Korrekturen** (Storno in Antwort, Reklamation melden, Widerspruch Text/PDF, PLZ/Ort-Konflikt): 4/4 bestanden.
-- **Reklamation als eigene Vorgangsart:** eingebaut und in der Cloud aktiv. Ein Live-Test mit 5 Mails läuft (vollständig, unvollständig mit Ersatzforderung, Englisch, Stornierung, gemischt). Das Ergebnis steht noch aus.
+- **Reklamation als eigene Vorgangsart:** eingebaut, in der Cloud aktiv, Live-Test 4/5 (vollständig → bereit; unvollständig mit Ersatzforderung → Rückfrage ohne Zusage; Englisch → englische Rückfrage; Stornierung nicht als Reklamation). Bei einer Mischmail (Reklamation + Nachbestellung) verwechselte die KI das Lieferdatum mit dem neuen Liefertermin; der Feldhinweis wurde geschärft.
 - **Eigene Einschätzung:** Agent ca. 8/10, Pilotreife ca. 7/10.
 
 **Grenzen / offen vor dem ersten Pilotkunden:**

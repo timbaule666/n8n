@@ -472,7 +472,7 @@
    "pflicht": true,
    "validierungsregel": "{\"min_tage_ab_heute\": -365, \"max_tage_ab_heute\": 0}",
    "resolution_textbaustein": "Bitte teilen Sie uns mit, wann die Lieferung bzw. Leistung erfolgt ist.",
-   "extraktions_hinweis": "Datum der bemängelten Lieferung oder Leistung als JJJJ-MM-TT, nur wenn ein konkretes Datum genannt ist; fehlt das Jahr, das zurückliegende Datum",
+   "extraktions_hinweis": "Datum der bemängelten Lieferung oder Leistung als JJJJ-MM-TT, nur wenn ein konkretes Datum genannt ist; fehlt das Jahr, das zurückliegende Datum. Nicht der Liefer- oder Wunschtermin einer neuen Bestellung in derselben Mail",
    "platzhalter_muster": "[]",
    "reihenfolge": 30,
    "aktiv": true,
