@@ -219,4 +219,5 @@ test('Meldung bei Stornierung in einer Antwort: Eskaliert, keine weitere Rückfr
 	assert.match(html, /Kunde storniert – bitte bearbeiten/);
 	assert.match(html, /Eskaliert \/ Manuell/);
 	assert.match(html, /deaktiviert/);
+	assert.doesNotMatch(html, /nicht automatisch geändert/);
 });

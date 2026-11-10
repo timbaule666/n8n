@@ -258,8 +258,9 @@ function meldungVollstaendig({ vorgangs_id: vid, mail, merge, vorgang, felder, z
 }
 
 /** Hinweise aus festen Regeln (textHinweise.alle) als Zeilen; Stornierung ganz oben, gut sichtbar. */
-function zusatz(hinweise, storno, besonderheiten) {
-	let oben = storno ? `<b>⚠️ Mögliche Stornierung / Absage – bitte prüfen</b><br>Kunde schreibt: „${esc(storno)}“<br>Der Vorgang wurde nicht automatisch geändert.<br><br>` : '';
+function zusatz(hinweise, storno, besonderheiten, vorgangGeaendert = false) {
+	// Bei Stornierung in einer Antwort steht der Vorgang auf "Eskaliert / Manuell" (Text dazu weiter unten).
+	let oben = storno ? `<b>⚠️ Mögliche Stornierung / Absage – bitte prüfen</b><br>Kunde schreibt: „${esc(storno)}“<br>${vorgangGeaendert ? '' : 'Der Vorgang wurde nicht automatisch geändert.<br>'}<br>` : '';
 	// Zusatzinformation aus der Antwort (z. B. Gefahrgut, Hebebühne): oben, damit sie nicht übersehen wird
 	if (besonderheiten) oben += `<b>⚠️ Wichtige Information vom Kunden</b><br>${esc(String(besonderheiten).slice(0, 400))}<br><br>`;
 	const unten = (hinweise || []).map((h) => `<br>⚠️ ${esc(h)}`).join('');
@@ -267,7 +268,7 @@ function zusatz(hinweise, storno, besonderheiten) {
 }
 
 function meldungAntwort({ vorgangs_id: vid, mail, merge, entscheidung, rueckfrage, alterStatus, fristNeu, ohneRueckfrageText, uebersicht, text_hinweise: textHinweise, storno, besonderheiten, vorgangsart }) {
-	const zu = zusatz(textHinweise, storno, besonderheiten);
+	const zu = zusatz(textHinweise, storno, besonderheiten, entscheidung.weg === 'storno');
 	if (entscheidung.weg === 'bereit' && uebersicht) {
 		let html = meldungVollstaendig({ vorgangs_id: vid, mail, merge, vorgangsart, ...uebersicht });
 		if (entscheidung.freigabe_ersetzen) html += '<br>Die noch offene Freigabe der vorherigen Rückfrage ist damit überholt und wurde deaktiviert.';
