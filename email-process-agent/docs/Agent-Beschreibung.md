@@ -3,7 +3,7 @@
 Stand: November 2026. Enthält keine Zugangsdaten, Links oder Kundendaten.
 
 ## Was der Agent ist
-Ein KI-gestützter Agent auf **n8n (Cloud)**, der ein geschäftliches E-Mail-Postfach (Microsoft 365 / Outlook) bearbeitet. Er erkennt eingehende **Angebotsanfragen, Bestellungen und Terminanfragen**, liest die Angaben aus Mailtext und PDF-Anhängen aus, prüft sie auf Vollständigkeit, bereitet Rückfragen an den Kunden vor, ordnet Antworten zu und erinnert, wenn der Kunde nicht antwortet. **Keine Mail geht ohne Freigabe durch einen Mitarbeiter raus.** Alles Kundenspezifische (Pflichtfelder, Texte, Fristen, Vorgangsarten, Sprachen, Kalender) steht in einer Konfiguration – daher „Config-Driven“. Ein neuer Kunde braucht keinen neuen Code.
+Ein KI-gestützter Agent auf **n8n (Cloud)**, der ein geschäftliches E-Mail-Postfach (Microsoft 365 / Outlook) bearbeitet. Er erkennt eingehende **Angebotsanfragen, Bestellungen, Terminanfragen und Reklamationen**, liest die Angaben aus Mailtext und PDF-Anhängen aus, prüft sie auf Vollständigkeit, bereitet Rückfragen an den Kunden vor, ordnet Antworten zu und erinnert, wenn der Kunde nicht antwortet. **Keine Mail geht ohne Freigabe durch einen Mitarbeiter raus.** Alles Kundenspezifische (Pflichtfelder, Texte, Fristen, Vorgangsarten, Sprachen, Kalender) steht in einer Konfiguration – daher „Config-Driven“. Ein neuer Kunde braucht keinen neuen Code.
 
 ## Technik
 - **Plattform:** n8n Cloud; Daten in n8n Data Tables (eine PostgreSQL-Variante existiert für den Kern).
@@ -25,9 +25,10 @@ Ein KI-gestützter Agent auf **n8n (Cloud)**, der ein geschäftliches E-Mail-Pos
 - **Angebotsanfragen** (beim Testkunden: Transportanfragen): Orte/PLZ, Datum, Gewicht (Tonnen → kg), Packstücke, Ladungsart, Kontakt; Widerspruch Mailtext ↔ PDF; zwei Daten als mehrdeutig; Telefonformat „+49 (0)“.
 - **Bestellungen:** Ware/Leistung, Menge, Liefertermin, Lieferadresse, Bestellnummer, Kontakt.
 - **Terminanfragen:** Anlass, Wunschtermin, Uhrzeit, Ort, Kontakt; **Kalenderprüfung** im Outlook-Kalender des Postfachs (frei/belegt, freie Zeiten bei „vormittags“ usw.), Eintragen erst nach Klick im Team (EPA-15).
-- **Vorgangsarten frei konfigurierbar:** ein, zwei oder alle drei Bereiche je Kunde, weitere (z. B. Reklamation) über Konfiguration möglich.
+- **Reklamationen:** Problem, betroffene Ware/Menge, Datum der Lieferung (zurückliegend), Lieferschein-/Bestellnummer (optional), Kontakt. Fehlendes wird nachgefragt; Rückfragen versprechen **nie** Ersatz, Gutschrift, Erstattung oder Kulanz (Sperrliste im Entwurf) – das entscheidet der Mitarbeiter. Eine Stornierung ist keine Reklamation und wird weiter gemeldet.
+- **Vorgangsarten frei konfigurierbar:** jede Kombination der vier Bereiche je Kunde, weitere über Konfiguration möglich. Ist Reklamation beim Kunden nicht eingerichtet, wird eine Reklamation wie bisher im Kanal „3 Bitte ansehen“ gemeldet.
 - **Sprachen:** liest Mails in verschiedenen Sprachen; Rückfragen auf Deutsch und Englisch (Textbausteine je Sprache).
-- **Wichtige Nicht-Anfragen** (Stornierung, Rückrufbitte, Statusfrage, nur Anhang) werden gemeldet statt ignoriert.
+- **Wichtige Nicht-Anfragen** (Stornierung, Rückrufbitte, Statusfrage, nur Anhang, Reklamation ohne eingerichtete Vorgangsart) werden gemeldet statt ignoriert.
 - **Unklare Mails werden nie gelöscht**, nur gemeldet oder (Newsletter etc.) archiviert.
 
 ## Überwachung und Betrieb

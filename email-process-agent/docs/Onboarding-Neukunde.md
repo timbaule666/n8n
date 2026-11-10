@@ -12,6 +12,7 @@ Stand 2026-10-14 (M7). Ein Workflow-Satz bedient alle Kunden. Pro Kunde kommen d
 |---|---|---|
 | Welches Postfach wird überwacht? Shared Mailbox empfohlen | Adresse | `postfach` |
 | Welche Vorgangsart(en)? Welche Angaben braucht der Kunde zwingend, welche optional? | Feldliste | `epa_config_pflichtfelder` |
+| Reklamationen mit aufnehmen? Dann Vorgangsart `reklamation` in `vorgangsarten` und die Felder aus der Beispiel-Config übernehmen (Grund, betroffene Ware, Lieferdatum, Referenznummer, Kontakt); Prompt-Version Klassifizierung mindestens `v4`. Die Rückfragen dürfen keine Zusagen (Ersatz, Gutschrift, Erstattung) enthalten – Textbausteine entsprechend neutral formulieren | Ja/Nein, Feldliste | `vorgangsarten`, `prompt_versionen`, `epa_config_pflichtfelder` |
 | Fester Satz je fehlender Angabe (wird wortgleich an den Kunden geschickt) | Textbausteine | `resolution_textbaustein` |
 | Wer darf Rückfragen freigeben? Vertretung? | Liste Microsoft-365-Konten | `freigeber`, `vertreter` |
 | Teams-Kanal für Meldungen | Team- und Kanal-ID | `benachrichtigung` (`"kanal": "teams"`; `telegram_test` ist nur für interne Tests und nie für Kunden) |
