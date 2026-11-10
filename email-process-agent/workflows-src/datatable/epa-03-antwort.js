@@ -165,6 +165,11 @@ return [{ json: { anlass: th.storno ? 'antwort_storno' : z.besonderheiten ? 'ant
 	const statusFehl = STATUS(wf, 'Status: Eskaliert (Extraktion)', [1980, 480], 'Eskaliert / Manuell',
 		`={{ { grund: 'Extraktion der Antwort fehlgeschlagen', fehlercode: ${Z}.fehlercode, message_id: ${E}.mail.message_id } }}`,
 		"={{ $('Nachricht anhängen').first().json.vorgang.version }}");
+	const karteFehl = wf.aufruf('Warten-Karte entfernen (Fehler)', [2090, 620], 'EPA SW Freigabe-Karte', [
+		['freigabe_id', 'string', `={{ ${V}.freigabe_id_aktuell || '' }}`],
+		['zustand', 'string', 'beantwortet'],
+		['teams_nachricht', 'string', ''],
+	], { alwaysOutputData: true, onError: 'continueRegularOutput' });
 	const mFehl = wf.code('Meldung: Extraktion fehlgeschlagen', [2200, 480], ['eingang'], `
 const v = $('Vorgang lesen').first().json.vorgang;
 const mail = $('Bei Aufruf').first().json.mail;
@@ -301,7 +306,7 @@ return [{ json: { ergebnis: $(quelle).first().json.ergebnis, vorgangs_id: $('Vor
 	wf.verbinde(fristFrage, fristSpeichern, 0);
 	wf.verbinde(fristFrage, keineAudit, 1);
 	wf.kette(fristSpeichern, keineAudit, mKeine, informieren);
-	wf.kette(statusFehl, mFehl, informieren);
+	wf.kette(statusFehl, karteFehl, mFehl, informieren);
 	wf.verbinde(ersetzenFrage, ersetzenDaten, 0);
 	wf.verbinde(ersetzenFrage, statusPruef, 1);
 	wf.kette(ersetzenDaten, ersetzen, karteErsetzt, statusPruef, karteBeantwortet, speichern, mergeZeilen, mergeFrage);
