@@ -898,3 +898,18 @@ Behoben (Commit `4c9aaa4`, in der Cloud veröffentlicht: EPA-01, EPA-02, EPA-03,
 | Andere Widersprüche in Pflichtfeldern (z. B. R08 Liefertermin) | Nicht mehr „bereit“, sondern Bestätigungs-Rückfrage mit beiden Werten. Die Antwort darauf wird übernommen und erledigt den Widerspruch. |
 
 Tests: 304 bestanden. Live noch nicht nachgetestet; die Fälle mit Kundenantwort brauchen eine Freigabe.
+
+## Nachtest der vier Korrekturen (10.11.2026, N1–N4)
+
+Runde 1: vier neue Mails (`config/testphase/nachtest-final.json`). Danach Freigabe von drei Rückfragen durch Tim im Kanal „2 Rückfragen“ (Namensauswahl, Entscheider protokolliert). Runde 2: drei Kundenantworten (`config/testphase/nachtest-final-antworten.json`). Keine fehlerhafte Ausführung.
+
+| Fall | Vorgang | Ergebnis | Bewertung |
+|---|---|---|---|
+| Reklamation „3 Kartons beschädigt“ | V-0065 | „Keine Anfrage – bitte ansehen“, Grund **Reklamation / Beschwerde**, Kanal „3 Bitte ansehen“ | ✅ |
+| Text 600 kg / PDF 900 kg | V-0066 | nicht „bereit“; Rückfrage „Bitte bestätigen Sie die Angabe „Gesamtgewicht (kg)“: Wir haben „600 kg“ und „900 kg“ erhalten. Welche ist richtig?“ → Antwort „900 kg ist richtig“ → **900 kg übernommen, bereit** | ✅ |
+| Linz (4020) → Antwort „Lager in 84028 Landshut“ | V-0067 | PLZ 84028 **und Ort Landshut** übernommen, kein Widerspruch, bereit | ✅ |
+| Antwort „hat sich erledigt, bitte stornieren“ | V-0068 | **Eskaliert / Manuell**, Meldung „Antwort: Kunde storniert – bitte bearbeiten“ im Kanal „3 Bitte ansehen“, keine weitere Rückfrage | ✅ |
+
+Nebenbefund behoben (Commit `36ebd5c`, EPA-03 veröffentlicht): Die Storno-Meldung enthielt oben noch „Der Vorgang wurde nicht automatisch geändert“, obwohl er eskaliert war. Der Satz entfällt jetzt in diesem Fall.
+
+Ergebnis: 4 von 4 Korrekturen live bestätigt.
