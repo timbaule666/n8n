@@ -1,0 +1,57 @@
+[
+ {
+  "nr": "R1",
+  "art": "neu",
+  "kategorie": "Reklamation",
+  "betreff": "Reklamation Lieferschein LS-4711",
+  "text": "Guten Tag,\n\nbei Ihrer Lieferung vom 05.11.2026 (Lieferschein LS-4711) waren 4 Kartons Etiketten durchnässt und sind unbrauchbar.\nBitte prüfen Sie den Fall.\n\nMit freundlichen Grüßen\nSandra Vogt\nTel. 0231 5557411",
+  "absender_name": "Sandra Vogt",
+  "pdf": null,
+  "png": false,
+  "erwartet": "Vorgangsart Reklamation, vollständig (bereit), Meldung im Kanal Vollständige Anfragen"
+ },
+ {
+  "nr": "R2",
+  "art": "neu",
+  "kategorie": "Reklamation",
+  "betreff": "Ware defekt",
+  "text": "Hallo,\n\ndie gelieferten 2 Pumpen vom Typ P-200 sind defekt, eine läuft gar nicht an. Ich erwarte umgehend Ersatz und eine Gutschrift!\n\nKarl Brenner",
+  "absender_name": "Karl Brenner",
+  "pdf": null,
+  "png": false,
+  "erwartet": "Reklamation, Rückfrage Lieferdatum + Telefon; Entwurf verspricht weder Ersatz noch Gutschrift"
+ },
+ {
+  "nr": "R3",
+  "art": "neu",
+  "kategorie": "Reklamation",
+  "betreff": "Complaint – wrong goods delivered",
+  "text": "Hello,\n\nyou delivered 10 boxes of the wrong cable type (we ordered CAT7, received CAT5e). Order number PO-88213.\n\nBest regards\nEmma Clarke\n+44 20 7946 0811",
+  "absender_name": "Emma Clarke",
+  "pdf": null,
+  "png": false,
+  "erwartet": "Reklamation, Rückfrage Lieferdatum auf Englisch"
+ },
+ {
+  "nr": "R4",
+  "art": "neu",
+  "kategorie": "Reklamation",
+  "betreff": "Stornierung Auftrag 55120",
+  "text": "Guten Tag,\n\nbitte stornieren Sie unseren Auftrag 55120 vom 02.11.2026, wir benötigen die Ware nicht mehr.\n\nGruß\nMonika Seidel\n0341 5557414",
+  "absender_name": "Monika Seidel",
+  "pdf": null,
+  "png": false,
+  "erwartet": "keine Anfrage: Stornierung (Kanal Bitte ansehen), nicht Reklamation"
+ },
+ {
+  "nr": "R5",
+  "art": "neu",
+  "kategorie": "Reklamation",
+  "betreff": "Beschädigte Lieferung und Nachbestellung",
+  "text": "Guten Tag,\n\nbei der Lieferung vom 04.11.2026 waren 2 von 6 Paletten Fliesen gebrochen (Lieferschein LS-9902).\nAußerdem bestellen wir 3 weitere Paletten derselben Fliesen zur Lieferung am 01.12.2026 nach 44135 Dortmund.\n\nViele Grüße\nAndreas Kühn\n0231 5557415",
+  "absender_name": "Andreas Kühn",
+  "pdf": null,
+  "png": false,
+  "erwartet": "Gemischt: Reklamation oder Bestellung erkannt, der andere Teil als Hinweis; beobachten"
+ }
+]
