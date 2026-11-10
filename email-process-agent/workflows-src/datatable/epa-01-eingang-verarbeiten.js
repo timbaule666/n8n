@@ -201,6 +201,11 @@ return [{ json: $input.first().json.daten }];
 	const uFgSchreiben = wf.tabelle('Freigabe als nicht zugestellt vermerken', [3300, -380], 'update', 'epa_freigaben', {
 		bedingungen: [['freigabe_id', 'eq', "={{ $('Unzustellbarkeit auswerten').first().json.freigabe_id }}"], ['status', 'eq', 'gesendet']],
 	}, { alwaysOutputData: true, onError: 'continueRegularOutput' });
+	const uKarte = wf.aufruf('Warten-Karte entfernen (unzustellbar)', [3410, -500], 'EPA SW Freigabe-Karte', [
+		['freigabe_id', 'string', "={{ $('Unzustellbarkeit auswerten').first().json.freigabe_id || '' }}"],
+		['zustand', 'string', ''],
+		['teams_nachricht', 'string', ''],
+	], { alwaysOutputData: true, onError: 'continueRegularOutput' });
 	const uMeldung = wf.code('Meldung: nicht zugestellt', [3520, -300], ['unzustellbar'], `
 const n = $('Mail normalisieren').first().json;
 const s = $('Status: Eskaliert (unzustellbar)').first().json;
@@ -575,7 +580,7 @@ return [{ json: {
 	wf.kette(uStatus, uFgLesen, uFgAuswerten, uFgBetroffen);
 	wf.verbinde(uFgBetroffen, uFgDaten, 0);
 	wf.verbinde(uFgBetroffen, uMeldung, 1);
-	wf.kette(uFgDaten, uFgSchreiben, uMeldung);
+	wf.kette(uFgDaten, uFgSchreiben, uKarte, uMeldung);
 	wf.kette(uMeldung, uInfo, uZiel, uAlarm, uAlarmFrage);
 	wf.verbinde(uAlarmFrage, uTelegram, 0);
 	wf.verbinde(uAlarmFrage, uErg, 1);

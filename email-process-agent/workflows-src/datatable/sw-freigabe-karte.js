@@ -2,16 +2,20 @@
 const { Workflow, bedingung, bedingungen } = require('../../tools/lib/n8n');
 
 const E = "$('Bei Aufruf').first().json";
+const P = "$('Plan').first().json";
 
 module.exports = function () {
 	const wf = new Workflow('EPA SW Freigabe-Karte');
-	wf.notiz('Notiz Zweck', [-80, -360], [
+	wf.notiz('Notiz Zweck', [-80, -460], [
 		'## EPA SW Freigabe-Karte',
-		'**Zweck:** Räumt die Freigabe-Karte im Teams-Kanal "Rückfragen" auf, sobald die Freigabe erledigt ist. **Verschickt:** Karte wird aus "Rückfragen" entfernt, die Meldung "✅ Rückfrage verschickt" kommt in "Systemmeldungen" (Anlass rueckfrage_verschickt; bei direkt in Outlook gesendet meldet SW Nachfassen selbst). **Sonst** wird die Karte an Ort und Stelle ersetzt: ❌ abgelehnt, ⚠️ Versand fehlgeschlagen, ↩️ nicht mehr nötig (Kunde hat geantwortet), ⏰ Link ersetzt (neuer Link), 📭 nicht zugestellt. Die neue Karte hat keinen Link mehr.',
-		'**Trigger:** Aufruf durch EPA-07, EPA-03, SW Nachfassen und SW Freigabe senden.',
-		'**Eingaben:** freigabe_id; zustand (optional, sonst Status der Freigabe; "erneuert" = neuer Link verschickt); teams_nachricht (optional, sonst Spalte teams_nachricht der Freigabe).',
-		'**Ausgabe:** { geaendert, grund }. Wirft nie nach außen: ohne gespeicherte Teams-Nachricht (z. B. 1:1-Chat, Telegram) oder bei Fehlern bleibt die Karte, wie sie ist.',
-	].join('\n'), { breite: 720, hoehe: 260 });
+		'**Zweck:** Hält die Karten einer Freigabe in Teams aktuell, damit jeder Kanal nur zeigt, was dort hingehört.',
+		'- **Verschickt:** Karte verschwindet aus "2 Rückfragen" und kommt als "⏳ Wartet auf Antwort des Kunden" in "3 Warten auf Kunde" (Anlass rueckfrage_verschickt). Ältere Warten-Karten desselben Vorgangs (z. B. vor einer Erinnerung) werden entfernt.',
+		'- **Karte steht in "Warten" und der Kunde hat geantwortet** (zustand "beantwortet"), die Mail kam nicht an oder der Kunde reagiert nicht: Karte wird entfernt; die eigentliche Meldung kommt wie gewohnt in den passenden Kanal.',
+		'- **Sonst** (abgelehnt, nicht mehr nötig, Link ersetzt, Versand fehlgeschlagen): Karte wird an Ort und Stelle ersetzt.',
+		'**Trigger:** Aufruf durch EPA-07, EPA-03, EPA-01, SW Nachfassen und SW Freigabe senden.',
+		'**Eingaben:** freigabe_id; zustand (optional, sonst Status der Freigabe; "erneuert", "beantwortet", "keine_reaktion"); teams_nachricht (optional, sonst Spalte teams_nachricht).',
+		'**Ausgabe:** { geaendert, aktion, grund }. Wirft nie nach außen: ohne gespeicherte Karte (1:1-Chat, Telegram) oder bei Fehlern bleibt alles, wie es ist.',
+	].join('\n'), { breite: 760, hoehe: 340 });
 
 	const trigger = wf.trigger('Bei Aufruf', [0, 0], [
 		['freigabe_id', 'string'],
@@ -20,87 +24,129 @@ module.exports = function () {
 	]);
 	const opt = { alwaysOutputData: true, onError: 'continueRegularOutput' };
 	const fg = wf.tabelle('Freigabe lesen', [224, 0], 'get', 'epa_freigaben', { bedingungen: [['freigabe_id', 'eq', `={{ ${E}.freigabe_id || '__keine__' }}`]] }, opt);
-	const kunde = wf.tabelle('Kunde lesen', [448, 0], 'get', 'epa_config_allgemein', { bedingungen: [['kunde_id', 'eq', "={{ $json.kunde_id || '__kein_kunde__' }}"]] }, opt);
-	const bauen = wf.code('Karte bauen', [672, 0], ['freigabe'], `
+	const kunde = wf.tabelle('Kunde lesen', [448, 0], 'get', 'epa_config_allgemein', { bedingungen: [['kunde_id', 'eq', "={{ $('Freigabe lesen').first().json.kunde_id || '__kein_kunde__' }}"]] }, opt);
+	const vorgang = wf.tabelle('Vorgang lesen', [672, 0], 'get', 'epa_vorgaenge', { bedingungen: [['vorgangs_id', 'eq', "={{ $('Freigabe lesen').first().json.vorgangs_id || '__kein_vorgang__' }}"]] }, opt);
+	const andere = wf.tabelle('Freigaben des Vorgangs lesen', [896, 0], 'get', 'epa_freigaben', { bedingungen: [['vorgangs_id', 'eq', "={{ $('Freigabe lesen').first().json.vorgangs_id || '__kein_vorgang__' }}"]], alle: true }, opt);
+	const plan = wf.code('Plan', [1120, 0], ['freigabe', 'kanaele'], `
 const e = ${E};
 const f = $('Freigabe lesen').first().json || {};
-const c = $input.first().json || {};
-const nein = (grund) => [{ json: { weiter: false, grund } }];
-if (!f.freigabe_id) return nein('Freigabe nicht gefunden');
-const tn = freigabe.teamsNachrichtLesen(e.teams_nachricht || f.teams_nachricht);
-if (!tn) return nein('keine Teams-Karte gespeichert');
-const k = freigabe.karteZustand(f, { zustand: e.zustand || '', zeitzone: c.zeitzone || 'Europe/Berlin', jetzt: new Date().toISOString() });
-if (!k) return nein('Zustand ' + (e.zustand || f.status) + ' ändert die Karte nicht');
-if (!/^[A-Za-z0-9]{8,32}$/.test(String(c.postfach_workflow_id || ''))) return nein('postfach_workflow_id fehlt');
-let kan = {}; let ben = {};
-try { kan = JSON.parse(c.kanaele || '{}') || {}; } catch (err) { kan = {}; }
+const c = $('Kunde lesen').first().json || {};
+const v = $('Vorgang lesen').first().json || {};
+const andere = $input.all().map((i) => i.json).filter((x) => x && x.freigabe_id);
+let ben = {};
 try { ben = JSON.parse(c.benachrichtigung || '{}') || {}; } catch (err) { ben = {}; }
-// Verschickt: nur verschieben, wenn der Kanal "Systemmeldungen" eingerichtet ist; sonst Karte an Ort und Stelle ersetzen.
-const verschieben = Boolean(k.verschieben && kan.system);
-return [{ json: { weiter: true, verschieben, melden: f.entscheidung !== 'manuell_gesendet', postfach_workflow_id: c.postfach_workflow_id, postfach: c.postfach, kunde_id: f.kunde_id, vorgangs_id: f.vorgangs_id, html: k.html, team_id: tn.team_id, channel_id: tn.channel_id, nachricht_id: tn.id,
-	b_team_id: ben.team_id || '', b_channel_id: ben.channel_id || '', b_kanal: ben.kanal || 'teams', b_chat_id: ben.chat_id || '', b_telegram_workflow_id: ben.telegram_workflow_id || '' } }];
+const kan = kanaele.lesen(c.kanaele);
+// Kanal "Warten auf Kunde" nur, wenn er eingerichtet ist (kanalId fällt sonst auf den Systemkanal zurück).
+const warten = kan.warten ? kanaele.kanalId(kan, 'rueckfrage_verschickt') : '';
+const p = freigabe.kartenPlan({ fg: f, andere, zustand: e.zustand || '', wartenKanal: warten, teamsNachricht: e.teams_nachricht || '', zeitzone: c.zeitzone || 'Europe/Berlin', jetzt: new Date().toISOString(), frist: v.antwort_frist || null });
+const okId = /^[A-Za-z0-9]{8,32}$/.test(String(c.postfach_workflow_id || ''));
+if (p.aktion !== 'nichts' && !okId) return [{ json: { aktion: 'nichts', grund: 'postfach_workflow_id fehlt' } }];
+const ort = p.karte_ort || {};
+return [{ json: { ...p, postfach_workflow_id: c.postfach_workflow_id || '', postfach: c.postfach || '', freigabe_id: f.freigabe_id || '', vorgangs_id: f.vorgangs_id || '', team_id: ort.team_id || ben.team_id || '', channel_id: ort.channel_id || '', nachricht_id: ort.id || '' } }];
 `, opt);
-	const frage = wf.node('Karte ändern?', 'n8n-nodes-base.if', [896, 0], {
-		conditions: bedingungen([bedingung('={{ $json.weiter }}', { type: 'boolean', operation: 'true', singleValue: true })]),
-		options: {},
+	const weiche = wf.node('Aktion', 'n8n-nodes-base.switch', [1344, 0], {
+		mode: 'rules',
+		rules: {
+			values: ['verschieben', 'entfernen', 'aendern'].map((a) => ({
+				conditions: bedingungen([bedingung('={{ $json.aktion }}', { type: 'string', operation: 'equals' }, a)]),
+				renameOutput: true,
+				outputKey: a,
+			})),
+		},
+		options: { fallbackOutput: 'extra' },
 	});
-	const B = "$('Karte bauen').first().json";
-	const verschiebenFrage = wf.node('Verschickt?', 'n8n-nodes-base.if', [1008, -80], {
-		conditions: bedingungen([bedingung('={{ $json.verschieben }}', { type: 'boolean', operation: 'true', singleValue: true })]),
-		options: {},
-	});
-	const meldenFrage = wf.node('Meldung posten?', 'n8n-nodes-base.if', [1232, -280], {
-		conditions: bedingungen([bedingung(`={{ ${B}.melden }}`, { type: 'boolean', operation: 'true', singleValue: true })]),
-		options: {},
-	});
-	const melden = wf.aufruf('Meldung in Systemmeldungen', [1456, -360], 'EPA SW Benachrichtigen', [
-		['kunde_id', 'string', `={{ ${B}.kunde_id }}`],
-		['vorgangs_id', 'string', `={{ ${B}.vorgangs_id }}`],
-		['team_id', 'string', `={{ ${B}.b_team_id }}`],
-		['channel_id', 'string', `={{ ${B}.b_channel_id }}`],
-		['kanal', 'string', `={{ ${B}.b_kanal }}`],
-		['chat_id', 'string', `={{ ${B}.b_chat_id }}`],
-		['telegram_workflow_id', 'string', `={{ ${B}.b_telegram_workflow_id }}`],
-		['nachricht_html', 'string', `={{ ${B}.html }}`],
-		['anlass', 'string', 'rueckfrage_verschickt'],
+	const postfach = "={{ $('Plan').first().json.postfach_workflow_id }}";
+
+	// ---------------------------------------------------------------- Verschieben: neue Karte in "Warten auf Kunde"
+	const posten = wf.aufrufDynamisch('Karte in Warten posten', [1568, -300], postfach, [
+		['aktion', 'string', 'teams_kanal'],
+		['postfach', 'string', `={{ ${P}.postfach }}`],
+		['vorgangs_id', 'string', `={{ ${P}.vorgangs_id }}`],
+		['html', 'string', `={{ ${P}.html }}`],
+		['team_id', 'string', `={{ ${P}.team_id }}`],
+		['channel_id', 'string', `={{ ${P}.ziel_channel_id }}`],
 	], opt);
-	const entfernen = wf.aufrufDynamisch('Karte aus Rückfragen entfernen', [1680, -280], `={{ ${B}.postfach_workflow_id }}`, [
-		['aktion', 'string', 'teams_kanal_loeschen'],
-		['postfach', 'string', `={{ ${B}.postfach }}`],
-		['graph_id', 'string', `={{ ${B}.nachricht_id }}`],
-		['vorgangs_id', 'string', `={{ ${B}.vorgangs_id }}`],
-		['team_id', 'string', `={{ ${B}.team_id }}`],
-		['channel_id', 'string', `={{ ${B}.channel_id }}`],
-	], opt);
-	const okVerschoben = wf.code('Ergebnis (verschoben)', [1904, -280], [], `
+	const gepostet = wf.code('Neue Karte (Daten)', [1792, -300], ['freigabe'], `
 const r = $input.first().json || {};
-return [{ json: { geaendert: r.geloescht === true, verschoben: true, grund: r.geloescht === true ? '' : String(r.meldung || (r.error && (r.error.message || r.error)) || 'unbekannt').slice(0, 200) } }];
+const neu = r.gesendet === true ? freigabe.teamsNachrichtLesen({ team_id: r.team_id, channel_id: r.channel_id, id: r.nachricht_id }) : null;
+return [{ json: { ok: Boolean(neu), teams_nachricht: neu ? JSON.stringify(neu) : '', grund: neu ? '' : String(r.meldung || (r.error && (r.error.message || r.error)) || 'Karte nicht gepostet').slice(0, 200) } }];
+`, opt);
+	const gepostetFrage = wf.node('Gepostet?', 'n8n-nodes-base.if', [2016, -300], {
+		conditions: bedingungen([bedingung('={{ $json.ok }}', { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: {},
+	});
+	const merkDaten = wf.code('Teams-Nachricht (Daten)', [2240, -380], [], `
+return [{ json: { teams_nachricht: $('Neue Karte (Daten)').first().json.teams_nachricht } }];
 `);
-	const aendern = wf.aufrufDynamisch('Karte in Teams ersetzen', [1232, 0], '={{ $json.postfach_workflow_id }}', [
-		['aktion', 'string', 'teams_kanal_aendern'],
-		['postfach', 'string', '={{ $json.postfach }}'],
+	const merken = wf.tabelle('Neue Karte merken', [2464, -380], 'update', 'epa_freigaben', { bedingungen: [['freigabe_id', 'eq', `={{ ${P}.freigabe_id }}`]] }, opt);
+	const liste = wf.code('Zu entfernende Karten', [2688, -300], [], `
+const p = ${P};
+const l = (p.entfernen || []).filter((t) => t && t.id);
+if (!l.length) return [{ json: { leer: true } }];
+return l.map((t) => ({ json: { team_id: t.team_id, channel_id: t.channel_id, nachricht_id: t.id } }));
+`);
+	const entfernen = wf.aufrufDynamisch('Karten entfernen', [2912, -300], postfach, [
+		['aktion', 'string', 'teams_kanal_loeschen'],
+		['postfach', 'string', `={{ ${P}.postfach }}`],
 		['graph_id', 'string', '={{ $json.nachricht_id }}'],
-		['vorgangs_id', 'string', '={{ $json.vorgangs_id }}'],
-		['html', 'string', '={{ $json.html }}'],
+		['vorgangs_id', 'string', `={{ ${P}.vorgangs_id }}`],
+		['team_id', 'string', '={{ $json.team_id }}'],
+		['channel_id', 'string', '={{ $json.channel_id }}'],
+	], opt, 'each');
+	const ergV = wf.code('Ergebnis (verschoben)', [3136, -300], [], `
+const n = $input.all().filter((i) => i.json && i.json.geloescht === true).length;
+return [{ json: { geaendert: $('Neue Karte (Daten)').first().json.ok === true, aktion: 'verschieben', entfernt: n, grund: $('Neue Karte (Daten)').first().json.grund || '' } }];
+`);
+	const ergNichtGepostet = wf.code('Ergebnis (nicht gepostet)', [2240, -200], [], `
+return [{ json: { geaendert: false, aktion: 'verschieben', grund: $('Neue Karte (Daten)').first().json.grund } }];
+`);
+
+	// ---------------------------------------------------------------- Entfernen: Karte in "Warten" ist erledigt
+	const wegListe = wf.code('Warten-Karte (Daten)', [1568, -60], [], `
+const p = ${P};
+return [{ json: { team_id: p.team_id, channel_id: p.channel_id, nachricht_id: p.nachricht_id } }];
+`);
+	const weg = wf.aufrufDynamisch('Warten-Karte entfernen', [1792, -60], postfach, [
+		['aktion', 'string', 'teams_kanal_loeschen'],
+		['postfach', 'string', `={{ ${P}.postfach }}`],
+		['graph_id', 'string', '={{ $json.nachricht_id }}'],
+		['vorgangs_id', 'string', `={{ ${P}.vorgangs_id }}`],
 		['team_id', 'string', '={{ $json.team_id }}'],
 		['channel_id', 'string', '={{ $json.channel_id }}'],
 	], opt);
-	const ok = wf.code('Ergebnis', [1456, 0], [], `
+	const ergW = wf.code('Ergebnis (entfernt)', [2016, -60], [], `
 const r = $input.first().json || {};
-return [{ json: { geaendert: r.geaendert === true, grund: r.geaendert === true ? '' : String(r.meldung || (r.error && (r.error.message || r.error)) || 'unbekannt').slice(0, 200) } }];
-`);
-	const nicht = wf.code('Nichts zu tun', [1120, 200], [], `
-return [{ json: { geaendert: false, grund: $input.first().json.grund || '' } }];
+return [{ json: { geaendert: r.geloescht === true, aktion: 'entfernen', grund: r.geloescht === true ? '' : String(r.meldung || (r.error && (r.error.message || r.error)) || 'unbekannt').slice(0, 200) } }];
 `);
 
-	wf.kette(trigger, fg, kunde, bauen, frage);
-	wf.verbinde(frage, verschiebenFrage, 0);
-	wf.verbinde(verschiebenFrage, meldenFrage, 0);
-	wf.verbinde(verschiebenFrage, aendern, 1);
-	wf.verbinde(meldenFrage, melden, 0);
-	wf.verbinde(meldenFrage, entfernen, 1);
-	wf.kette(melden, entfernen, okVerschoben);
-	wf.verbinde(frage, nicht, 1);
+	// ---------------------------------------------------------------- Ändern: Karte an Ort und Stelle ersetzen
+	const aendern = wf.aufrufDynamisch('Karte in Teams ersetzen', [1568, 180], postfach, [
+		['aktion', 'string', 'teams_kanal_aendern'],
+		['postfach', 'string', `={{ ${P}.postfach }}`],
+		['graph_id', 'string', `={{ ${P}.nachricht_id }}`],
+		['vorgangs_id', 'string', `={{ ${P}.vorgangs_id }}`],
+		['html', 'string', `={{ ${P}.html }}`],
+		['team_id', 'string', `={{ ${P}.team_id }}`],
+		['channel_id', 'string', `={{ ${P}.channel_id }}`],
+	], opt);
+	const ok = wf.code('Ergebnis', [1792, 180], [], `
+const r = $input.first().json || {};
+return [{ json: { geaendert: r.geaendert === true, aktion: 'aendern', grund: r.geaendert === true ? '' : String(r.meldung || (r.error && (r.error.message || r.error)) || 'unbekannt').slice(0, 200) } }];
+`);
+	const nicht = wf.code('Nichts zu tun', [1568, 400], [], `
+return [{ json: { geaendert: false, aktion: 'nichts', grund: $('Plan').first().json.grund || '' } }];
+`);
+
+	wf.kette(trigger, fg, kunde, vorgang, andere, plan, weiche);
+	wf.verbinde(weiche, posten, 0);
+	wf.verbinde(weiche, wegListe, 1);
+	wf.verbinde(weiche, aendern, 2);
+	wf.verbinde(weiche, nicht, 3);
+	wf.kette(posten, gepostet, gepostetFrage);
+	wf.verbinde(gepostetFrage, merkDaten, 0);
+	wf.verbinde(gepostetFrage, ergNichtGepostet, 1);
+	wf.kette(merkDaten, merken, liste, entfernen, ergV);
+	wf.kette(wegListe, weg, ergW);
 	wf.kette(aendern, ok);
 	return wf;
 };

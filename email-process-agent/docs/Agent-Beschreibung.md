@@ -143,17 +143,18 @@ Prompts liegen versioniert vor (v1–v4) mit Prüfsumme. Die Version wird je Kun
 
 ---
 
-## 4. Microsoft Teams: 5 feste Kanäle je Kunde
+## 4. Microsoft Teams: 6 feste Kanäle je Kunde
 
 Jeder Kunde bekommt dasselbe Team-Layout. Der Baustein „Teams einrichten“ legt die Kanäle an. Jede Meldung trägt einen „Anlass“, und eine feste Tabelle (`src/kanaele.js`) bestimmt den Kanal. Ein Test stellt sicher, dass jeder Anlass im Code einem Kanal zugeordnet ist.
 
 | Kanal | Inhalt |
 |---|---|
 | **1 Vollständige Anfragen** | Anfragen, Bestellungen, Termine, Reklamationen mit allen Pflichtangaben – bereit zur Bearbeitung; Kalenderergebnis bei Terminen |
-| **2 Rückfragen** | **Freigaben** (Entwurf prüfen, freigeben, bearbeiten, ablehnen), Kundenantworten mit weiter fehlenden Angaben, leere Antworten, Kunden, die nicht reagieren |
-| **3 Bitte ansehen** | Keine normale Anfrage, aber ein Mensch muss entscheiden: Stornierung (auch in einer Antwort), Reklamation ohne eingerichtete Vorgangsart, Rückrufbitte, Statusfrage, Manipulationsverdacht, unklare Zuordnung/Klassifizierung, fehlgeschlagene Extraktion, maximale Rundenzahl erreicht, unzustellbare Rückfrage |
-| **4 Systemmeldungen** | Technik und Betrieb: Zustellfehler von Freigabe-Nachrichten, Zustelltest, Regel-Abgleich, Tagesübersicht, Kalenderfehler |
-| **5 Logs** | Eine Abschlusskarte pro Vorgang (Protokoll) |
+| **2 Rückfragen** | Nur **offene Freigaben** (Entwurf prüfen, freigeben, bearbeiten, ablehnen) sowie Kundenantworten mit weiter fehlenden Angaben und leere Antworten. Abgelehnte oder überholte Karten werden an Ort und Stelle als erledigt markiert. |
+| **3 Warten auf Kunde** | Rückfrage ist verschickt, Antwort steht aus („⏳ Wartet auf Antwort des Kunden“ mit Gefragtem und Frist). Die Karte wandert nach dem Versand aus „2 Rückfragen“ hierher und verschwindet, sobald der Kunde antwortet, die Mail nicht ankam oder der Kunde nicht reagiert. |
+| **4 Bitte ansehen** | Keine normale Anfrage, aber ein Mensch muss entscheiden: Stornierung (auch in einer Antwort), Reklamation ohne eingerichtete Vorgangsart, Rückrufbitte, Statusfrage, Manipulationsverdacht, unklare Zuordnung/Klassifizierung, fehlgeschlagene Extraktion, maximale Rundenzahl erreicht, Kunde reagiert nicht, unzustellbare Rückfrage |
+| **5 Systemmeldungen** | Technik und Betrieb: Zustellfehler von Freigabe-Nachrichten, Zustelltest, Regel-Abgleich, Tagesübersicht, Kalenderfehler |
+| **6 Logs** | Eine Abschlusskarte pro Vorgang (Protokoll) |
 
 Unbekannte Anlässe landen im Systemkanal und nicht bei den Sachbearbeitern.
 

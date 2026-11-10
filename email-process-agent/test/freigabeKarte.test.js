@@ -19,17 +19,19 @@ test('teamsNachrichtLesen: JSON-Text, Objekt, ungültig', () => {
 });
 
 test('karteZustand: freigegeben, bearbeitet, manuell gesendet', () => {
-	const a = f.karteZustand({ ...FG, status: 'gesendet' }, { jetzt: JETZT });
-	assert.equal(a.titel, '✅ Rückfrage verschickt');
+	const a = f.karteZustand({ ...FG, status: 'gesendet', fehlende_felder: '[{"feldname":"Telefon","anzeigename":"Telefonnummer"}]' }, { jetzt: JETZT, frist: '2026-11-12T16:00:00Z' });
+	assert.equal(a.titel, '⏳ Wartet auf Antwort des Kunden');
 	assert.equal(a.verschieben, true);
-	assert.match(karteText(a), /Von disponent@firma\.de · 10\.11\.2026, 18:32/);
-	assert.equal(a.karte.body[0].style, 'good');
+	assert.match(karteText(a), /Rückfrage verschickt von disponent@firma\.de · 10\.11\.2026, 18:32/);
+	assert.match(karteText(a), /Gefragt: Telefonnummer/);
+	assert.match(karteText(a), /Antwort erwartet bis 12\.11\.2026, 17:00/);
+	assert.equal(a.karte.body[0].style, 'accent');
 	assert.equal(a.karte.actions, undefined, 'keine Buttons mehr');
-	assert.equal(f.karteZustand({ ...FG, status: 'gesendet', bearbeitet: true }).titel, '✅ Rückfrage bearbeitet und verschickt');
-	assert.equal(f.karteZustand({ ...FG, art: 'erinnerung', status: 'gesendet' }).titel, '✅ Erinnerung verschickt');
+	assert.match(karteText(f.karteZustand({ ...FG, status: 'gesendet', bearbeitet: true })), /Rückfrage bearbeitet und verschickt/);
+	assert.match(karteText(f.karteZustand({ ...FG, art: 'erinnerung', status: 'gesendet' })), /Erinnerung verschickt/);
 	const m = f.karteZustand({ ...FG, status: 'gesendet', entscheidung: 'manuell_gesendet', entscheider: 'Outlook (direkt gesendet)' });
-	assert.equal(m.titel, '✅ Rückfrage direkt in Outlook verschickt');
-	assert.doesNotMatch(karteText(m), /Von Outlook/);
+	assert.match(karteText(m), /Rückfrage direkt in Outlook verschickt · /);
+	assert.doesNotMatch(karteText(m), /von Outlook/);
 });
 
 test('karteZustand: abgelehnt mit Grund, fehler, ersetzt, erneuert, unzustellbar', () => {
@@ -57,4 +59,31 @@ test('karteZustand: HTML-Rückfall mit Marker, Text maskiert', () => {
 	assert.deepEqual(JSON.parse(Buffer.from(m, 'base64').toString('utf8')), k.karte);
 	assert.equal(k.karte.body[1].facts[1].value, 'Rückfrage (Runde 1)');
 	assert.equal(f.karteZustand({ ...FG, art: 'erinnerung', status: 'gesendet' }).karte.body[1].facts[1].value, 'Erinnerung');
+});
+
+test('kartenPlan: verschickt -> nach Warten verschieben, alte Warten-Karten mit entfernen', () => {
+	const W = '19:warten1@thread.tacv2';
+	const alt = { freigabe_id: 'F-alt', teams_nachricht: JSON.stringify({ ...TN, channel_id: W, id: '1111111111' }) };
+	const fremd = { freigabe_id: 'F-x', teams_nachricht: JSON.stringify({ ...TN, id: '2222222222' }) };
+	const p = f.kartenPlan({ fg: { ...FG, freigabe_id: 'F-neu', status: 'gesendet', teams_nachricht: JSON.stringify(TN) }, andere: [alt, fremd, { freigabe_id: 'F-neu', teams_nachricht: JSON.stringify(TN) }], wartenKanal: W, jetzt: JETZT });
+	assert.equal(p.aktion, 'verschieben');
+	assert.equal(p.ziel_channel_id, W);
+	assert.deepEqual(p.entfernen.map((t) => t.id), [TN.id, '1111111111']);
+	assert.match(p.html, /EPA_KARTE:/);
+});
+
+test('kartenPlan: Karte in Warten wird bei Antwort entfernt, bleibt bei gesendet', () => {
+	const W = '19:warten1@thread.tacv2';
+	const inW = JSON.stringify({ ...TN, channel_id: W });
+	assert.equal(f.kartenPlan({ fg: { ...FG, freigabe_id: 'F', status: 'gesendet', teams_nachricht: inW }, zustand: 'beantwortet', wartenKanal: W }).aktion, 'entfernen');
+	assert.equal(f.kartenPlan({ fg: { ...FG, freigabe_id: 'F', status: 'unzustellbar', teams_nachricht: inW }, wartenKanal: W }).aktion, 'entfernen');
+	assert.equal(f.kartenPlan({ fg: { ...FG, freigabe_id: 'F', status: 'gesendet', teams_nachricht: inW }, wartenKanal: W }).aktion, 'nichts');
+});
+
+test('kartenPlan: abgelehnt ändern, ohne Warten-Kanal ändern, beantwortet in Rückfragen nichts', () => {
+	const W = '19:warten1@thread.tacv2';
+	assert.equal(f.kartenPlan({ fg: { ...FG, freigabe_id: 'F', status: 'abgelehnt', teams_nachricht: JSON.stringify(TN) }, wartenKanal: W }).aktion, 'aendern');
+	assert.equal(f.kartenPlan({ fg: { ...FG, freigabe_id: 'F', status: 'gesendet', teams_nachricht: JSON.stringify(TN) }, wartenKanal: '' }).aktion, 'aendern');
+	assert.equal(f.kartenPlan({ fg: { ...FG, freigabe_id: 'F', status: 'ersetzt', teams_nachricht: JSON.stringify(TN) }, zustand: 'beantwortet', wartenKanal: W }).aktion, 'nichts');
+	assert.equal(f.kartenPlan({ fg: { ...FG, freigabe_id: 'F', status: 'gesendet' }, wartenKanal: W }).aktion, 'nichts');
 });

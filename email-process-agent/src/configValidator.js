@@ -362,7 +362,7 @@ function pruefeVorgangsarten(roh, vorgangstypen, fehler) {
 }
 
 // Teams-Kanal-IDs je Meldungsart (Zuordnung in src/kanaele.js).
-const KANAL_ARTEN = ['anfragen', 'rueckfragen', 'ansehen', 'system', 'logs'];
+const KANAL_ARTEN = ['anfragen', 'rueckfragen', 'warten', 'ansehen', 'system', 'logs']; // wie src/kanaele.js ARTEN (test/kanaele.test.js)
 function kanaeleLesen(roh) {
 	let o = roh;
 	if (typeof roh === 'string') { try { o = roh.trim() ? JSON.parse(roh) : {}; } catch (e) { o = {}; } }

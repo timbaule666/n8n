@@ -210,17 +210,24 @@ function zeitText(iso, zeitzone) {
  * zustand: Status der Freigabe (gesendet, abgelehnt, fehler, ersetzt, unzustellbar) oder "erneuert" (neuer Link verschickt).
  * Gibt null zurück, wenn die Karte (noch) nicht geändert werden soll (offen, in_versand, unbekannt).
  */
-function karteZustand(fg, { zustand, zeitzone, jetzt } = {}) {
+function karteZustand(fg, { zustand, zeitzone, jetzt, frist } = {}) {
 	const f = fg || {};
 	const z = String(zustand || f.status || '');
 	const wer = String(f.entscheider || '').trim();
 	let titel; let stil; let zeilen = [];
 	if (z === 'gesendet') {
+		// Karte im Kanal "Warten auf Kunde": Rückfrage ist raus, Antwort steht aus.
 		const manuell = f.entscheidung === 'manuell_gesendet';
 		const was0 = f.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';
-		titel = manuell ? '✅ ' + was0 + ' direkt in Outlook verschickt' : f.bearbeitet ? '✅ ' + was0 + ' bearbeitet und verschickt' : '✅ ' + was0 + ' verschickt';
-		stil = 'good';
-		zeilen = [(manuell || !wer ? '' : 'Von ' + wer + ' · ') + zeitText(f.gesendet_am || jetzt, zeitzone)];
+		titel = '⏳ Wartet auf Antwort des Kunden';
+		stil = 'accent';
+		let gefragt = [];
+		try { gefragt = (typeof f.fehlende_felder === 'string' ? JSON.parse(f.fehlende_felder || '[]') : (f.fehlende_felder || [])).map((x) => x.anzeigename || x.feldname).filter(Boolean); } catch (e) { gefragt = []; }
+		zeilen = [
+			was0 + (manuell ? ' direkt in Outlook verschickt' : f.bearbeitet ? ' bearbeitet und verschickt' : ' verschickt') + (manuell || !wer ? '' : ' von ' + wer) + ' · ' + zeitText(f.gesendet_am || jetzt, zeitzone),
+			gefragt.length ? 'Gefragt: ' + gefragt.join(', ').slice(0, 300) : '',
+			frist ? 'Antwort erwartet bis ' + zeitText(frist, zeitzone) : '',
+		];
 	} else if (z === 'abgelehnt') {
 		titel = '❌ Abgelehnt'; stil = 'attention';
 		zeilen = [(wer ? 'Von ' + wer + ' · ' : '') + zeitText(jetzt, zeitzone), f.grund ? 'Grund: ' + String(f.grund).slice(0, 300) : '', 'Der Vorgang liegt jetzt bei einem Mitarbeiter (Eskaliert / Manuell).'];
@@ -253,12 +260,44 @@ function karteZustand(fg, { zustand, zeitzone, jetzt } = {}) {
 	};
 	const marker = Buffer.from(JSON.stringify(karte), 'utf8').toString('base64');
 	const html = `<b>${esc(titel)}</b><br>Vorgang ${esc(f.vorgangs_id || '')}<br>${zeilen.filter(Boolean).map(esc).join('<br>')}<!--EPA_KARTE:${marker}-->`;
-	// Verschickt: Die Karte verschwindet aus "Rückfragen", die Meldung kommt in "Systemmeldungen" (Anlass rueckfrage_verschickt).
+	// Verschickt: Die Karte verschwindet aus "Rückfragen" und kommt in "Warten auf Kunde" (Anlass rueckfrage_verschickt).
 	return { titel, karte, html, verschieben: z === 'gesendet' };
+}
+
+/**
+ * Was mit der Karte einer Freigabe passiert (EPA SW Freigabe-Karte).
+ * - Karte in "Rückfragen", Freigabe verschickt: verschieben (neue Karte in "Warten auf Kunde", alte entfernen,
+ *   dazu ältere Warten-Karten desselben Vorgangs entfernen, z. B. nach einer Erinnerung).
+ * - Karte in "Warten", Zustand nicht mehr "gesendet" (Kunde hat geantwortet, nicht zugestellt, keine Reaktion): entfernen.
+ * - Sonst Karte an Ort und Stelle ersetzen (abgelehnt, ersetzt, Link erneuert, Versand fehlgeschlagen).
+ * @returns {{ aktion: 'verschieben'|'entfernen'|'aendern'|'nichts', grund?: string, html?: string, karte_ort?: object, ziel_channel_id?: string, entfernen?: object[] }}
+ */
+function kartenPlan({ fg, andere, zustand, wartenKanal, teamsNachricht, zeitzone, jetzt, frist }) {
+	const f = fg || {};
+	const tn = teamsNachrichtLesen(teamsNachricht || f.teams_nachricht);
+	if (!f.freigabe_id) return { aktion: 'nichts', grund: 'Freigabe nicht gefunden' };
+	if (!tn) return { aktion: 'nichts', grund: 'keine Teams-Karte gespeichert' };
+	const z = String(zustand || f.status || '');
+	const warten = /^19:[^\s]+@thread\.[a-z0-9]+$/i.test(String(wartenKanal || '')) ? String(wartenKanal) : '';
+	const inWarten = Boolean(warten) && tn.channel_id === warten;
+	if (inWarten) {
+		if (z === 'gesendet') return { aktion: 'nichts', grund: 'Karte steht schon in "Warten auf Kunde"' };
+		return { aktion: 'entfernen', karte_ort: tn, entfernen: [tn] };
+	}
+	const k = karteZustand(f, { zustand: z, zeitzone, jetzt, frist });
+	if (!k) return { aktion: 'nichts', grund: 'Zustand ' + (z || '-') + ' ändert die Karte nicht' };
+	if (k.verschieben && warten) {
+		const alte = (andere || [])
+			.filter((a) => a && a.freigabe_id && a.freigabe_id !== f.freigabe_id)
+			.map((a) => teamsNachrichtLesen(a.teams_nachricht))
+			.filter((t) => t && t.channel_id === warten);
+		return { aktion: 'verschieben', html: k.html, karte_ort: tn, ziel_channel_id: warten, entfernen: [tn, ...alte] };
+	}
+	return { aktion: 'aendern', html: k.html, karte_ort: tn };
 }
 
 module.exports = {
 	TOKEN_MUSTER, AKTIONEN, KANAL, linkEmpfaenger, freigeberErlaubt, entscheiderBestimmen, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,
 	freigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber, ANLASS,
-	teamsNachrichtLesen, karteZustand,
+	teamsNachrichtLesen, karteZustand, kartenPlan,
 };

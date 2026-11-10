@@ -41,7 +41,7 @@ test('Zuordnung: vollständig, Rückfrage, ansehen, System, Log', () => {
 	assert.equal(k.kanalArt('kalender_belegt'), 'anfragen');
 	assert.equal(k.kanalArt('freigabe'), 'rueckfragen');
 	assert.equal(k.kanalArt('antwort_keine_daten'), 'rueckfragen');
-	assert.equal(k.kanalArt('keine_reaktion'), 'rueckfragen');
+	assert.equal(k.kanalArt('keine_reaktion'), 'ansehen');
 	assert.equal(k.kanalArt('keine_anfrage_storno'), 'ansehen');
 	assert.equal(k.kanalArt('keine_anfrage_reklamation'), 'ansehen');
 	assert.equal(k.kanalArt('antwort_storno'), 'ansehen');
@@ -49,15 +49,17 @@ test('Zuordnung: vollständig, Rückfrage, ansehen, System, Log', () => {
 	assert.equal(k.kanalArt('max_runden'), 'ansehen');
 	assert.equal(k.kanalArt('zustelltest_fehlgeschlagen'), 'system');
 	assert.equal(k.kanalArt('freigabe_nicht_zugestellt'), 'system');
-	assert.equal(k.kanalArt('rueckfrage_verschickt'), 'system');
+	assert.equal(k.kanalArt('rueckfrage_verschickt'), 'warten');
 	assert.equal(k.kanalArt('manuell_gesendet'), 'system');
 	assert.equal(k.kanalArt('log_karte'), 'logs');
 	assert.equal(k.kanalArt('gibt_es_nicht'), 'system');
 	assert.equal(k.kanalArt(''), 'system');
 });
 
-test('kanalId: fünf Kanäle, alte Config ohne "ansehen", ohne kanaele', () => {
-	const fuenf = { anfragen: 'A', rueckfragen: 'R', ansehen: 'B', system: 'S', logs: 'L' };
+test('kanalId: sechs Kanäle, alte Config ohne "ansehen"/"warten", ohne kanaele', () => {
+	const fuenf = { anfragen: 'A', rueckfragen: 'R', warten: 'W', ansehen: 'B', system: 'S', logs: 'L' };
+	assert.equal(k.kanalId(fuenf, 'rueckfrage_verschickt'), 'W');
+	assert.equal(k.kanalId({ anfragen: 'A', rueckfragen: 'R', ansehen: 'B', system: 'S' }, 'rueckfrage_verschickt'), 'S');
 	assert.equal(k.kanalId(fuenf, 'bereit'), 'A');
 	assert.equal(k.kanalId(JSON.stringify(fuenf), 'keine_anfrage_rueckruf'), 'B');
 	assert.equal(k.kanalId({ anfragen: 'A', rueckfragen: 'R', system: 'S', logs: 'L' }, 'antwort_storno'), 'S');
@@ -72,7 +74,9 @@ test('freigabeImKanal nur mit eingerichtetem Kanal Rückfragen', () => {
 	assert.equal(k.freigabeImKanal(null), false);
 });
 
-test('fünf Kanäle in fester Reihenfolge', () => {
-	assert.deepEqual(k.ARTEN, ['anfragen', 'rueckfragen', 'ansehen', 'system', 'logs']);
-	assert.deepEqual(k.KANAELE.map((x) => x.name), ['1 Vollständige Anfragen', '2 Rückfragen', '3 Bitte ansehen', '4 Systemmeldungen', '5 Logs']);
+test('sechs Kanäle in fester Reihenfolge, Validator kennt alle', () => {
+	assert.deepEqual(k.ARTEN, ['anfragen', 'rueckfragen', 'warten', 'ansehen', 'system', 'logs']);
+	assert.deepEqual(k.KANAELE.map((x) => x.name), ['1 Vollständige Anfragen', '2 Rückfragen', '3 Warten auf Kunde', '4 Bitte ansehen', '5 Systemmeldungen', '6 Logs']);
+	const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'configValidator.js'), 'utf8');
+	assert.match(src, new RegExp("KANAL_ARTEN = \\['" + k.ARTEN.join("', '") + "'\\]"));
 });

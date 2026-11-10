@@ -137,6 +137,11 @@ return [{ json: {
 		['nachricht_html', 'string', "={{ $('Meldung: keine Reaktion').first().json.nachricht_html }}"],
 		['anlass', 'string', 'keine_reaktion'],
 	]);
+	const eskKarte = wf.aufruf('Warten-Karte entfernen (keine Reaktion)', [2090, -320], 'EPA SW Freigabe-Karte', [
+		['freigabe_id', 'string', `={{ ${V}.freigabe_id_aktuell || '' }}`],
+		['zustand', 'string', 'keine_reaktion'],
+		['teams_nachricht', 'string', ''],
+	], { alwaysOutputData: true, onError: 'continueRegularOutput' });
 	const ergEsk = wf.code('Ergebnis: eskaliert', [2200, -180], [], `
 return [{ json: { ergebnis: 'eskaliert', tage: $('Meldung: keine Reaktion').first().json.tage } }];
 `);
@@ -440,7 +445,7 @@ return [{ json: { ergebnis: 'entfaellt_' + (p.ok ? 'parallel_bearbeitet' : p.gru
 	wf.kette(eskPruefen, eskOk);
 	wf.verbinde(eskOk, gesendete, 0);
 	wf.verbinde(eskOk, ergEskNein, 1);
-	wf.kette(gesendete, eskMeldung, eskStatus, eskInfo, ergEsk);
+	wf.kette(gesendete, eskMeldung, eskStatus, eskInfo, eskKarte, ergEsk);
 	wf.kette(fgLesen, pruefen, postfachNoetig);
 	wf.verbinde(postfachNoetig, postfach, 0);
 	wf.verbinde(postfachNoetig, auffrischen, 1);

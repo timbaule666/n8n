@@ -3,11 +3,12 @@
 // in welchen Kanal sie gehört. Neue Meldungsarten MÜSSEN hier eingetragen werden (test/kanaele.test.js prüft das).
 
 const KANAELE = Object.freeze([
-	{ art: 'anfragen', name: '1 Vollständige Anfragen', text: 'Anfragen, Bestellungen und Termine mit allen Pflichtangaben – bereit zur Bearbeitung' },
-	{ art: 'rueckfragen', name: '2 Rückfragen', text: 'Offene Rückfragen an Kunden freigeben, bearbeiten oder ablehnen; Antworten und Kunden, die nicht reagieren' },
-	{ art: 'ansehen', name: '3 Bitte ansehen', text: 'Keine normale Anfrage, aber ein Mitarbeiter muss entscheiden: Stornierung, Reklamation, Rückruf, Manipulationsverdacht, Unklares' },
-	{ art: 'system', name: '4 Systemmeldungen', text: 'Technik und Betrieb: verschickte Rückfragen, Zustellfehler, Zustelltest, Regel-Abgleich, Tagesübersicht' },
-	{ art: 'logs', name: '5 Logs', text: 'Protokoll: eine Abschlusskarte pro Vorgang' },
+	{ art: 'anfragen', name: '1 Vollständige Anfragen', text: 'Anfragen, Bestellungen, Termine und Reklamationen mit allen Pflichtangaben – bereit zur Bearbeitung' },
+	{ art: 'rueckfragen', name: '2 Rückfragen', text: 'Offene Rückfragen an Kunden freigeben, bearbeiten oder ablehnen; Antworten mit weiter fehlenden Angaben' },
+	{ art: 'warten', name: '3 Warten auf Kunde', text: 'Rückfrage ist verschickt, die Antwort des Kunden steht aus. Die Karte verschwindet, sobald der Kunde antwortet.' },
+	{ art: 'ansehen', name: '4 Bitte ansehen', text: 'Keine normale Anfrage, aber ein Mitarbeiter muss entscheiden: Stornierung, Reklamation, Rückruf, Manipulationsverdacht, Kunde reagiert nicht, Unklares' },
+	{ art: 'system', name: '5 Systemmeldungen', text: 'Technik und Betrieb: Zustellfehler, Zustelltest, Regel-Abgleich, Tagesübersicht' },
+	{ art: 'logs', name: '6 Logs', text: 'Protokoll: eine Abschlusskarte pro Vorgang' },
 ]);
 const ARTEN = KANAELE.map((k) => k.art);
 
@@ -19,12 +20,13 @@ const ZUORDNUNG = Object.freeze({
 	kalender_frei: 'anfragen',
 	kalender_belegt: 'anfragen',
 	kalender_keine_freie_zeit: 'anfragen',
-	// Wartet auf Kunde bzw. Freigabe
+	// Rückfrage verschickt, Antwort steht aus (Karte wird beim Eingang der Antwort entfernt)
+	rueckfrage_verschickt: 'warten',
+	// Wartet auf Freigabe
 	freigabe: 'rueckfragen',
 	luecken: 'rueckfragen',
 	antwort_luecken: 'rueckfragen',
 	antwort_keine_daten: 'rueckfragen',
-	keine_reaktion: 'rueckfragen',
 	// Ein Mensch muss entscheiden
 	antwort_gemeldet: 'ansehen',
 	antwort_storno: 'ansehen',
@@ -36,14 +38,14 @@ const ZUORDNUNG = Object.freeze({
 	klassifizierung_unklar: 'ansehen',
 	extraktion_fehlgeschlagen: 'ansehen',
 	max_runden: 'ansehen',
+	keine_reaktion: 'ansehen',
 	nicht_zugestellt: 'ansehen',
 	// Technik und Betrieb
 	freigabe_nicht_zugestellt: 'system',
 	zustelltest_fehlgeschlagen: 'system',
 	regeln_google_sheet: 'system',
 	tagesuebersicht: 'system',
-	// Erledigte Aktionen: Rückfrage an den Kunden verschickt (Karte verschwindet dafür aus "Rückfragen")
-	rueckfrage_verschickt: 'system',
+	// Betreiber-Info: Entwurf wurde direkt in Outlook gesendet (die Warten-Karte kommt trotzdem)
 	manuell_gesendet: 'system',
 	kalender_kalender_fehler: 'system',
 	// Protokoll
@@ -74,13 +76,14 @@ function lesen(kanaele) {
 }
 
 /**
- * Channel-ID für einen Anlass. Ältere Configs ohne "ansehen": dann der Systemkanal; ohne kanaele: '' (der Aufrufer
+ * Channel-ID für einen Anlass. Ältere Configs ohne "ansehen"/"warten": dann der Systemkanal; ohne kanaele: '' (der Aufrufer
  * nimmt dann benachrichtigung.channel_id).
  */
 function kanalId(kanaele, anlass) {
 	const k = lesen(kanaele);
 	const art = kanalArt(anlass);
-	return String(k[art] || (art === 'ansehen' ? k.system : '') || '');
+	// Ältere Configs: ohne "ansehen" bzw. "warten" der Systemkanal.
+	return String(k[art] || (art === 'ansehen' || art === 'warten' ? k.system : '') || '');
 }
 
 /** Freigaben laufen über den Kanal "Rückfragen", sobald er eingerichtet ist; sonst wie bisher im 1:1-Chat. */

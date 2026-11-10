@@ -14,8 +14,8 @@ module.exports = function () {
 	const wf = new Workflow('EPA SW Teams einrichten');
 	wf.notiz('Notiz Zweck', [1056, 192], [
 		'## EPA SW Teams einrichten',
-		'**Zweck:** legt im Teams-Team des Kunden die fünf Kanäle an (1 Vollständige Anfragen, 2 Rückfragen, 3 Bitte ansehen, 4 Systemmeldungen, 5 Logs) und trägt die IDs in epa_config_allgemein ein (kanaele, log_channel_id, benachrichtigung.channel_id = Systemmeldungen). Welche Meldung wohin geht, steht in src/kanaele.js. Sobald "2 Rückfragen" eingetragen ist, kommen die Freigaben als Karte in diesen Kanal statt in den 1:1-Chat.',
-		'**Einrichten pro Kunde:** im Knoten "Kunde eintragen" kunde_id setzen, team_name nur, wenn das Team umbenannt werden soll (leer = Name bleibt), dann ausführen. Mehrfaches Ausführen ist unschädlich: vorhandene Kanäle (gleicher Name ohne Nummer) werden wiederverwendet und auf die neue Nummer umbenannt (z. B. "3 Systemmeldungen" → "4 Systemmeldungen").',
+		'**Zweck:** legt im Teams-Team des Kunden die sechs Kanäle an (1 Vollständige Anfragen, 2 Rückfragen, 3 Warten auf Kunde, 4 Bitte ansehen, 5 Systemmeldungen, 6 Logs) und trägt die IDs in epa_config_allgemein ein (kanaele, log_channel_id, benachrichtigung.channel_id = Systemmeldungen). Welche Meldung wohin geht, steht in src/kanaele.js. Sobald "2 Rückfragen" eingetragen ist, kommen die Freigaben als Karte in diesen Kanal statt in den 1:1-Chat.',
+		'**Einrichten pro Kunde:** im Knoten "Kunde eintragen" kunde_id setzen, team_name nur, wenn das Team umbenannt werden soll (leer = Name bleibt), dann ausführen. Mehrfaches Ausführen ist unschädlich: vorhandene Kanäle (gleicher Name ohne Nummer) werden wiederverwendet und auf die neue Nummer umbenannt (z. B. "4 Systemmeldungen" → "5 Systemmeldungen").',
 		'**Rechte:** Das Teams-Credential muss im Tenant des Kunden Kanäle anlegen dürfen. Team und Kanal umbenennen sind optional (Fehler wird ignoriert).',
 	].join('\n'), { breite: 520, hoehe: 300 });
 	const start = wf.node('Start', 'n8n-nodes-base.manualTrigger', [0, 0], {});

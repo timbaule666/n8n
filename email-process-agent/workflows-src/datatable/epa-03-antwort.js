@@ -188,6 +188,11 @@ return [{ json: { status: 'ersetzt' } }];
 	const statusPruef = STATUS(wf, 'Status: In Prüfung', [2640, -40], 'In Prüfung',
 		`={{ { anlass: 'Kundenantwort', message_id: ${E}.mail.message_id, vorher: ${V}.status, freigabe_ersetzt: ${Z}.freigabe_ersetzen ? ${V}.freigabe_id_aktuell : null } }}`,
 		"={{ $('Nachricht anhängen').first().json.vorgang.version }}");
+	const karteBeantwortet = wf.aufruf('Warten-Karte entfernen (Antwort)', [2750, 100], 'EPA SW Freigabe-Karte', [
+		['freigabe_id', 'string', `={{ ${V}.freigabe_id_aktuell || '' }}`],
+		['zustand', 'string', 'beantwortet'],
+		['teams_nachricht', 'string', ''],
+	], { alwaysOutputData: true, onError: 'continueRegularOutput' });
 	const speichern = wf.aufruf('Daten speichern', [2860, -40], 'EPA SW Vorgang verwalten', [
 		['aktion', 'string', 'aktualisieren'],
 		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
@@ -299,7 +304,7 @@ return [{ json: { ergebnis: $(quelle).first().json.ergebnis, vorgangs_id: $('Vor
 	wf.kette(statusFehl, mFehl, informieren);
 	wf.verbinde(ersetzenFrage, ersetzenDaten, 0);
 	wf.verbinde(ersetzenFrage, statusPruef, 1);
-	wf.kette(ersetzenDaten, ersetzen, karteErsetzt, statusPruef, speichern, mergeZeilen, mergeFrage);
+	wf.kette(ersetzenDaten, ersetzen, karteErsetzt, statusPruef, karteBeantwortet, speichern, mergeZeilen, mergeFrage);
 	wf.verbinde(mergeFrage, statusZiel, 0);
 	wf.verbinde(mergeFrage, mergeAudit, 1);
 	wf.kette(mergeAudit, statusZiel, lueckenFrage);
