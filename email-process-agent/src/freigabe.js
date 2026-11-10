@@ -205,6 +205,22 @@ function zeitText(iso, zeitzone) {
 	try { return d.toLocaleString('de-DE', { timeZone: zeitzone || 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return d.toISOString(); }
 }
 
+/** Freigabe-Karte ohne Buttons und ohne Link-Adressen (zum Speichern). Gibt null zurück, wenn ein Link übrig bliebe. */
+function karteOhneLink(karte) {
+	if (!karte || typeof karte !== 'object' || !Array.isArray(karte.body)) return null;
+	const { actions, selectAction, ...rest } = karte;
+	const k = JSON.parse(JSON.stringify(rest));
+	const weg = (o) => {
+		if (Array.isArray(o)) return o.forEach(weg);
+		if (o && typeof o === 'object') {
+			delete o.selectAction; delete o.actions;
+			for (const v of Object.values(o)) weg(v);
+		}
+	};
+	weg(k);
+	return /https?:\/\/|epa-freigabe\?t=/i.test(JSON.stringify(k)) ? null : k;
+}
+
 /**
  * Warten-Karte aus der ursprünglichen Freigabe-Karte (Spalte teams_karte): alle Angaben (vorhanden, fehlt noch,
  * Hinweise) bleiben, der Kopf zeigt "Wartet auf Antwort", der Entwurf wird durch den verschickten Text ersetzt,
@@ -330,5 +346,5 @@ function kartenPlan({ fg, andere, zustand, wartenKanal, teamsNachricht, zeitzone
 module.exports = {
 	TOKEN_MUSTER, AKTIONEN, KANAL, linkEmpfaenger, freigeberErlaubt, entscheiderBestimmen, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,
 	freigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber, ANLASS,
-	teamsNachrichtLesen, karteZustand, kartenPlan, karteWarten,
+	teamsNachrichtLesen, karteZustand, kartenPlan, karteWarten, karteOhneLink,
 };

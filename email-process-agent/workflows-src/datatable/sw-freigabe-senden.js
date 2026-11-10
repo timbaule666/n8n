@@ -110,7 +110,8 @@ const alt = f.freigabe_id ? freigabe.teamsNachrichtLesen(f.teams_nachricht) : nu
 // Die vollständige Karte merken: daraus wird nach dem Versand die Karte in "Warten auf Kunde".
 let karte = '';
 const m = String(e.nachricht_html || '').match(/<!--EPA_KARTE:([A-Za-z0-9+\\/=]+)-->/);
-if (neu && m) { try { const t = Buffer.from(m[1], 'base64').toString('utf8'); JSON.parse(t); karte = t; } catch (err) { karte = ''; } }
+// Ohne Button und ohne Link: Freigabe-Links werden nie im Klartext gespeichert (nur als Hash in epa_freigabe_tokens).
+if (neu && m) { try { const k = freigabe.karteOhneLink(JSON.parse(Buffer.from(m[1], 'base64').toString('utf8'))); karte = k ? JSON.stringify(k) : ''; } catch (err) { karte = ''; } }
 return [{ json: { merken: Boolean(neu), alt_ersetzen: Boolean(neu && alt && alt.id !== neu.id), alt: alt ? JSON.stringify(alt) : '', teams_nachricht: neu ? JSON.stringify(neu) : '', teams_karte: karte } }];
 `, kOpt);
 	const kMerken = wf.node('Karte merken?', 'n8n-nodes-base.if', [2200, 120], {

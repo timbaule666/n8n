@@ -109,3 +109,12 @@ test('Warten-Karte übernimmt die vollständige Freigabe-Karte ohne Button und L
 	assert.equal(f.karteWarten('kaputt{', FG, { kopf: 'x', zeilen: [] }), null);
 	assert.equal(f.kartenPlan({ fg: { ...FG, freigabe_id: 'F', status: 'gesendet', teams_nachricht: JSON.stringify(TN), teams_karte: JSON.stringify(original) }, wartenKanal: '19:w@thread.tacv2' }).html.includes('EPA_KARTE'), true);
 });
+
+test('karteOhneLink: Button und Link fallen weg, nichts mit URL wird gespeichert', () => {
+	const k = { type: 'AdaptiveCard', body: [{ type: 'TextBlock', text: 'x' }, { type: 'Container', selectAction: { type: 'Action.OpenUrl', url: 'https://a/webhook/epa-freigabe?t=geheim' }, items: [] }], actions: [{ type: 'Action.OpenUrl', url: 'https://a/webhook/epa-freigabe?t=geheim' }] };
+	const o = f.karteOhneLink(k);
+	assert.doesNotMatch(JSON.stringify(o), /geheim|https/);
+	assert.equal(o.actions, undefined);
+	assert.equal(f.karteOhneLink({ body: [{ type: 'TextBlock', text: 'siehe https://a/webhook/epa-freigabe?t=geheim' }] }), null);
+	assert.equal(f.karteOhneLink(null), null);
+});
