@@ -9,25 +9,25 @@ Jedes Kunden-Team hat fünf Kanäle. „EPA SW Teams einrichten“ legt sie an u
 | Kanal | Nachrichten (Nummern unten) | Für wen |
 |---|---|---|
 | 1 Vollständige Anfragen | 1, 2, 14, Kalender geprüft (frei/belegt); 16, wenn der Vorgang danach vollständig ist | Sachbearbeiter |
-| 2 Rückfragen | Freigabe-Karten mit Button (3, 15, 22–27), 4, 17, 30, 31; 16, wenn noch Angaben fehlen | Freigeber |
+| 2 Rückfragen | offene Freigabe-Karten mit Button (3, 15, 22–27), 4, 17, 30; 16, wenn noch Angaben fehlen | Freigeber |
 | 3 Bitte ansehen | 5–13, 18–21, 29 | Sachbearbeiter |
-| 4 Systemmeldungen | 28, 32–34, Kalender-Fehler, Zustelltest | Betreiber / IT |
+| 4 Systemmeldungen | ✅ Rückfrage verschickt, 31, 28, 32–34, Kalender-Fehler, Zustelltest | Betreiber / IT, alle (was erledigt ist) |
 | 5 Logs | Abschlusskarte je Vorgang | alle (Nachschlagen) |
 
 **Freigaben im Kanal:** Sobald „2 Rückfragen“ eingerichtet ist, gibt es pro Rückfrage einen Link als Karte im Kanal statt eines persönlichen Links im 1:1-Chat je Freigeber. Wer auf „Entwurf prüfen und freigeben“ klickt, wählt auf der Freigabe-Seite seinen Namen aus der Freigeber-Liste der Config; dieser Name steht im Protokoll. Der Link ist weiter nur einmal verwendbar, läuft ab und kann nicht doppelt senden. Kunden ohne Kanal „Rückfragen“ bekommen die Links wie bisher im 1:1-Chat.
 
-**Karte nach der Entscheidung:** Sobald eine Freigabe erledigt ist, ersetzt der Agent die Karte im Kanal durch eine Status-Karte ohne Link (EPA SW Freigabe-Karte, Postfach-Aktion `teams_kanal_aendern`). So sieht jeder sofort, was schon bearbeitet ist:
+**Karte nach der Entscheidung:** Sobald eine Freigabe erledigt ist, räumt der Agent die Karte im Kanal auf (EPA SW Freigabe-Karte). In „2 Rückfragen“ stehen so nur noch offene Freigaben.
 
-| Karte | Wann |
+| Ergebnis | Was passiert |
 |---|---|
-| ✅ Freigegeben und gesendet / ✅ Bearbeitet und gesendet (grün, mit Name und Uhrzeit) | Freigabe über den Link (EPA-07) |
-| ✅ Direkt in Outlook gesendet | Entwurf wurde in Outlook selbst gesendet (SW Nachfassen) |
-| ❌ Abgelehnt (rot, mit Name und Grund) | Ablehnung über den Link |
-| ⚠️ Versand fehlgeschlagen (gelb) | Senden scheiterte; kommt nach Behebung mit neuem Link erneut |
-| ↩️ Nicht mehr nötig | Kunde hat geantwortet, bevor freigegeben wurde (EPA-03) |
-| ⏰ Dieser Link gilt nicht mehr | Neuer Link nach Ablauf oder Eskalation; die neue Karte steht weiter unten |
+| ✅ Rückfrage verschickt / bearbeitet und verschickt (mit Name und Uhrzeit) | Karte verschwindet aus „2 Rückfragen“, Meldung kommt in „4 Systemmeldungen“ (Postfach-Aktion `teams_kanal_loeschen`, Anlass `rueckfrage_verschickt`) |
+| ✅ Direkt in Outlook verschickt | Karte verschwindet aus „2 Rückfragen“, die Meldung von SW Nachfassen kommt in „4 Systemmeldungen“ (Anlass `manuell_gesendet`) |
+| ❌ Abgelehnt (rot, mit Name und Grund) | Karte wird an Ort und Stelle ersetzt (`teams_kanal_aendern`) |
+| ⚠️ Versand fehlgeschlagen (gelb) | Karte wird ersetzt; kommt nach Behebung mit neuem Link erneut |
+| ↩️ Nicht mehr nötig | Karte wird ersetzt: Kunde hat geantwortet, bevor freigegeben wurde (EPA-03) |
+| ⏰ Dieser Link gilt nicht mehr | Karte wird ersetzt: neuer Link nach Ablauf oder Eskalation, die neue Karte steht weiter unten |
 
-Die Teams-Nachricht wird an der Freigabe gespeichert (`epa_freigaben.teams_nachricht`). Gilt nur für Karten im Kanal, nicht für 1:1-Chats. Schlägt das Ändern fehl, bleibt die alte Karte stehen; an Freigabe und Versand ändert das nichts.
+Ohne Kanal „Systemmeldungen“ in der Config wird auch bei „verschickt“ die Karte nur ersetzt. Die Teams-Nachricht wird an der Freigabe gespeichert (`epa_freigaben.teams_nachricht`). Gilt nur für Karten im Kanal, nicht für 1:1-Chats. Schlägt das Ändern fehl, bleibt die alte Karte stehen; an Freigabe und Versand ändert das nichts.
 
 ## Neue Mail (EPA-01)
 

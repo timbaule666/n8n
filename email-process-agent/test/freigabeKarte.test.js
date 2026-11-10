@@ -20,19 +20,22 @@ test('teamsNachrichtLesen: JSON-Text, Objekt, ungültig', () => {
 
 test('karteZustand: freigegeben, bearbeitet, manuell gesendet', () => {
 	const a = f.karteZustand({ ...FG, status: 'gesendet' }, { jetzt: JETZT });
-	assert.equal(a.titel, '✅ Freigegeben und gesendet');
+	assert.equal(a.titel, '✅ Rückfrage verschickt');
+	assert.equal(a.verschieben, true);
 	assert.match(karteText(a), /Von disponent@firma\.de · 10\.11\.2026, 18:32/);
 	assert.equal(a.karte.body[0].style, 'good');
 	assert.equal(a.karte.actions, undefined, 'keine Buttons mehr');
-	assert.equal(f.karteZustand({ ...FG, status: 'gesendet', bearbeitet: true }).titel, '✅ Bearbeitet und gesendet');
+	assert.equal(f.karteZustand({ ...FG, status: 'gesendet', bearbeitet: true }).titel, '✅ Rückfrage bearbeitet und verschickt');
+	assert.equal(f.karteZustand({ ...FG, art: 'erinnerung', status: 'gesendet' }).titel, '✅ Erinnerung verschickt');
 	const m = f.karteZustand({ ...FG, status: 'gesendet', entscheidung: 'manuell_gesendet', entscheider: 'Outlook (direkt gesendet)' });
-	assert.equal(m.titel, '✅ Direkt in Outlook gesendet');
+	assert.equal(m.titel, '✅ Rückfrage direkt in Outlook verschickt');
 	assert.doesNotMatch(karteText(m), /Von Outlook/);
 });
 
 test('karteZustand: abgelehnt mit Grund, fehler, ersetzt, erneuert, unzustellbar', () => {
 	const ab = f.karteZustand({ ...FG, status: 'abgelehnt', grund: 'Kunde ruft selbst an' }, { jetzt: JETZT });
 	assert.equal(ab.titel, '❌ Abgelehnt');
+	assert.equal(ab.verschieben, false);
 	assert.match(karteText(ab), /Grund: Kunde ruft selbst an/);
 	assert.equal(f.karteZustand({ ...FG, status: 'fehler' }).karte.body[0].style, 'warning');
 	assert.equal(f.karteZustand({ ...FG, status: 'ersetzt' }).titel, '↩️ Nicht mehr nötig');

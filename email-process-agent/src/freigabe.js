@@ -217,7 +217,8 @@ function karteZustand(fg, { zustand, zeitzone, jetzt } = {}) {
 	let titel; let stil; let zeilen = [];
 	if (z === 'gesendet') {
 		const manuell = f.entscheidung === 'manuell_gesendet';
-		titel = manuell ? '✅ Direkt in Outlook gesendet' : f.bearbeitet ? '✅ Bearbeitet und gesendet' : '✅ Freigegeben und gesendet';
+		const was0 = f.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';
+		titel = manuell ? '✅ ' + was0 + ' direkt in Outlook verschickt' : f.bearbeitet ? '✅ ' + was0 + ' bearbeitet und verschickt' : '✅ ' + was0 + ' verschickt';
 		stil = 'good';
 		zeilen = [(manuell || !wer ? '' : 'Von ' + wer + ' · ') + zeitText(f.gesendet_am || jetzt, zeitzone)];
 	} else if (z === 'abgelehnt') {
@@ -252,7 +253,8 @@ function karteZustand(fg, { zustand, zeitzone, jetzt } = {}) {
 	};
 	const marker = Buffer.from(JSON.stringify(karte), 'utf8').toString('base64');
 	const html = `<b>${esc(titel)}</b><br>Vorgang ${esc(f.vorgangs_id || '')}<br>${zeilen.filter(Boolean).map(esc).join('<br>')}<!--EPA_KARTE:${marker}-->`;
-	return { titel, karte, html };
+	// Verschickt: Die Karte verschwindet aus "Rückfragen", die Meldung kommt in "Systemmeldungen" (Anlass rueckfrage_verschickt).
+	return { titel, karte, html, verschieben: z === 'gesendet' };
 }
 
 module.exports = {

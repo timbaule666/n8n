@@ -49,6 +49,8 @@ test('Zuordnung: vollständig, Rückfrage, ansehen, System, Log', () => {
 	assert.equal(k.kanalArt('max_runden'), 'ansehen');
 	assert.equal(k.kanalArt('zustelltest_fehlgeschlagen'), 'system');
 	assert.equal(k.kanalArt('freigabe_nicht_zugestellt'), 'system');
+	assert.equal(k.kanalArt('rueckfrage_verschickt'), 'system');
+	assert.equal(k.kanalArt('manuell_gesendet'), 'system');
 	assert.equal(k.kanalArt('log_karte'), 'logs');
 	assert.equal(k.kanalArt('gibt_es_nicht'), 'system');
 	assert.equal(k.kanalArt(''), 'system');

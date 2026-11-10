@@ -4,9 +4,9 @@
 
 const KANAELE = Object.freeze([
 	{ art: 'anfragen', name: '1 Vollständige Anfragen', text: 'Anfragen, Bestellungen und Termine mit allen Pflichtangaben – bereit zur Bearbeitung' },
-	{ art: 'rueckfragen', name: '2 Rückfragen', text: 'Rückfragen an Kunden freigeben, bearbeiten oder ablehnen; Antworten und Kunden, die nicht reagieren' },
+	{ art: 'rueckfragen', name: '2 Rückfragen', text: 'Offene Rückfragen an Kunden freigeben, bearbeiten oder ablehnen; Antworten und Kunden, die nicht reagieren' },
 	{ art: 'ansehen', name: '3 Bitte ansehen', text: 'Keine normale Anfrage, aber ein Mitarbeiter muss entscheiden: Stornierung, Reklamation, Rückruf, Manipulationsverdacht, Unklares' },
-	{ art: 'system', name: '4 Systemmeldungen', text: 'Technik und Betrieb: Zustellfehler, Zustelltest, Regel-Abgleich, Tagesübersicht' },
+	{ art: 'system', name: '4 Systemmeldungen', text: 'Technik und Betrieb: verschickte Rückfragen, Zustellfehler, Zustelltest, Regel-Abgleich, Tagesübersicht' },
 	{ art: 'logs', name: '5 Logs', text: 'Protokoll: eine Abschlusskarte pro Vorgang' },
 ]);
 const ARTEN = KANAELE.map((k) => k.art);
@@ -25,7 +25,6 @@ const ZUORDNUNG = Object.freeze({
 	antwort_luecken: 'rueckfragen',
 	antwort_keine_daten: 'rueckfragen',
 	keine_reaktion: 'rueckfragen',
-	manuell_gesendet: 'rueckfragen',
 	// Ein Mensch muss entscheiden
 	antwort_gemeldet: 'ansehen',
 	antwort_storno: 'ansehen',
@@ -43,6 +42,9 @@ const ZUORDNUNG = Object.freeze({
 	zustelltest_fehlgeschlagen: 'system',
 	regeln_google_sheet: 'system',
 	tagesuebersicht: 'system',
+	// Erledigte Aktionen: Rückfrage an den Kunden verschickt (Karte verschwindet dafür aus "Rückfragen")
+	rueckfrage_verschickt: 'system',
+	manuell_gesendet: 'system',
 	kalender_kalender_fehler: 'system',
 	// Protokoll
 	log_karte: 'logs',
