@@ -931,3 +931,10 @@ Kunde epa-m365, Klassifizierung Prompt v4, 5 Mails im 2-Minuten-Takt (`config/te
 Korrektur: Extraktionshinweis Lieferdatum ergänzt („Nicht der Liefer- oder Wunschtermin einer neuen Bestellung in derselben Mail“), in Repo und Cloud.
 
 Offen (Vorschlag): Mischmails mit zwei Anliegen (Reklamation + Bestellung) – zweites Anliegen als Hinweis „enthält zusätzlich eine Bestellung“ melden.
+
+## Teams-Kanal „3 Warten auf Kunde“ – Live-Test (10.11.2026)
+
+| Vorgang | Ablauf | Ergebnis |
+|---|---|---|
+| V-2026-0076 Dortmund – Unna | freigegeben → Karte nach „Warten“; Antwort „Telefon: 12“ (ungültig) | ✅ Warten-Karte entfernt, neue Rückfrage (Runde 2) als Freigabe-Karte in „2 Rückfragen“ |
+| V-2026-0077 Bielefeld – Gütersloh | freigegeben → vollständige Karte in „Warten“; Antwort mit Telefonnummer | ✅ Warten-Karte entfernt, „Bereit zur Bearbeitung“, Meldung in „1 Vollständige Anfragen“ |
