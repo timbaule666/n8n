@@ -141,7 +141,7 @@ function feldPruefen(feld, roh, { heute } = {}) {
 		}
 		case 'plz': {
 			if (!(feld.validierungsregel && feld.validierungsregel.regex)) return plzLandPruefen(roh, regel.laender);
-			const s = String(roh).trim().toUpperCase().replace(/^(D|DE)[-\s]?/, '').replace(/\s+/g, '');
+			const s = String(roh).trim().toUpperCase().replace(/^(DE|D)[-\s]?/, '').replace(/\s+/g, '');
 			if (!new RegExp(regel.regex).test(s)) return fehler('keine gültige Postleitzahl');
 			return { ok: true, wert: s };
 		}
@@ -170,7 +170,8 @@ function feldPruefen(feld, roh, { heute } = {}) {
 		}
 		case 'telefon': {
 			const s = String(roh).trim();
-			if (!/^[+\d][\d\s()/.\-–]*$/.test(s)) return fehler('keine gültige Telefonnummer');
+			// Erlaubt auch Vorwahl in Klammern am Anfang: "(0231) 5557731"
+			if (!/^[+\d(][\d\s()/.\-–]*$/.test(s)) return fehler('keine gültige Telefonnummer');
 			// "+49 (0) 381 …": die (0) ist die nationale Vorwahl-Null und gehört nicht in die internationale Nummer
 			const ziffern = s.replace(/^(\+\d{1,3})[\s/.\-–]*\(0\)/, '$1').replace(/\D/g, '');
 			if (ziffern.length < regel.min_ziffern || ziffern.length > regel.max_ziffern) return fehler('keine gültige Telefonnummer (Anzahl Ziffern)');
