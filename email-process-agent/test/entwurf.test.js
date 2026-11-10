@@ -164,3 +164,10 @@ test('Widerspruch: Bitte um Bestätigung mit beiden Werten statt Textbaustein', 
 	// ohne zwei verschiedene Werte: normaler Textbaustein
 	assert.equal(e.bausteine([{ feldname: 'Gewicht_kg', widerspruch: { werte: ['600', '600'] } }], felder, null, 'de')[0].text, 'Bitte nennen Sie das Gewicht.');
 });
+
+test('Reklamation: Hülle mit Zusage von Ersatz oder Gutschrift wird abgelehnt', () => {
+	for (const satz of ['Wir senden Ihnen selbstverständlich eine Ersatzlieferung.', 'Sie erhalten eine Gutschrift.', 'We will issue a refund.']) {
+		const p = e.huellePruefen({ anrede: 'Guten Tag,', einleitung: satz, schluss: 'Vielen Dank.' }, { anrede_stil: 'Sie', sprache: 'de' });
+		assert.ok(Array.isArray(p) && p.some((f) => /verbotenes Wort/.test(f)), satz);
+	}
+});

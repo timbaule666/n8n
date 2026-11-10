@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fügt der Beispiel-Config die Vorgangsarten Bestellung und Terminanfrage hinzu (idempotent).
+"""Fügt der Beispiel-Config die Vorgangsarten Bestellung, Terminanfrage und Reklamation hinzu (idempotent).
 Aufruf: python3 tools/vorgangsarten-beispiel.py"""
 import json, os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -8,6 +8,7 @@ VORGANGSARTEN = {
     "transport": {"name": "Angebotsanfrage", "beschreibung": "Kunde möchte einen Preis oder ein Angebot für einen Transport (Abholung, Ziel, Ware, Termin)."},
     "bestellung": {"name": "Bestellung", "beschreibung": "Kunde bestellt oder beauftragt verbindlich Ware oder eine Leistung, z. B. mit Menge, Liefertermin, Lieferadresse oder Bestellnummer."},
     "termin": {"name": "Terminanfrage", "beschreibung": "Kunde möchte einen Termin vereinbaren, verschieben oder anfragen, z. B. Besichtigung, Beratung, Anlieferung oder Abholung zu einer bestimmten Zeit."},
+    "reklamation": {"name": "Reklamation", "beschreibung": "Kunde bemängelt eine bereits erhaltene Lieferung oder Leistung: Ware beschädigt, defekt, falsch, unvollständig oder verspätet. Keine Stornierung und keine neue Bestellung."},
 }
 
 def feld(typ, name, anzeige, ftyp, pflicht, regel, baustein, hinweis, nr, gruppe="", kurz=""):
@@ -48,6 +49,19 @@ FELDER = [
     feld("termin", "Terminort", "Ort des Termins", "text", False, {"min_laenge": 2, "max_laenge": 120},
          "Bitte nennen Sie uns den Ort des Termins.", "Ort oder Adresse des Termins, nur wenn ausdrücklich genannt", 40, "Termin", "Ort"),
     *KONTAKT("termin"),
+    feld("reklamation", "Reklamationsgrund", "Was ist das Problem?", "text", True, {"min_laenge": 3, "max_laenge": 300},
+         "Bitte beschreiben Sie kurz, was genau nicht in Ordnung ist (z. B. beschädigt, falsche Ware, fehlende Menge, verspätet).",
+         "Kurze sachliche Beschreibung des Problems in den Worten des Kunden (beschädigt, defekt, falsch, fehlt, verspätet …), ohne Forderungen", 10, "Reklamation", "Problem"),
+    feld("reklamation", "Betroffene_Ware", "Betroffene Ware / Leistung", "text", True, {"min_laenge": 2, "max_laenge": 200},
+         "Bitte nennen Sie uns die betroffene Ware oder Leistung und die Menge.",
+         "Welche Ware oder Leistung betroffen ist, mit Menge, wie geschrieben (z. B. 3 Kartons Etiketten)", 20, "Reklamation", "Ware / Menge"),
+    feld("reklamation", "Lieferdatum", "Datum der Lieferung / Leistung", "datum", True, {"min_tage_ab_heute": -365, "max_tage_ab_heute": 0},
+         "Bitte teilen Sie uns mit, wann die Lieferung bzw. Leistung erfolgt ist.",
+         "Datum der bemängelten Lieferung oder Leistung als JJJJ-MM-TT, nur wenn ein konkretes Datum genannt ist; fehlt das Jahr, das zurückliegende Datum", 30, "Reklamation", "Lieferdatum"),
+    feld("reklamation", "Referenznummer", "Lieferschein- / Bestellnummer", "text", False, {"min_laenge": 1, "max_laenge": 60},
+         "Bitte nennen Sie uns, falls vorhanden, die Lieferschein-, Bestell- oder Auftragsnummer.",
+         "Lieferschein-, Bestell-, Auftrags- oder Rechnungsnummer, nur wenn ausdrücklich genannt", 40, "Reklamation", "Nummer"),
+    *KONTAKT("reklamation"),
 ]
 
 EN = {
@@ -61,6 +75,10 @@ EN = {
     "Wunschtermin": "Please let us know your preferred date.",
     "Uhrzeit": "Please let us know a suitable time.",
     "Terminort": "Please let us know where the appointment should take place.",
+    "Reklamationsgrund": "Please briefly describe what exactly is wrong (e.g. damaged, wrong goods, missing quantity, late).",
+    "Betroffene_Ware": "Please let us know which goods or services are affected and the quantity.",
+    "Lieferdatum": "Please let us know when the delivery or service took place.",
+    "Referenznummer": "Please let us know the delivery note, order or job number, if available.",
 }
 
 def main():
@@ -68,7 +86,7 @@ def main():
     d = json.load(open(pfad, encoding="utf-8"))
     a = d["epa_config_allgemein"][0]
     a["vorgangsarten"] = json.dumps(VORGANGSARTEN, ensure_ascii=False)
-    pv = json.loads(a["prompt_versionen"]); pv["klassifizierung"] = "v3"; a["prompt_versionen"] = json.dumps(pv)
+    pv = json.loads(a["prompt_versionen"]); pv["klassifizierung"] = "v4"; a["prompt_versionen"] = json.dumps(pv)
     ue = json.loads(a["uebersetzungen"]) if a.get("uebersetzungen") else {}
     for sp in ue.values(): sp["textbausteine"].update(EN)
     a["uebersetzungen"] = json.dumps(ue, ensure_ascii=False)

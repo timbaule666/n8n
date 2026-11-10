@@ -10,6 +10,9 @@ const MAX = Object.freeze({ anrede: 80, einleitung: 400, schluss: 300, gesamt: 6
 const VERBOTEN = Object.freeze([
 	'garantier', 'zusag', 'zusich', 'verbindlich', 'kostenlos', 'gratis', 'preis', 'rabatt', 'euro', 'versprech',
 	'spätestens', 'innerhalb von', 'bis zum', 'sofort', 'umgehend', 'bestätigen wir', 'guarantee', 'free of charge', 'price', 'discount',
+	// Reklamationen: keine Zusage von Ersatz, Gutschrift oder Entschädigung (entscheidet immer ein Mensch)
+	'gutschrift', 'erstatt', 'ersatzliefer', 'neulieferung', 'entschädig', 'kulanz', 'schadensersatz', 'schadenersatz',
+	'refund', 'credit note', 'compensat', 'replacement', 'reimburs',
 ]);
 
 function normalisiereLeerraum(s) {

@@ -187,18 +187,19 @@ test('uebersetzungen: optional, vollständig je Sprache', () => {
 	assert.match(f([1]), /muss ein Objekt/);
 });
 
-test('Vorgangsarten: Beispiel mit Angebotsanfrage, Bestellung und Terminanfrage', () => {
+test('Vorgangsarten: Beispiel mit Angebotsanfrage, Bestellung, Terminanfrage und Reklamation', () => {
 	const b = JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'config', 'datatables', 'beispiel-transport.json'), 'utf8'));
 	const r = validiereConfig({ ...b.epa_config_allgemein[0], postfach: 'a@b.de', freigeber: '["c@b.de"]' }, b.epa_config_pflichtfelder);
 	assert.deepEqual(r.fehler, []);
-	assert.deepEqual(Object.keys(r.config.vorgangstypen).sort(), ['bestellung', 'termin', 'transport']);
+	assert.deepEqual(Object.keys(r.config.vorgangstypen).sort(), ['bestellung', 'reklamation', 'termin', 'transport']);
+	assert.equal(r.config.vorgangsarten.reklamation.name, 'Reklamation');
 	assert.equal(r.config.vorgangsarten.bestellung.name, 'Bestellung');
 	assert.match(r.config.vorgangsarten.termin.beschreibung, /Termin/);
 	// ohne Angabe: Schlüssel als Name; unbekannte Vorgangsart und zu lange Texte werden gemeldet
 	const ohne = validiereConfig({ ...b.epa_config_allgemein[0], postfach: 'a@b.de', freigeber: '["c@b.de"]', vorgangsarten: '' }, b.epa_config_pflichtfelder);
 	assert.equal(ohne.config.vorgangsarten.termin.name, 'Termin');
-	const falsch = validiereConfig({ ...b.epa_config_allgemein[0], postfach: 'a@b.de', freigeber: '["c@b.de"]', vorgangsarten: JSON.stringify({ reklamation: { name: 'Reklamation' }, termin: { beschreibung: 'x'.repeat(301) } }) }, b.epa_config_pflichtfelder);
-	assert.match(falsch.fehler.join('\n'), /vorgangsarten\.reklamation: Vorgangsart hat keine Pflichtfelder/);
+	const falsch = validiereConfig({ ...b.epa_config_allgemein[0], postfach: 'a@b.de', freigeber: '["c@b.de"]', vorgangsarten: JSON.stringify({ gutschrift: { name: 'Gutschrift' }, termin: { beschreibung: 'x'.repeat(301) } }) }, b.epa_config_pflichtfelder);
+	assert.match(falsch.fehler.join('\n'), /vorgangsarten\.gutschrift: Vorgangsart hat keine Pflichtfelder/);
 	assert.match(falsch.fehler.join('\n'), /vorgangsarten\.termin\.beschreibung: zu lang/);
 });
 
@@ -215,7 +216,7 @@ test('kalender: optional, Felder müssen zur Vorgangsart passen', () => {
 	assert.match(falsch.fehler.join('\n'), /Typ "datum"/);
 	assert.match(falsch.fehler.join('\n'), /ort_feld/);
 	assert.match(falsch.fehler.join('\n'), /dauer_minuten/);
-	const typ = validiereConfig({ ...basis, kalender: JSON.stringify({ aktiv: true, vorgangstyp: 'reklamation', datum_feld: 'x' }) }, b.epa_config_pflichtfelder);
+	const typ = validiereConfig({ ...basis, kalender: JSON.stringify({ aktiv: true, vorgangstyp: 'gutschrift', datum_feld: 'x' }) }, b.epa_config_pflichtfelder);
 	assert.match(typ.fehler.join('\n'), /keine Pflichtfelder/);
 	assert.equal(validiereConfig({ ...basis, kalender: JSON.stringify({ aktiv: false }) }, b.epa_config_pflichtfelder).config.kalender, null);
 });
