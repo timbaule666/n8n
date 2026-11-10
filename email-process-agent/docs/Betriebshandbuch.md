@@ -72,6 +72,7 @@ Stand 2026-10-14 (M6). Für die Person, die das System betreut: Was läuft wann,
 - **Löschjob testen:** EPA-08 manuell mit `probelauf = true` aufrufen. Er zeigt nur an, was gelöscht würde.
 
 ## 5a. Übersichtsseite und Tagesübersicht
+- **Stand 10.11.2026: Übersichtsseite abgeschaltet.** EPA-12 ist nicht veröffentlicht, die Tagesübersicht in Teams kommt ohne Link (`SEITE_AKTIV = false` in `src/uebersicht.js`). Einschalten: Wert auf `true`, bauen, EPA-12 und EPA-13 deployen, EPA-12 veröffentlichen.
 - **Was der Kunde sieht:** Über den Link in der täglichen Zusammenfassung („📋 Tagesübersicht“) öffnet sich eine Seite mit den offenen Vorgängen **nur dieses Kunden**: Klärung nötig, Wartet auf Freigabe, Bereit zur Bearbeitung, Wartet auf Kunde, Wird gerade verarbeitet. Abgeschlossene und ignorierte Vorgänge erscheinen nicht. Die Seite zeigt nur an, Aktionen gibt es dort noch nicht.
 - **Link:** Jede Tagesübersicht bringt einen neuen Link mit, gültig 30 Tage. Gespeichert wird nur der Hash (`epa_uebersicht_zugaenge`). Den Kunden bestimmt allein der Link, nicht die Adresse; ein geänderter Link führt zu „Link ungültig“.
 - **Sofort einen Link:** EPA-13 manuell starten (sendet an alle aktiven Kunden, auch außerhalb der Geschäftszeit).

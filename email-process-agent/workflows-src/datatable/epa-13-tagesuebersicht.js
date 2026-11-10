@@ -13,7 +13,7 @@ module.exports = function () {
 
 	wf.notiz('Notiz Zweck', [-120, -520], [
 		'## EPA-13 Tagesübersicht',
-		'**Zweck:** Jeden Morgen je aktivem Kunden eine Zusammenfassung in seinen Kanal (Teams bzw. Testkanal): Anzahl Vorgänge je Gruppe, die ältesten Fälle "Klärung nötig" und "Wartet auf Freigabe" und ein neuer geheimer Link zur Übersichtsseite (EPA-12).',
+		'**Zweck:** Jeden Morgen je aktivem Kunden eine Zusammenfassung in seinen Kanal (Teams bzw. Testkanal): Anzahl Vorgänge je Gruppe, die ältesten Fälle "Klärung nötig" und "Wartet auf Freigabe" und ein neuer geheimer Link zur Übersichtsseite (EPA-12), solange sie eingeschaltet ist (src/uebersicht.js SEITE_AKTIV; zurzeit aus: nur die Zusammenfassung in Teams).',
 		`**Link:** je Lauf und Kunde ein neuer Schlüssel, gespeichert nur als SHA-256-Hash in epa_uebersicht_zugaenge, gültig ${LINK_TAGE} Tage. Abgelaufene Zugänge werden am Ende gelöscht.`,
 		'**Zeitplan:** täglich 08:05 (Europe/Berlin), gesendet wird nur an Geschäftstagen des Kunden innerhalb seiner Geschäftszeit. Manuell gestartet: immer (z. B. um sofort einen Link zu bekommen).',
 		'**Trigger:** Zeitplan oder manuell. Keine Credentials nötig (Versand über EPA SW Benachrichtigen).',
@@ -55,9 +55,10 @@ for (const a of zeilen('Configs lesen')) {
 		felder: pflicht.filter((p) => p.kunde_id === c.kunde_id),
 		jetzt: l.jetzt,
 	});
-	const t = uebersicht.tokenErzeugen(crypto);
-	const zugang = uebersicht.zugangZeile({ kunde_id: c.kunde_id, hash: t.hash, jetzt: l.jetzt });
-	const url = uebersicht.link(freigabe.basisUrl($execution.resumeUrl, c.freigabe_basis_url), t.token);
+	// Übersichtsseite aus (uebersicht.SEITE_AKTIV): kein Link, kein Zugang – nur die Zusammenfassung in Teams.
+	const t = uebersicht.SEITE_AKTIV ? uebersicht.tokenErzeugen(crypto) : null;
+	const zugang = t ? uebersicht.zugangZeile({ kunde_id: c.kunde_id, hash: t.hash, jetzt: l.jetzt }) : null;
+	const url = t ? uebersicht.link(freigabe.basisUrl($execution.resumeUrl, c.freigabe_basis_url), t.token) : null;
 	const b = c.benachrichtigung || {};
 	aus.push({ json: {
 		kunde_id: c.kunde_id,
@@ -74,14 +75,21 @@ return aus.length ? aus : [{ json: { leer: true } }];
 		options: { looseTypeValidation: true },
 	});
 	const zugangDaten = wf.code('Zugänge vorbereiten', [1760, 100], [], `
-return $input.all().map((i) => ({ json: i.json.zugang }));
+// Ohne Übersichtsseite gibt es keine Zugänge: dann wird "Zugänge speichern" übersprungen.
+const z = $input.all().map((i) => i.json.zugang).filter(Boolean);
+return z.length ? z.map((j) => ({ json: j })) : [{ json: { kein_zugang: true } }];
 `);
 	// Erst speichern, dann senden: Ein Link in Teams funktioniert immer.
+	const zugangFrage = wf.node('Zugänge anlegen?', 'n8n-nodes-base.if', [1870, 100], {
+		conditions: bedingungen([bedingung('={{ $json.kein_zugang }}', { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: { looseTypeValidation: true },
+	});
 	const zugangSpeichern = wf.tabelle('Zugänge speichern', [1980, 100], 'insert', 'epa_uebersicht_zugaenge');
 	const meldungen = wf.code('Meldungen', [2200, 100], [], `
-const gespeichert = $input.all().filter((i) => i.json && i.json.id !== undefined).length;
 const alle = $('Zusammenfassungen bauen').all().map((i) => i.json);
-if (gespeichert !== alle.length) throw new Error('Zugänge nicht gespeichert (' + gespeichert + ' von ' + alle.length + ')');
+const soll = alle.filter((j) => j.zugang).length;
+const gespeichert = $('Zugänge speichern').isExecuted ? $('Zugänge speichern').all().filter((i) => i.json && i.json.id !== undefined).length : 0;
+if (gespeichert !== soll) throw new Error('Zugänge nicht gespeichert (' + gespeichert + ' von ' + soll + ')');
 return alle.map((j) => ({ json: j }));
 `);
 	const senden = wf.aufruf('Zusammenfassung senden', [2420, 100], 'EPA SW Benachrichtigen', [
@@ -109,6 +117,9 @@ return [{ json: { ergebnis: 'lauf_beendet', kunden: gebaut.map((j) => ({ kunde_i
 	wf.kette(vorbereiten, configs, felder, vorgaenge, freigaben, bauen, vorhanden);
 	wf.verbinde(vorhanden, aufraeumen, 0);
 	wf.verbinde(vorhanden, zugangDaten, 1);
-	wf.kette(zugangDaten, zugangSpeichern, meldungen, senden, aufraeumen, ergebnis);
+	wf.kette(zugangDaten, zugangFrage);
+	wf.verbinde(zugangFrage, meldungen, 0);
+	wf.verbinde(zugangFrage, zugangSpeichern, 1);
+	wf.kette(zugangSpeichern, meldungen, senden, aufraeumen, ergebnis);
 	return wf;
 };

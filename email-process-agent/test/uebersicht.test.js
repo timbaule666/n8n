@@ -75,3 +75,11 @@ test('Seite und Zusammenfassung: escaped, Link, Zahlen; nur https-Mail-Links', (
 	assert.match(leer, /keine offenen Vorgänge/);
 	assert.match(leer, /Klärung nötig: <b>0<\/b>/);
 });
+
+test('Tagesübersicht ohne Übersichtsseite: kein Link in der Teams-Meldung', () => {
+	const g = u.gruppieren({ kunde_id: 'k1', vorgaenge: [], jetzt: '2026-11-10T08:05:00.000Z' });
+	const t = u.zusammenfassung({ gruppen: g, link: null, ablauf: null, zone: 'Europe/Berlin' });
+	assert.match(t, /Tagesübersicht/);
+	assert.doesNotMatch(t, /href|Alle Vorgänge ansehen|Link gültig/);
+	assert.equal(u.SEITE_AKTIV, false);
+});

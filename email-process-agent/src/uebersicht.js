@@ -180,6 +180,12 @@ function seiteMeldung(titel, text) {
 }
 
 /** Tägliche Zusammenfassung für Teams (HTML wie die übrigen Meldungen). */
+/**
+ * Übersichtsseite (EPA-12) ein- oder ausgeschaltet. Aus: Die Tagesübersicht in Teams enthält keinen Link,
+ * es werden keine Zugänge angelegt, EPA-12 ist in n8n nicht veröffentlicht (keine Ausführungen).
+ */
+const SEITE_AKTIV = false;
+
 function zusammenfassung({ gruppen, link: url, ablauf, zone }) {
 	const z = zaehlen(gruppen);
 	const offen = (gruppen || []).reduce((n, g) => n + g.eintraege.length, 0);
@@ -198,11 +204,11 @@ function zusammenfassung({ gruppen, link: url, ablauf, zone }) {
 		}
 		if (g.eintraege.length > MAX_LISTE_TEAMS) zeilen.push(`… und ${g.eintraege.length - MAX_LISTE_TEAMS} weitere`);
 	}
-	zeilen.push('', `<a href="${esc(url)}">Alle Vorgänge ansehen</a> (Link gültig bis ${esc(zeit(ablauf, zone, true))}, bitte nicht weitergeben)`);
+	if (url) zeilen.push('', `<a href="${esc(url)}">Alle Vorgänge ansehen</a> (Link gültig bis ${esc(zeit(ablauf, zone, true))}, bitte nicht weitergeben)`);
 	return zeilen.join('<br>');
 }
 
 module.exports = {
-	BETREIBER, LINK_TAGE, PFAD, GRUPPEN, tokenErzeugen, tokenHash, istGueltigesToken, link, zugangZeile, zugangPruefen,
+	BETREIBER, LINK_TAGE, PFAD, GRUPPEN, SEITE_AKTIV, tokenErzeugen, tokenHash, istGueltigesToken, link, zugangZeile, zugangPruefen,
 	gruppieren, zaehlen, esc, seite, seiteMeldung, zusammenfassung,
 };
