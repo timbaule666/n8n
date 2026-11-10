@@ -206,11 +206,39 @@ function zeitText(iso, zeitzone) {
 }
 
 /**
+ * Warten-Karte aus der ursprünglichen Freigabe-Karte (Spalte teams_karte): alle Angaben (vorhanden, fehlt noch,
+ * Hinweise) bleiben, der Kopf zeigt "Wartet auf Antwort", der Entwurf wird durch den verschickten Text ersetzt,
+ * Link-Hinweis und Button entfallen. Gibt null zurück, wenn die Karte nicht lesbar ist.
+ */
+function karteWarten(original, f, { kopf, zeilen }) {
+	let k = original;
+	if (typeof k === 'string') { try { k = JSON.parse(k); } catch (e) { return null; } }
+	if (!k || !Array.isArray(k.body) || !k.body.length) return null;
+	const tb = (text, extra) => ({ type: 'TextBlock', text, wrap: true, ...(extra || {}) });
+	const body = [];
+	for (const b of k.body.slice(1)) {
+		if (b && b.type === 'TextBlock' && b.isSubtle && /Link|Es wird nichts ohne Klick/.test(String(b.text || ''))) continue;
+		if (b && b.type === 'TextBlock' && /Erneut zur Freigabe/.test(String(b.text || ''))) continue;
+		if (b && b.type === 'Container' && Array.isArray(b.items) && /ENTWURF DER/.test(String((b.items[0] || {}).text || ''))) {
+			body.push({ ...b, items: [tb('VERSCHICKTE ' + (f.art === 'erinnerung' ? 'ERINNERUNG' : 'RÜCKFRAGE'), { weight: 'Bolder', size: 'Small', isSubtle: true }), tb(String(f.entwurf_text || (b.items[1] || {}).text || '').slice(0, 800))] });
+			continue;
+		}
+		body.push(b);
+	}
+	const head = { type: 'ColumnSet', columns: [
+		{ type: 'Column', width: 'stretch', items: [tb(kopf, { weight: 'Bolder', size: 'Medium' })] },
+		{ type: 'Column', width: 'auto', items: [tb('WARTET', { weight: 'Bolder', size: 'Small', color: 'Accent' })] },
+	] };
+	const info = { type: 'Container', style: 'accent', spacing: 'Medium', items: zeilen.filter(Boolean).map((t) => tb(t, { spacing: 'Small' })) };
+	return { type: 'AdaptiveCard', $schema: 'http://adaptivecards.io/schemas/adaptive-card.json', version: '1.4', body: [head, ...body.slice(0, 1), info, ...body.slice(1)] };
+}
+
+/**
  * Karte, die eine Freigabe-Karte im Kanal nach der Entscheidung ersetzt (ohne Link).
  * zustand: Status der Freigabe (gesendet, abgelehnt, fehler, ersetzt, unzustellbar) oder "erneuert" (neuer Link verschickt).
  * Gibt null zurück, wenn die Karte (noch) nicht geändert werden soll (offen, in_versand, unbekannt).
  */
-function karteZustand(fg, { zustand, zeitzone, jetzt, frist } = {}) {
+function karteZustand(fg, { zustand, zeitzone, jetzt, frist, original } = {}) {
 	const f = fg || {};
 	const z = String(zustand || f.status || '');
 	const wer = String(f.entscheider || '').trim();
@@ -258,10 +286,13 @@ function karteZustand(fg, { zustand, zeitzone, jetzt, frist } = {}) {
 			...zeilen.filter(Boolean).map((t) => tb(t, { spacing: 'Small', isSubtle: true })),
 		],
 	};
-	const marker = Buffer.from(JSON.stringify(karte), 'utf8').toString('base64');
+	// Warten: möglichst die vollständige Freigabe-Karte mit allen Angaben übernehmen.
+	const voll = z === 'gesendet' && original ? karteWarten(original, f, { kopf: titel, zeilen }) : null;
+	const ziel = voll || karte;
+	const marker = Buffer.from(JSON.stringify(ziel), 'utf8').toString('base64');
 	const html = `<b>${esc(titel)}</b><br>Vorgang ${esc(f.vorgangs_id || '')}<br>${zeilen.filter(Boolean).map(esc).join('<br>')}<!--EPA_KARTE:${marker}-->`;
 	// Verschickt: Die Karte verschwindet aus "Rückfragen" und kommt in "Warten auf Kunde" (Anlass rueckfrage_verschickt).
-	return { titel, karte, html, verschieben: z === 'gesendet' };
+	return { titel, karte: ziel, html, verschieben: z === 'gesendet' };
 }
 
 /**
@@ -284,7 +315,7 @@ function kartenPlan({ fg, andere, zustand, wartenKanal, teamsNachricht, zeitzone
 		if (z === 'gesendet') return { aktion: 'nichts', grund: 'Karte steht schon in "Warten auf Kunde"' };
 		return { aktion: 'entfernen', karte_ort: tn, entfernen: [tn] };
 	}
-	const k = karteZustand(f, { zustand: z, zeitzone, jetzt, frist });
+	const k = karteZustand(f, { zustand: z, zeitzone, jetzt, frist, original: f.teams_karte });
 	if (!k) return { aktion: 'nichts', grund: 'Zustand ' + (z || '-') + ' ändert die Karte nicht' };
 	if (k.verschieben && warten) {
 		const alte = (andere || [])
@@ -299,5 +330,5 @@ function kartenPlan({ fg, andere, zustand, wartenKanal, teamsNachricht, zeitzone
 module.exports = {
 	TOKEN_MUSTER, AKTIONEN, KANAL, linkEmpfaenger, freigeberErlaubt, entscheiderBestimmen, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,
 	freigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber, ANLASS,
-	teamsNachrichtLesen, karteZustand, kartenPlan,
+	teamsNachrichtLesen, karteZustand, kartenPlan, karteWarten,
 };

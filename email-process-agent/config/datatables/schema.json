@@ -162,7 +162,8 @@
       "erneuert_am": "date",
       "eskaliert_am": "date",
       "entwurf_entfernt_am": "date",
-      "teams_nachricht": "string"
+      "teams_nachricht": "string",
+      "teams_karte": "string"
     },
     "epa_freigabe_tokens": {
       "freigabe_id": "string",

@@ -21,7 +21,7 @@ Jedes Kunden-Team hat sechs Kanäle. „EPA SW Teams einrichten“ legt sie an u
 
 | Ergebnis | Was passiert |
 |---|---|
-| Rückfrage verschickt (auch bearbeitet) | Karte verschwindet aus „2 Rückfragen“ und kommt als „⏳ Wartet auf Antwort des Kunden“ (wer, wann, was gefragt, Frist) in „3 Warten auf Kunde“ (Postfach-Aktionen `teams_kanal` und `teams_kanal_loeschen`, Anlass `rueckfrage_verschickt`). Ältere Warten-Karten desselben Vorgangs (vor einer Erinnerung) werden entfernt. |
+| Rückfrage verschickt (auch bearbeitet) | Karte verschwindet aus „2 Rückfragen“ und kommt als vollständige Karte „⏳ Wartet auf Antwort des Kunden“ in „3 Warten auf Kunde“: alle Angaben (vorhanden / fehlt noch, Hinweise), der verschickte Text, wer wann verschickt hat und bis wann die Antwort erwartet wird, ohne Button (die Freigabe-Karte wird dafür an der Freigabe gespeichert, `epa_freigaben.teams_karte`) (Postfach-Aktionen `teams_kanal` und `teams_kanal_loeschen`, Anlass `rueckfrage_verschickt`). Ältere Warten-Karten desselben Vorgangs (vor einer Erinnerung) werden entfernt. |
 | Kunde antwortet, Mail kam nicht an, Kunde reagiert nicht | Karte verschwindet aus „3 Warten auf Kunde“ (EPA-03, EPA-01, SW Nachfassen); die Meldung dazu kommt wie gewohnt in den passenden Kanal |
 | Direkt in Outlook verschickt | wie verschickt; zusätzlich Hinweis für den Betreiber in „5 Systemmeldungen“ (Anlass `manuell_gesendet`) |
 | ❌ Abgelehnt (rot, mit Name und Grund) | Karte wird an Ort und Stelle ersetzt (`teams_kanal_aendern`) |

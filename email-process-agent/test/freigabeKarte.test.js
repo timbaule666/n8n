@@ -87,3 +87,25 @@ test('kartenPlan: abgelehnt ändern, ohne Warten-Kanal ändern, beantwortet in R
 	assert.equal(f.kartenPlan({ fg: { ...FG, freigabe_id: 'F', status: 'ersetzt', teams_nachricht: JSON.stringify(TN) }, zustand: 'beantwortet', wartenKanal: W }).aktion, 'nichts');
 	assert.equal(f.kartenPlan({ fg: { ...FG, freigabe_id: 'F', status: 'gesendet' }, wartenKanal: W }).aktion, 'nichts');
 });
+
+test('Warten-Karte übernimmt die vollständige Freigabe-Karte ohne Button und Link-Hinweis', () => {
+	const original = { type: 'AdaptiveCard', version: '1.4', body: [
+		{ type: 'ColumnSet', columns: [{ type: 'Column', items: [{ type: 'TextBlock', text: 'Freigabe erforderlich' }] }] },
+		{ type: 'TextBlock', text: '**Jana Wolff** · Transport Dortmund – Unna (V-1)' },
+		{ type: 'ColumnSet', columns: [{ type: 'Column', items: [{ type: 'TextBlock', text: 'VORHANDEN' }, { type: 'TextBlock', text: '✅ Abhol-PLZ: 44135' }] }, { type: 'Column', items: [{ type: 'TextBlock', text: 'FEHLT NOCH' }, { type: 'TextBlock', text: '❌ Telefonnummer' }] }] },
+		{ type: 'Container', items: [{ type: 'TextBlock', text: 'ENTWURF DER RÜCKFRAGE' }, { type: 'TextBlock', text: 'alter Entwurf' }] },
+		{ type: 'TextBlock', isSubtle: true, text: 'Link einmal verwendbar, gültig bis 12.11.2026. Es wird nichts ohne Klick versendet.' },
+	], actions: [{ type: 'Action.OpenUrl', title: 'Entwurf prüfen und freigeben', url: 'https://x' }] };
+	const k = f.karteZustand({ ...FG, status: 'gesendet', entwurf_text: 'verschickter Text' }, { jetzt: JETZT, frist: '2026-11-12T16:00:00Z', original: JSON.stringify(original) });
+	const t = JSON.stringify(k.karte);
+	assert.match(t, /Wartet auf Antwort des Kunden/);
+	assert.match(t, /✅ Abhol-PLZ: 44135/);
+	assert.match(t, /❌ Telefonnummer/);
+	assert.match(t, /VERSCHICKTE RÜCKFRAGE/);
+	assert.match(t, /verschickter Text/);
+	assert.match(t, /Antwort erwartet bis/);
+	assert.doesNotMatch(t, /alter Entwurf|Link einmal|Freigabe erforderlich|Action\.OpenUrl/);
+	assert.equal(k.karte.actions, undefined);
+	assert.equal(f.karteWarten('kaputt{', FG, { kopf: 'x', zeilen: [] }), null);
+	assert.equal(f.kartenPlan({ fg: { ...FG, freigabe_id: 'F', status: 'gesendet', teams_nachricht: JSON.stringify(TN), teams_karte: JSON.stringify(original) }, wartenKanal: '19:w@thread.tacv2' }).html.includes('EPA_KARTE'), true);
+});

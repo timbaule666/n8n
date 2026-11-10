@@ -107,7 +107,11 @@ const r = $('Freigabe-Chat senden').isExecuted ? ($('Freigabe-Chat senden').firs
 const f = $input.first().json || {};
 const neu = e.freigeber === freigabe.KANAL && f.freigabe_id ? freigabe.teamsNachrichtLesen({ team_id: r.team_id, channel_id: r.channel_id, id: r.nachricht_id }) : null;
 const alt = f.freigabe_id ? freigabe.teamsNachrichtLesen(f.teams_nachricht) : null;
-return [{ json: { merken: Boolean(neu), alt_ersetzen: Boolean(neu && alt && alt.id !== neu.id), alt: alt ? JSON.stringify(alt) : '', teams_nachricht: neu ? JSON.stringify(neu) : '' } }];
+// Die vollständige Karte merken: daraus wird nach dem Versand die Karte in "Warten auf Kunde".
+let karte = '';
+const m = String(e.nachricht_html || '').match(/<!--EPA_KARTE:([A-Za-z0-9+\\/=]+)-->/);
+if (neu && m) { try { const t = Buffer.from(m[1], 'base64').toString('utf8'); JSON.parse(t); karte = t; } catch (err) { karte = ''; } }
+return [{ json: { merken: Boolean(neu), alt_ersetzen: Boolean(neu && alt && alt.id !== neu.id), alt: alt ? JSON.stringify(alt) : '', teams_nachricht: neu ? JSON.stringify(neu) : '', teams_karte: karte } }];
 `, kOpt);
 	const kMerken = wf.node('Karte merken?', 'n8n-nodes-base.if', [2200, 120], {
 		conditions: bedingungen([bedingung('={{ $json.merken }}', { type: 'boolean', operation: 'true', singleValue: true })]),
@@ -123,7 +127,8 @@ return [{ json: { merken: Boolean(neu), alt_ersetzen: Boolean(neu && alt && alt.
 		['teams_nachricht', 'string', "={{ $('Karte merken (Plan)').first().json.alt }}"],
 	], kOpt);
 	const kDaten = wf.code('Teams-Nachricht (Daten)', [2860, 40], [], `
-return [{ json: { teams_nachricht: $('Karte merken (Plan)').first().json.teams_nachricht } }];
+const p = $('Karte merken (Plan)').first().json;
+return [{ json: { teams_nachricht: p.teams_nachricht, teams_karte: p.teams_karte } }];
 `);
 	const kSpeichern = wf.tabelle('Teams-Nachricht speichern', [3080, 40], 'update', 'epa_freigaben', { bedingungen: [['freigabe_id', 'eq', "={{ $('Eingabe prüfen').first().json.freigabe_id }}"]] }, kOpt);
 	const melden = wf.code('Ergebnis melden', [3300, 0], [], `
