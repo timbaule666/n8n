@@ -1,0 +1,26 @@
+[
+ {
+  "nr": "NA2",
+  "art": "antwort",
+  "kategorie": "Nachtest",
+  "vorgang": "V-2026-0066",
+  "text": "Guten Tag,\n\n900 kg ist richtig, die 600 kg im Text waren ein Tippfehler.\n\nGruß Peter Graf",
+  "erwartet": "Gewicht 900 übernommen (Antwort auf Bestätigung) -> bereit"
+ },
+ {
+  "nr": "NA3",
+  "art": "antwort",
+  "kategorie": "Nachtest",
+  "vorgang": "V-2026-0067",
+  "text": "Hallo,\n\ndann holen Sie die Ware bitte an unserem Lager in 84028 Landshut ab.\n\nGruß Franz Huber",
+  "erwartet": "PLZ 84028 und Ort Landshut übernommen -> bereit, kein Widerspruch"
+ },
+ {
+  "nr": "NA4",
+  "art": "antwort",
+  "kategorie": "Nachtest",
+  "vorgang": "V-2026-0068",
+  "text": "Hallo,\n\nder Transport hat sich leider erledigt, bitte stornieren.\n\nDanke, Jens Albrecht",
+  "erwartet": "Stornierung -> Eskaliert / Manuell, Meldung Kanal Bitte ansehen, keine Rückfrage"
+ }
+]
