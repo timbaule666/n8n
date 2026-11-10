@@ -12,7 +12,7 @@ Jedes Kunden-Team hat sechs Kanäle. „EPA SW Teams einrichten“ legt sie an u
 | 2 Rückfragen | offene Freigabe-Karten mit Button (3, 15, 22–27), 4, 17; 16, wenn noch Angaben fehlen | Freigeber |
 | 3 Warten auf Kunde | „⏳ Wartet auf Antwort des Kunden“ je verschickter Rückfrage (verschwindet bei Antwort, Unzustellbarkeit oder Eskalation) | alle (Überblick) |
 | 4 Bitte ansehen | 5–13, 18–21, 29, 30 | Sachbearbeiter |
-| 5 Systemmeldungen | 31, 28, 32–34, Kalender-Fehler, Zustelltest | Betreiber / IT |
+| 5 Systemmeldungen | ✅ Rückfrage verschickt (Kurzmeldung), 31, 28, 32–34, Kalender-Fehler, Zustelltest | Betreiber / IT, alle (was erledigt ist) |
 | 6 Logs | Abschlusskarte je Vorgang | alle (Nachschlagen) |
 
 **Freigaben im Kanal:** Sobald „2 Rückfragen“ eingerichtet ist, gibt es pro Rückfrage einen Link als Karte im Kanal statt eines persönlichen Links im 1:1-Chat je Freigeber. Wer auf „Entwurf prüfen und freigeben“ klickt, wählt auf der Freigabe-Seite seinen Namen aus der Freigeber-Liste der Config; dieser Name steht im Protokoll. Der Link ist weiter nur einmal verwendbar, läuft ab und kann nicht doppelt senden. Kunden ohne Kanal „Rückfragen“ bekommen die Links wie bisher im 1:1-Chat.
@@ -21,7 +21,7 @@ Jedes Kunden-Team hat sechs Kanäle. „EPA SW Teams einrichten“ legt sie an u
 
 | Ergebnis | Was passiert |
 |---|---|
-| Rückfrage verschickt (auch bearbeitet) | Karte verschwindet aus „2 Rückfragen“ und kommt als vollständige Karte „⏳ Wartet auf Antwort des Kunden“ in „3 Warten auf Kunde“: alle Angaben (vorhanden / fehlt noch, Hinweise), der verschickte Text, wer wann verschickt hat und bis wann die Antwort erwartet wird, ohne Button (die Freigabe-Karte wird dafür an der Freigabe gespeichert, `epa_freigaben.teams_karte`) (Postfach-Aktionen `teams_kanal` und `teams_kanal_loeschen`, Anlass `rueckfrage_verschickt`). Ältere Warten-Karten desselben Vorgangs (vor einer Erinnerung) werden entfernt. |
+| Rückfrage verschickt (auch bearbeitet) | Karte verschwindet aus „2 Rückfragen“ und kommt als vollständige Karte „⏳ Wartet auf Antwort des Kunden“ in „3 Warten auf Kunde“: alle Angaben (vorhanden / fehlt noch, Hinweise), der verschickte Text, wer wann verschickt hat und bis wann die Antwort erwartet wird, ohne Button (die Freigabe-Karte wird dafür an der Freigabe gespeichert, `epa_freigaben.teams_karte`) (Postfach-Aktionen `teams_kanal` und `teams_kanal_loeschen`, Anlass `rueckfrage_verschickt`). Ältere Warten-Karten desselben Vorgangs (vor einer Erinnerung) und doppelte oder alte Freigabe-Karten dieses Vorgangs in „2 Rückfragen“ werden entfernt (Postfach-Aktion `teams_kanal_lesen`). Zusätzlich kommt eine Kurzmeldung **„✅ Rückfrage verschickt“** in „5 Systemmeldungen“: Absender, Betreff, Vorgang/Runde, was gefragt wurde, wer wann verschickt hat, Antwortfrist. |
 | Kunde antwortet, Mail kam nicht an, Kunde reagiert nicht | Karte verschwindet aus „3 Warten auf Kunde“ (EPA-03, EPA-01, SW Nachfassen); die Meldung dazu kommt wie gewohnt in den passenden Kanal |
 | Direkt in Outlook verschickt | wie verschickt; zusätzlich Hinweis für den Betreiber in „5 Systemmeldungen“ (Anlass `manuell_gesendet`) |
 | ❌ Abgelehnt (rot, mit Name und Grund) | Karte wird an Ort und Stelle ersetzt (`teams_kanal_aendern`) |

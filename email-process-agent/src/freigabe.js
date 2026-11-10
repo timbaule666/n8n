@@ -312,6 +312,47 @@ function karteZustand(fg, { zustand, zeitzone, jetzt, frist, original } = {}) {
 }
 
 /**
+ * Kurzmeldung für "Systemmeldungen", wenn eine Rückfrage verschickt wurde: Absender und wichtigste Daten.
+ * v = Vorgang (absender_name, absender_adresse, betreff, vorgangs_id).
+ */
+function meldungVerschickt(f, v, { zeitzone, jetzt, frist } = {}) {
+	const vg = v || {};
+	let gefragt = [];
+	try { gefragt = (typeof f.fehlende_felder === 'string' ? JSON.parse(f.fehlende_felder || '[]') : (f.fehlende_felder || [])).map((x) => x.anzeigename || x.feldname).filter(Boolean); } catch (e) { gefragt = []; }
+	const was = f.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';
+	const titel = '✅ ' + was + ' verschickt';
+	const absender = [vg.absender_name, vg.absender_adresse ? '<' + vg.absender_adresse + '>' : ''].filter(Boolean).join(' ');
+	const manuell = f.entscheidung === 'manuell_gesendet';
+	const fakten = [
+		{ title: 'Absender', value: absender || '–' },
+		{ title: 'Betreff', value: String(vg.betreff || f.betreff || '–').slice(0, 150) },
+		{ title: 'Vorgang', value: String(f.vorgangs_id || vg.vorgangs_id || '–') + (Number(f.runde) > 0 ? ' · Runde ' + Number(f.runde) : '') },
+		{ title: 'Gefragt', value: gefragt.length ? gefragt.join(', ').slice(0, 200) : '–' },
+		{ title: 'Verschickt', value: (manuell ? 'direkt in Outlook' : (f.entscheider ? 'von ' + f.entscheider : '')) + ' · ' + zeitText(f.gesendet_am || jetzt, zeitzone) },
+	];
+	if (frist) fakten.push({ title: 'Antwort bis', value: zeitText(frist, zeitzone) });
+	const karte = { type: 'AdaptiveCard', $schema: 'http://adaptivecards.io/schemas/adaptive-card.json', version: '1.4', body: [
+		{ type: 'TextBlock', text: titel, weight: 'Bolder', size: 'Medium', color: 'Good', wrap: true },
+		{ type: 'FactSet', facts: fakten, spacing: 'Small' },
+		{ type: 'TextBlock', text: 'Die Karte steht jetzt in „3 Warten auf Kunde“, bis der Kunde antwortet.', isSubtle: true, size: 'Small', wrap: true, spacing: 'Small' },
+	] };
+	const html = `<b>${esc(titel)}</b><br>${fakten.map((x) => esc(x.title) + ': ' + esc(x.value)).join('<br>')}<!--EPA_KARTE:${Buffer.from(JSON.stringify(karte), 'utf8').toString('base64')}-->`;
+	return { titel, karte, html };
+}
+
+/**
+ * Weitere Freigabe-Karten desselben Vorgangs im Kanal (Doppelte, alte Karten), die beim Verschicken mit weg sollen.
+ * nachrichten: [{ id, geloescht, text }] aus der Postfach-Aktion teams_kanal_lesen.
+ */
+function weitereKarten(nachrichten, vorgangsId, ausnahmen) {
+	const vid = String(vorgangsId || '');
+	if (!/^V-\d{4}-\d{4,}$/.test(vid)) return [];
+	const aus = new Set((ausnahmen || []).map(String));
+	return (nachrichten || []).filter((m) => m && m.id && !m.geloescht && !aus.has(String(m.id))
+		&& String(m.text || '').includes('(' + vid + ')') && /Freigabe erforderlich/.test(String(m.text || ''))).map((m) => String(m.id));
+}
+
+/**
  * Was mit der Karte einer Freigabe passiert (EPA SW Freigabe-Karte).
  * - Karte in "Rückfragen", Freigabe verschickt: verschieben (neue Karte in "Warten auf Kunde", alte entfernen,
  *   dazu ältere Warten-Karten desselben Vorgangs entfernen, z. B. nach einer Erinnerung).
@@ -346,5 +387,5 @@ function kartenPlan({ fg, andere, zustand, wartenKanal, teamsNachricht, zeitzone
 module.exports = {
 	TOKEN_MUSTER, AKTIONEN, KANAL, linkEmpfaenger, freigeberErlaubt, entscheiderBestimmen, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,
 	freigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber, ANLASS,
-	teamsNachrichtLesen, karteZustand, kartenPlan, karteWarten, karteOhneLink,
+	teamsNachrichtLesen, karteZustand, kartenPlan, karteWarten, karteOhneLink, meldungVerschickt, weitereKarten,
 };

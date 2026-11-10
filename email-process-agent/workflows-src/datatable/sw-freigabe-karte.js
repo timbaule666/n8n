@@ -9,7 +9,7 @@ module.exports = function () {
 	wf.notiz('Notiz Zweck', [-80, -460], [
 		'## EPA SW Freigabe-Karte',
 		'**Zweck:** Hält die Karten einer Freigabe in Teams aktuell, damit jeder Kanal nur zeigt, was dort hingehört.',
-		'- **Verschickt:** Karte verschwindet aus "2 Rückfragen" und kommt als "⏳ Wartet auf Antwort des Kunden" in "3 Warten auf Kunde" (Anlass rueckfrage_verschickt). Ältere Warten-Karten desselben Vorgangs (z. B. vor einer Erinnerung) werden entfernt.',
+		'- **Verschickt:** Karte verschwindet aus "2 Rückfragen" und kommt als "⏳ Wartet auf Antwort des Kunden" in "3 Warten auf Kunde" (Anlass rueckfrage_verschickt). Ältere Warten-Karten desselben Vorgangs (z. B. vor einer Erinnerung) und doppelte oder alte Freigabe-Karten dieses Vorgangs in "Rückfragen" werden entfernt. Zusätzlich kommt eine Kurzmeldung "✅ Rückfrage verschickt" (Absender, Betreff, Vorgang, gefragt, wer, wann, Frist) in "Systemmeldungen".',
 		'- **Karte steht in "Warten" und der Kunde hat geantwortet** (zustand "beantwortet"), die Mail kam nicht an oder der Kunde reagiert nicht: Karte wird entfernt; die eigentliche Meldung kommt wie gewohnt in den passenden Kanal.',
 		'- **Sonst** (abgelehnt, nicht mehr nötig, Link ersetzt, Versand fehlgeschlagen): Karte wird an Ort und Stelle ersetzt.',
 		'**Trigger:** Aufruf durch EPA-07, EPA-03, EPA-01, SW Nachfassen und SW Freigabe senden.',
@@ -42,7 +42,9 @@ const p = freigabe.kartenPlan({ fg: f, andere, zustand: e.zustand || '', wartenK
 const okId = /^[A-Za-z0-9]{8,32}$/.test(String(c.postfach_workflow_id || ''));
 if (p.aktion !== 'nichts' && !okId) return [{ json: { aktion: 'nichts', grund: 'postfach_workflow_id fehlt' } }];
 const ort = p.karte_ort || {};
-return [{ json: { ...p, postfach_workflow_id: c.postfach_workflow_id || '', postfach: c.postfach || '', freigabe_id: f.freigabe_id || '', vorgangs_id: f.vorgangs_id || '', team_id: ort.team_id || ben.team_id || '', channel_id: ort.channel_id || '', nachricht_id: ort.id || '' } }];
+// Verschickt: zusätzlich Kurzmeldung (Absender, wichtigste Daten) in "Systemmeldungen".
+const kurz = p.aktion === 'verschieben' && kan.system ? freigabe.meldungVerschickt(f, v, { zeitzone: c.zeitzone || 'Europe/Berlin', jetzt: new Date().toISOString(), frist: v.antwort_frist || null }).html : '';
+return [{ json: { ...p, kurz_html: kurz, system_channel_id: kurz ? kan.system : '', postfach_workflow_id: c.postfach_workflow_id || '', postfach: c.postfach || '', freigabe_id: f.freigabe_id || '', vorgangs_id: f.vorgangs_id || '', team_id: ort.team_id || ben.team_id || '', channel_id: ort.channel_id || '', nachricht_id: ort.id || '' } }];
 `, opt);
 	const weiche = wf.node('Aktion', 'n8n-nodes-base.switch', [1344, 0], {
 		mode: 'rules',
@@ -79,9 +81,20 @@ return [{ json: { ok: Boolean(neu), teams_nachricht: neu ? JSON.stringify(neu) :
 return [{ json: { teams_nachricht: $('Neue Karte (Daten)').first().json.teams_nachricht } }];
 `);
 	const merken = wf.tabelle('Neue Karte merken', [2464, -380], 'update', 'epa_freigaben', { bedingungen: [['freigabe_id', 'eq', `={{ ${P}.freigabe_id }}`]] }, opt);
-	const liste = wf.code('Zu entfernende Karten', [2688, -300], [], `
+	// Kanal "Rückfragen" lesen: doppelte oder alte Freigabe-Karten desselben Vorgangs mit entfernen.
+	const kanalLesen = wf.aufrufDynamisch('Rückfragen-Kanal lesen', [2576, -460], postfach, [
+		['aktion', 'string', 'teams_kanal_lesen'],
+		['postfach', 'string', `={{ ${P}.postfach }}`],
+		['vorgangs_id', 'string', `={{ ${P}.vorgangs_id }}`],
+		['team_id', 'string', `={{ ${P}.team_id }}`],
+		['channel_id', 'string', `={{ ${P}.channel_id }}`],
+	], opt);
+	const liste = wf.code('Zu entfernende Karten', [2688, -300], ['freigabe'], `
 const p = ${P};
-const l = (p.entfernen || []).filter((t) => t && t.id);
+const r = $('Rückfragen-Kanal lesen').isExecuted ? ($('Rückfragen-Kanal lesen').first().json || {}) : {};
+const bekannt = (p.entfernen || []).map((t) => t && t.id).filter(Boolean);
+const extra = freigabe.weitereKarten(r.nachrichten || [], p.vorgangs_id, bekannt).map((id) => ({ team_id: p.team_id, channel_id: p.channel_id, id }));
+const l = (p.entfernen || []).concat(extra).filter((t) => t && t.id);
 if (!l.length) return [{ json: { leer: true } }];
 return l.map((t) => ({ json: { team_id: t.team_id, channel_id: t.channel_id, nachricht_id: t.id } }));
 `);
@@ -93,8 +106,20 @@ return l.map((t) => ({ json: { team_id: t.team_id, channel_id: t.channel_id, nac
 		['team_id', 'string', '={{ $json.team_id }}'],
 		['channel_id', 'string', '={{ $json.channel_id }}'],
 	], opt, 'each');
-	const ergV = wf.code('Ergebnis (verschoben)', [3136, -300], [], `
-const n = $input.all().filter((i) => i.json && i.json.geloescht === true).length;
+	const kurzFrage = wf.node('Systemmeldung?', 'n8n-nodes-base.if', [3136, -300], {
+		conditions: bedingungen([bedingung(`={{ Boolean(${P}.kurz_html) }}`, { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: {},
+	});
+	const kurz = wf.aufrufDynamisch('Systemmeldung posten', [3360, -380], postfach, [
+		['aktion', 'string', 'teams_kanal'],
+		['postfach', 'string', `={{ ${P}.postfach }}`],
+		['vorgangs_id', 'string', `={{ ${P}.vorgangs_id }}`],
+		['html', 'string', `={{ ${P}.kurz_html }}`],
+		['team_id', 'string', `={{ ${P}.team_id }}`],
+		['channel_id', 'string', `={{ ${P}.system_channel_id }}`],
+	], opt);
+	const ergV = wf.code('Ergebnis (verschoben)', [3584, -300], [], `
+const n = $('Karten entfernen').all().filter((i) => i.json && i.json.geloescht === true).length;
 return [{ json: { geaendert: $('Neue Karte (Daten)').first().json.ok === true, aktion: 'verschieben', entfernt: n, grund: $('Neue Karte (Daten)').first().json.grund || '' } }];
 `);
 	const ergNichtGepostet = wf.code('Ergebnis (nicht gepostet)', [2240, -200], [], `
@@ -145,7 +170,10 @@ return [{ json: { geaendert: false, aktion: 'nichts', grund: $('Plan').first().j
 	wf.kette(posten, gepostet, gepostetFrage);
 	wf.verbinde(gepostetFrage, merkDaten, 0);
 	wf.verbinde(gepostetFrage, ergNichtGepostet, 1);
-	wf.kette(merkDaten, merken, liste, entfernen, ergV);
+	wf.kette(merkDaten, merken, kanalLesen, liste, entfernen, kurzFrage);
+	wf.verbinde(kurzFrage, kurz, 0);
+	wf.verbinde(kurzFrage, ergV, 1);
+	wf.kette(kurz, ergV);
 	wf.kette(wegListe, weg, ergW);
 	wf.kette(aendern, ok);
 	return wf;

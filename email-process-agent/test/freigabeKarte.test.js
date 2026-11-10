@@ -118,3 +118,27 @@ test('karteOhneLink: Button und Link fallen weg, nichts mit URL wird gespeichert
 	assert.equal(f.karteOhneLink({ body: [{ type: 'TextBlock', text: 'siehe https://a/webhook/epa-freigabe?t=geheim' }] }), null);
 	assert.equal(f.karteOhneLink(null), null);
 });
+
+test('meldungVerschickt: Absender und wichtigste Daten', () => {
+	const m = f.meldungVerschickt({ ...FG, status: 'gesendet', fehlende_felder: '[{"feldname":"Telefon","anzeigename":"Telefonnummer"}]' }, { absender_name: 'Jana Wolff', absender_adresse: 'jana@kunde.de', betreff: 'Transport Dortmund – Unna', vorgangs_id: 'V-2026-0070' }, { frist: '2026-11-18T10:00:00Z' });
+	const t = JSON.stringify(m.karte);
+	assert.equal(m.titel, '✅ Rückfrage verschickt');
+	assert.match(t, /Jana Wolff <jana@kunde\.de>/);
+	assert.match(t, /Transport Dortmund – Unna/);
+	assert.match(t, /Telefonnummer/);
+	assert.match(t, /von disponent@firma\.de · 10\.11\.2026, 18:32/);
+	assert.match(t, /18\.11\.2026, 11:00/);
+	assert.match(m.html, /EPA_KARTE:/);
+});
+
+test('weitereKarten: nur Freigabe-Karten desselben Vorgangs, nicht gelöscht, ohne Ausnahmen', () => {
+	const n = [
+		{ id: '1', text: 'Freigabe erforderlich … (V-2026-0076)' },
+		{ id: '2', text: 'Freigabe erforderlich … (V-2026-0076)', geloescht: '2026-11-10' },
+		{ id: '3', text: 'Freigabe erforderlich … (V-2026-0077)' },
+		{ id: '4', text: '❌ Abgelehnt (V-2026-0076)' },
+		{ id: '5', text: 'Freigabe erforderlich … (V-2026-0076)' },
+	];
+	assert.deepEqual(f.weitereKarten(n, 'V-2026-0076', ['5']), ['1']);
+	assert.deepEqual(f.weitereKarten(n, 'kaputt', []), []);
+});

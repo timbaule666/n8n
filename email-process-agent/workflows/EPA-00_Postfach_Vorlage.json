@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## EPA-00 Postfach (Vorlage, je Postfach eine Kopie)\n**Zweck:** Holt neue Mails aus dem Posteingang (Polling, Bauplan 5.1), lädt Header und Anhänge über Microsoft Graph, liest PDF-Text und bereitet Bilder für die KI auf und übergibt alles an \"EPA-01 Eingang verarbeiten\". Aussortierte Mails (Newsletter, Auto-Replies, Blockliste) werden danach in den Archivordner verschoben, nie gelöscht.\n**Trigger:** Microsoft Outlook Trigger (jede Minute, nur Posteingang). Jede Mail wird als eigene Ausführung dieses Workflows verarbeitet (Aufruf von sich selbst), damit ein Fehler nur diese eine Mail betrifft.\n**Einrichten:** 1) Workflow duplizieren und umbenennen (z. B. \"EPA-00 Postfach anfragen@kunde.de\"). 2) Im Node \"Postfach festlegen\" die Adresse eintragen (muss in epa_config_allgemein.postfach stehen). 3) Outlook-Credential (Microsoft Outlook OAuth2, bei Shared Mailbox mit \"Use Shared Mailbox\") im Trigger und in allen Graph-Nodes zuweisen. 4) Archivordner (Config: archivordner) als Ordner auf oberster Ebene im Postfach anlegen. 5) Veröffentlichen.\n**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread; Vorgangs-ID nur mit betreff_mit_id im Betreff, sonst im Mailtext; Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). kategorien_setzen: Outlook-Kategorie (z. B. \"AI Geprüft\") an den Kundenmails eines Vorgangs setzen oder entfernen; legt die Kategorie mit Farbe an, wenn die Berechtigung reicht. Fehler hier stören die Verarbeitung nie. zustelltest_senden (EPA-11): Kontrollmail mit Zustelltest-Betreff an das Prüfpostfach. versand_pruefen (EPA-04): Liegt der Entwurf einer offenen Freigabe schon in \"Gesendete Elemente\" (direkt in Outlook gesendet)? Teams des Kunden (eigenes Teams-Credential in dieser Kopie): teams_kanal (Meldung in den Kanal team_id/channel_id; liefert nachricht_id), teams_kanal_aendern (gesendete Kanal-Karte graph_id durch die Karte im Marker ersetzen, z. B. Freigabe abgelehnt), teams_kanal_loeschen (Kanal-Karte graph_id entfernen, z. B. Rückfrage verschickt), teams_chat (Freigabe-Link im 1:1-Chat an empfaenger); kalender_pruefen (belegte Zeiten im Kalender des Postfachs, daten = { von, bis }) und kalender_eintragen (Termin anlegen, daten = Graph-Event; nur nach Klick in EPA-15); verbindung_pruefen prüft Postfach und Teams. Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.\n**Hinweis:** Der Trigger liefert nur die Message-ID; Header (In-Reply-To, References, Auto-Submitted, Authentication-Results) holt \"Mail laden\", weil der Trigger sie nicht ausgibt.",
+        "content": "## EPA-00 Postfach (Vorlage, je Postfach eine Kopie)\n**Zweck:** Holt neue Mails aus dem Posteingang (Polling, Bauplan 5.1), lädt Header und Anhänge über Microsoft Graph, liest PDF-Text und bereitet Bilder für die KI auf und übergibt alles an \"EPA-01 Eingang verarbeiten\". Aussortierte Mails (Newsletter, Auto-Replies, Blockliste) werden danach in den Archivordner verschoben, nie gelöscht.\n**Trigger:** Microsoft Outlook Trigger (jede Minute, nur Posteingang). Jede Mail wird als eigene Ausführung dieses Workflows verarbeitet (Aufruf von sich selbst), damit ein Fehler nur diese eine Mail betrifft.\n**Einrichten:** 1) Workflow duplizieren und umbenennen (z. B. \"EPA-00 Postfach anfragen@kunde.de\"). 2) Im Node \"Postfach festlegen\" die Adresse eintragen (muss in epa_config_allgemein.postfach stehen). 3) Outlook-Credential (Microsoft Outlook OAuth2, bei Shared Mailbox mit \"Use Shared Mailbox\") im Trigger und in allen Graph-Nodes zuweisen. 4) Archivordner (Config: archivordner) als Ordner auf oberster Ebene im Postfach anlegen. 5) Veröffentlichen.\n**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread; Vorgangs-ID nur mit betreff_mit_id im Betreff, sonst im Mailtext; Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). kategorien_setzen: Outlook-Kategorie (z. B. \"AI Geprüft\") an den Kundenmails eines Vorgangs setzen oder entfernen; legt die Kategorie mit Farbe an, wenn die Berechtigung reicht. Fehler hier stören die Verarbeitung nie. zustelltest_senden (EPA-11): Kontrollmail mit Zustelltest-Betreff an das Prüfpostfach. versand_pruefen (EPA-04): Liegt der Entwurf einer offenen Freigabe schon in \"Gesendete Elemente\" (direkt in Outlook gesendet)? Teams des Kunden (eigenes Teams-Credential in dieser Kopie): teams_kanal (Meldung in den Kanal team_id/channel_id; liefert nachricht_id), teams_kanal_aendern (gesendete Kanal-Karte graph_id durch die Karte im Marker ersetzen, z. B. Freigabe abgelehnt), teams_kanal_loeschen (Kanal-Karte graph_id entfernen, z. B. Rückfrage verschickt), teams_kanal_lesen (letzte 50 Kanalnachrichten, zum Aufräumen doppelter Freigabe-Karten), teams_chat (Freigabe-Link im 1:1-Chat an empfaenger); kalender_pruefen (belegte Zeiten im Kalender des Postfachs, daten = { von, bis }) und kalender_eintragen (Termin anlegen, daten = Graph-Event; nur nach Klick in EPA-15); verbindung_pruefen prüft Postfach und Teams. Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.\n**Hinweis:** Der Trigger liefert nur die Message-ID; Header (In-Reply-To, References, Auto-Submitted, Authentication-Results) holt \"Mail laden\", weil der Trigger sie nicht ausgibt.",
         "width": 900,
         "height": 380,
         "color": 7
@@ -570,6 +570,30 @@
               },
               "renameOutput": true,
               "outputKey": "teams_kanal_loeschen"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "917b105d-86b5-4c26-ae13-63cab7524afc",
+                    "leftValue": "={{ $json.aktion || 'eingang' }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "teams_kanal_lesen"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "teams_kanal_lesen"
             }
           ]
         },
@@ -1729,6 +1753,64 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\n// Letzte Nachrichten eines Kanals lesen (für das Aufräumen doppelter oder alter Freigabe-Karten).\nconst e = $('Bei Einzelaufruf').first().json;\nconst vid = e.vorgangs_id || '-';\nif (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(e.team_id || ''))) throw new Error('[EPA:424:KONFIGURATIONSFEHLER:' + vid + '] team_id muss eine GUID sein');\nif (!/^19:[^\\s]+@thread\\.[a-z0-9]+$/i.test(String(e.channel_id || '').trim())) throw new Error('[EPA:424:KONFIGURATIONSFEHLER:' + vid + '] channel_id ungültig');\nreturn [{ json: { team_id: e.team_id.trim(), channel_id: e.channel_id.trim() } }];\n"
+      },
+      "id": "78439f0a-dd48-429b-a3b5-4027b90a56af",
+      "name": "Kanallesen prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        2000
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.microsoft.com/v1.0/teams/{{ encodeURIComponent($json.team_id) }}/channels/{{ encodeURIComponent($json.channel_id) }}/messages?$top=50",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftTeamsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "id": "d47fc4f3-3adb-4fd2-a87b-641d21a75358",
+      "name": "Kanalnachrichten lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        2000
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\n// ----- Node-Logik -----\nconst r = $input.first().json || {};\nconst ok = Number(r.statusCode) === 200 && !r.error;\n// Nur Kennung, Löschstatus und Kartentext (für die Zuordnung zum Vorgang); nichts davon wird gespeichert.\nconst nachrichten = ok ? ((r.body && r.body.value) || []).map((m) => ({ id: m.id, geloescht: m.deletedDateTime || null,\n\ttext: ((m.attachments || []).map((a) => String(a.content || '')).join(' ') + ' ' + String((m.body || {}).content || '')).slice(0, 4000) })) : [];\nreturn [{ json: { ok, nachrichten, meldung: ok ? '' : String((r.body && r.body.error && r.body.error.code) || r.error || 'HTTP ' + r.statusCode).slice(0, 200) } }];\n"
+      },
+      "id": "576e15d0-238a-41b1-ab6a-8cdd715530c1",
+      "name": "Kanalnachrichten melden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        2000
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
         "jsCode": "\n// ----- Node-Logik -----\n// Wandelt eine Teams-HTML-Meldung in eine Adaptive Card (v1.4). Wirft nie; gibt bei Problemen null zurück.\nfunction htmlZuKarte(html) {\n\ttry {\n\t\tconst dec = (s) => s.replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&#39;/g, \"'\").replace(/&amp;/g, '&');\n\t\tlet s = String(html || '').replace(/<!--[\\s\\S]*?-->/g, '').replace(/[\\r\\n]+/g, ' ');\n\t\tconst links = [];\n\t\ts = s.replace(/<a\\b[^>]*href\\s*=\\s*\"([^\"]+)\"[^>]*>([\\s\\S]*?)<\\/a>/gi, (m, href, text) => {\n\t\t\tconst t = dec(text.replace(/<[^>]+>/g, '')).trim();\n\t\t\tif (/^https?:\\/\\//i.test(href)) links.push({ url: dec(href), title: t || 'Öffnen' });\n\t\t\treturn '';\n\t\t});\n\t\ts = s.replace(/<(b|strong)>([\\s\\S]*?)<\\/\\1>/gi, '\\u0001$2\\u0002').replace(/<(i|em)>([\\s\\S]*?)<\\/\\1>/gi, '\\u0003$2\\u0004');\n\t\ts = s.replace(/<br\\s*\\/?>/gi, '\\n').replace(/<\\/(p|div|li|h[1-6])>/gi, '\\n').replace(/<li[^>]*>/gi, '• ').replace(/<[^>]+>/g, '');\n\t\ts = dec(s).replace(/[ \\t]+\\n/g, '\\n');\n\t\tconst md = (t) => t.replace(/\\u0001([^\\u0002]*)\\u0002/g, (m, x) => (x.trim() ? '**' + x.trim() + '**' : '')).replace(/\\u0003([^\\u0004]*)\\u0004/g, (m, x) => (x.trim() ? '_' + x.trim() + '_' : '')).replace(/[\\u0001-\\u0004]/g, '');\n\t\tconst zeilen = s.split('\\n').map((z) => z.trim());\n\t\t// Absätze: Leerzeile trennt\n\t\tconst bloecke = []; let cur = [];\n\t\tfor (const z of zeilen) { if (!z) { if (cur.length) { bloecke.push(cur); cur = []; } } else cur.push(z); }\n\t\tif (cur.length) bloecke.push(cur);\n\t\tif (!bloecke.length) return null;\n\t\tconst titelRoh = bloecke[0][0];\n\t\tconst titel = md(titelRoh).replace(/\\*\\*/g, '').trim();\n\t\tconst rest0 = bloecke[0].slice(1);\n\t\tlet farbe = 'default';\n\t\tif (/🚨|❌|fehler|alarm/i.test(titel)) farbe = 'attention'; else if (/⏰|⚠️|erinnerung|eskalation/i.test(titel)) farbe = 'warning'; else if (/✅|bereit|erledigt|gesendet/i.test(titel)) farbe = 'good';\n\t\tconst body = [{ type: 'TextBlock', text: titel.slice(0, 200), weight: 'bolder', size: 'medium', wrap: true, color: farbe }];\n\t\tconst text = (t, extra) => ({ type: 'TextBlock', text: t, wrap: true, spacing: 'Small', ...(extra || {}) });\n\t\tif (rest0.length) body.push(text(rest0.map(md).join('\\n\\n').slice(0, 1500)));\n\t\tfor (const b of bloecke.slice(1)) {\n\t\t\tconst kopf = md(b[0]);\n\t\t\tif (b.length > 1 && /^\\*\\*[^*]+\\*\\*$/.test(kopf)) {\n\t\t\t\tbody.push({ type: 'Container', style: 'emphasis', spacing: 'Medium', items: [text(kopf.replace(/\\*\\*/g, '').toUpperCase(), { isSubtle: true, size: 'small', weight: 'bolder', spacing: 'None' }), ...b.slice(1).map((z) => text(md(z).slice(0, 600)))] });\n\t\t\t} else {\n\t\t\t\tbody.push(text(b.map(md).join('\\n\\n').slice(0, 1500), { spacing: 'Medium' }));\n\t\t\t}\n\t\t}\n\t\tconst actions = links.slice(0, 4).map((l, i) => ({ type: 'Action.OpenUrl', title: l.title.slice(0, 60), url: l.url, ...(i === 0 ? { style: 'positive' } : {}) }));\n\t\treturn { type: 'AdaptiveCard', $schema: 'http://adaptivecards.io/schemas/adaptive-card.json', version: '1.4', body, ...(actions.length ? { actions } : {}) };\n\t} catch (err) { return null; }\n}\nconst e = $('Bei Einzelaufruf').first().json;\nif (!/^[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}$/.test(String(e.empfaenger || ''))) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Freigeber ist keine gültige Adresse');\nif (!String(e.html || '').trim()) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Nachricht fehlt');\n// Karte: entweder fertige Karte per Marker <!--EPA_KARTE:base64--> oder automatisch aus dem HTML gebaut. Fallback bleibt die Textnachricht.\nconst roh = String(e.html);\nconst m = roh.match(/<!--EPA_KARTE:([A-Za-z0-9+\\/=]+)-->/);\nconst html = roh.replace(/<!--EPA_KARTE:[A-Za-z0-9+\\/=]*-->/g, '').trim();\nlet karte = null;\nif (m) { try { const t = Buffer.from(m[1], 'base64').toString('utf8'); JSON.parse(t); karte = t; } catch (err) { karte = null; } }\nif (!karte) { const k = htmlZuKarte(html); if (k) karte = JSON.stringify(k); }\nconst payload = karte\n\t? { body: { contentType: 'html', content: '<attachment id=\"karte1\"></attachment>' }, attachments: [{ id: 'karte1', contentType: 'application/vnd.microsoft.card.adaptive', contentUrl: null, content: karte }] }\n\t: { body: { contentType: 'html', content: html } };\nreturn [{ json: { empfaenger: e.empfaenger.trim().toLowerCase(), html, payload, mit_karte: Boolean(karte) } }];\n"
       },
       "id": "7a899f09-e48b-4058-ab43-e9237794d6d8",
@@ -2640,6 +2722,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Kanallesen prüfen",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -2882,6 +2971,28 @@
         [
           {
             "node": "Kartenlöschung melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kanallesen prüfen": {
+      "main": [
+        [
+          {
+            "node": "Kanalnachrichten lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kanalnachrichten lesen": {
+      "main": [
+        [
+          {
+            "node": "Kanalnachrichten melden",
             "type": "main",
             "index": 0
           }
