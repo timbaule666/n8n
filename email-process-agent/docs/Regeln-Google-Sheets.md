@@ -52,7 +52,8 @@ Ein **vorhandenes Sheet** anbinden: Die Sheet-ID (der Teil der URL zwischen `/d/
 
 ## Grenzen
 
-- **Übernahme dauert bis zu 15 Minuten:** Änderungen greifen erst nach dem nächsten Lauf, bei manuellem Aufruf sofort.
+- **Übernahme einmal täglich (06:20 Uhr):** Änderungen greifen erst nach dem nächsten Lauf, bei manuellem Aufruf von EPA-09 sofort.
+- **Vorgangsarten** (welche Bereiche ein Kunde hat, z. B. Reklamation) stehen nicht im Sheet; sie schaltet der Betreiber frei. Die Felder eines freigeschalteten Bereichs pflegt der Kunde im Reiter „Pflichtfelder“.
 - **Gleichzeitiges Ändern im Sheet und in der Data Table:** Für die Einstellungen aus dem Sheet gewinnt das Sheet.
 - **Excel:** Eine Excel-Datei in OneDrive oder SharePoint wäre über Microsoft Graph ähnlich möglich, ist aber nicht gebaut.
 - **Postgres:** Nur die Data-Table-Variante gleicht ab. Die Postgres-Variante hat nur die Spalte `config_sheet` (Migration 005).
