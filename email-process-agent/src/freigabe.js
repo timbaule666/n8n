@@ -208,7 +208,8 @@ function zeitText(iso, zeitzone) {
 /** Freigabe-Karte ohne Buttons und ohne Link-Adressen (zum Speichern). Gibt null zurück, wenn ein Link übrig bliebe. */
 function karteOhneLink(karte) {
 	if (!karte || typeof karte !== 'object' || !Array.isArray(karte.body)) return null;
-	const { actions, selectAction, ...rest } = karte;
+	// $schema ist nur die Schema-Adresse von Adaptive Cards (kein Link für Menschen) und wird nicht gespeichert.
+	const { actions, selectAction, $schema, ...rest } = karte;
 	const k = JSON.parse(JSON.stringify(rest));
 	const weg = (o) => {
 		if (Array.isArray(o)) return o.forEach(weg);

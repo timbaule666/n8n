@@ -142,3 +142,13 @@ test('weitereKarten: nur Freigabe-Karten desselben Vorgangs, nicht gelöscht, oh
 	assert.deepEqual(f.weitereKarten(n, 'V-2026-0076', ['5']), ['1']);
 	assert.deepEqual(f.weitereKarten(n, 'kaputt', []), []);
 });
+
+test('karteOhneLink: echte Freigabe-Karte mit $schema wird gespeichert (ohne $schema, ohne Button)', () => {
+	const k = { type: 'AdaptiveCard', '$schema': 'http://adaptivecards.io/schemas/adaptive-card.json', version: '1.4', body: [{ type: 'TextBlock', text: 'Freigabe erforderlich' }], actions: [{ type: 'Action.OpenUrl', title: 'Entwurf prüfen und freigeben', url: 'https://x.example/webhook/epa-freigabe?t=geheim' }] };
+	const o = f.karteOhneLink(k);
+	assert.ok(o, 'Karte darf nicht verworfen werden');
+	assert.equal(o.$schema, undefined);
+	assert.equal(o.actions, undefined);
+	assert.equal(o.body[0].text, 'Freigabe erforderlich');
+	assert.doesNotMatch(JSON.stringify(o), /https?:\/\//);
+});
