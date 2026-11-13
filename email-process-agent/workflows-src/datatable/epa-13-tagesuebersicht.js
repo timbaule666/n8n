@@ -65,7 +65,7 @@ for (const a of zeilen('Configs lesen')) {
 		zugang,
 		zahlen: uebersicht.zaehlen(gruppen),
 		kanal: { kanal: b.kanal || 'teams', team_id: b.team_id || '', channel_id: b.channel_id || '', chat_id: b.chat_id || '', telegram_workflow_id: b.telegram_workflow_id || '' },
-		nachricht_html: uebersicht.zusammenfassung({ gruppen, link: url, ablauf: zugang.ablauf, zone: c.zeitzone }),
+		nachricht_html: uebersicht.zusammenfassung({ gruppen, link: url, ablauf: zugang ? zugang.ablauf : null, zone: c.zeitzone }),
 	} });
 }
 return aus.length ? aus : [{ json: { leer: true } }];
