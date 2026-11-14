@@ -938,3 +938,33 @@ Offen (Vorschlag): Mischmails mit zwei Anliegen (Reklamation + Bestellung) – z
 |---|---|---|
 | V-2026-0076 Dortmund – Unna | freigegeben → Karte nach „Warten“; Antwort „Telefon: 12“ (ungültig) | ✅ Warten-Karte entfernt, neue Rückfrage (Runde 2) als Freigabe-Karte in „2 Rückfragen“ |
 | V-2026-0077 Bielefeld – Gütersloh | freigegeben → vollständige Karte in „Warten“; Antwort mit Telefonnummer | ✅ Warten-Karte entfernt, „Bereit zur Bearbeitung“, Meldung in „1 Vollständige Anfragen“ |
+
+## Nachfassen, liegende Freigaben, Warten-Kanal, Mischmail – Live-Test (13./14.11.2026)
+
+Kunde epa-m365, 10 Testmails + 2 Mischmails über EPA-T4 (Gmail → Testpostfach), Absender erfunden. Für den Test
+waren die Fristen verkürzt (frist_stunden 1 ohne Geschäftszeit, erinnerung_intervall 1 h, anzahl_erinnerungen 1,
+freigabe_erinnerung 1 h, freigabe_ablauf 2 h, Geschäftszeit 7 Tage 00–24 Uhr). EPA-04 wurde von Hand gestartet
+(Lauf-Lock 55 min beachtet). Danach Config zurückgesetzt.
+
+| Fall | Vorgang | Ergebnis | Bewertung |
+|---|---|---|---|
+| Rückfrage freigeben → Karte weg aus „Rückfragen“, Kurzmeldung „Rückfrage verschickt“ in Systemmeldungen | 0081, 0082, 0083, 0086, 0090, 0091 | wie erwartet (von Tim in Teams bestätigt) | ✅ |
+| Bearbeiten und senden | 0086 | mit geändertem Text verschickt | ✅ |
+| Ablehnen | 0087 | Karte ❌ rot, Vorgang „Eskaliert / Manuell“ | ✅ |
+| Kunde antwortet vor der Freigabe | 0088 | Freigabe „ersetzt“, Karte ↩️, Vorgang „Bereit zur Bearbeitung“ | ✅ |
+| Kundenantwort unvollständig | 0090, 0083 | Wert übernommen, Rückfrage Runde 2 (nur Telefon) | ✅ |
+| Freigabe bleibt liegen: Erinnerung an Freigeber | 0084, 0085 | nach 1 h neue Karte (erinnert_am) | ✅ |
+| Freigabe bleibt liegen: Ablauf | 0084, 0085 und abgelaufene Erinnerungen | neue Links (erneuert_am), alte Karte ⏰ | ✅ |
+| Kunden-Erinnerung nach Fristablauf | 0081, 0082, 0083, 0086, 0091 | Erinnerungsentwurf als Freigabe-Karte „ERINNERUNG“ | ✅ |
+| Keine Reaktion nach letzter Erinnerung | 0081, 0082, 0086, 0091 | „Eskaliert / Manuell“, Warten-Karte entfernt, Meldung in „Bitte ansehen“ | ✅ |
+| Kundenantwort nach Erinnerung | 0083 | Wunschtermin übernommen, Runde 2 | ✅ |
+| Mischmail (Reklamation + Bestellung), alter Betreff | 0089 | „Zuordnung unklar“: Betreff gleich einem alten Testvorgang (Testartefakt, sicheres Verhalten) | ✅ |
+| Mischmail vor dem Fix | 0091 | nur Reklamation, Bestellung ohne Hinweis verloren | ❌ → behoben |
+| Mischmail nach dem Fix (Prompt v5) | 0092 | weitere_vorgangstypen = [bestellung], ⚠️-Hinweis auf der Karte, eigene Meldung in „Bitte ansehen“ | ✅ |
+
+Gefundene und behobene Fehler:
+- Warten-Karte war nur eine Kurzfassung: `karteOhneLink` verwarf die Karte wegen der Schema-Adresse `$schema` (http). Behoben (`dfc1791`).
+- Mischmail: zweites Anliegen ging verloren. Neu: Prompt klassifizierung v5 mit `weitere_vorgangstypen`, Warnhinweis auf der Karte, Meldung „Mail mit mehreren Anliegen“ (Anlass `weiteres_anliegen` → „Bitte ansehen“) (`0975b27`).
+- Nach Erinnerung/Erneuerung an den Freigeber wurde die gemerkte volle Karte geleert (Warten-Karte wieder kurz); doppeltes ⚠️; ⏰-Text „Link gilt nicht mehr“ war bei einer Erinnerung falsch. Behoben (`a998b79`).
+
+Hinweis aus dem Test: Freigabe-Links mit 2 h Gültigkeit laufen nachts ab; im Normalbetrieb gelten 48 h.
