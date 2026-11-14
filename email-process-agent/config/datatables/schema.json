@@ -227,6 +227,14 @@
       "event_id": "string",
       "fehler": "string"
     },
+    "epa_erledigt_links": {
+      "kunde_id": "string",
+      "vorgangs_id": "string",
+      "token_hash": "string",
+      "ablauf": "date",
+      "verbraucht_am": "date",
+      "teams_nachricht": "string"
+    },
     "epa_plz_de": {
       "plz": "string",
       "ort": "string",

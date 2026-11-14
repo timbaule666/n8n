@@ -41,6 +41,8 @@ const M2 = [
 	// Terminanfragen: Kalender prüfen und nach Klick eintragen
 	['sw-kalender-pruefen', 'EPA_SW_Kalender_pruefen.json'],
 	['epa-15-kalender', 'EPA-15_Kalender-Endpunkt.json'],
+	// Knopf "Erledigt" auf Karten in "Vollständige Anfragen"
+	['epa-16-erledigt', 'EPA-16_Erledigt-Endpunkt.json'],
 	// Teams-Kanäle je Meldungsart, Log-Karte, PLZ-Verzeichnis
 	['sw-plz-nachschlagen', 'EPA_SW_PLZ_nachschlagen.json'],
 	['sw-log-karte', 'EPA_SW_Log-Karte.json'],

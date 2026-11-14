@@ -3,6 +3,8 @@ const { Workflow, bedingung, bedingungen, codeDatei } = require('../../tools/lib
 
 module.exports = function () {
 	const wf = new Workflow('EPA SW Benachrichtigen');
+	// Meldungen in "Vollständige Anfragen" tragen einen Einmal-Link (Knopf Erledigt): erfolgreiche Läufe nicht speichern.
+	wf.settings.saveDataSuccessExecution = 'none';
 
 	wf.notiz('Notiz Zweck', [-80, -400], [
 		'## EPA SW Benachrichtigen',
@@ -55,6 +57,22 @@ return [{ json: { ...e, kanal, vorgangs_id: vid } }];
 		bedingungen: [['kunde_id', 'eq', "={{ $json.kunde_id || '__kein_kunde__' }}"]],
 	}, { alwaysOutputData: true });
 	// Ohne Postfach-Kopie gibt es kein Teams-Credential des Kunden: bewusst ungültige ID, der Fehler wird protokolliert.
+	// "Erledigt"-Knopf für vollständige Anfragen (src/erledigt.js): Einmal-Link anhängen, nur der Hash wird gespeichert.
+	const knopf = wf.code('Erledigt-Knopf anhängen', [880, 200], ['erledigt', 'freigabe'], `
+const crypto = require('crypto');
+const e = $('Eingabe prüfen').first().json;
+const row = $input.first().json || {};
+let html = e.nachricht_html;
+let hash = '';
+if (erledigt.mitKnopf(e.anlass, e.vorgangs_id) && row.kanal_art === 'anfragen') {
+	try {
+		const t = freigabe.tokenErzeugen(crypto);
+		html = erledigt.htmlMitKnopf(html, erledigt.link(freigabe.basisUrl($execution.resumeUrl, row.freigabe_basis_url), t.token));
+		hash = t.hash;
+	} catch (err) { html = e.nachricht_html; hash = ''; }
+}
+return [{ json: { ...row, html_final: html, erledigt_hash: hash } }];
+`);
 	const senden = wf.aufrufDynamisch('Teams-Nachricht senden', [880, 80], "={{ /^[A-Za-z0-9]{8,32}$/.test(String($json.postfach_workflow_id || '')) ? $json.postfach_workflow_id : 'keineId0' }}", [
 		['aktion', 'string', 'teams_kanal'],
 		['postfach', 'string', '={{ $json.postfach }}'],
@@ -63,7 +81,7 @@ return [{ json: { ...e, kanal, vorgangs_id: vid } }];
 		['entwurf_id', 'string', ''],
 		['freigabe_id', 'string', ''],
 		['vorgangs_id', 'string', "={{ $('Eingabe prüfen').first().json.vorgangs_id || '' }}"],
-		['html', 'string', "={{ $('Eingabe prüfen').first().json.nachricht_html }}"],
+		['html', 'string', "={{ $json.html_final || $('Eingabe prüfen').first().json.nachricht_html }}"],
 		['team_id', 'string', "={{ $('Eingabe prüfen').first().json.team_id }}"],
 		['channel_id', 'string', "={{ $json.ziel_channel_id || $('Eingabe prüfen').first().json.channel_id }}"],
 	], { onError: 'continueRegularOutput', alwaysOutputData: true });
@@ -95,7 +113,19 @@ return [{ json: {
 return [{ json: $input.first().json.fehler }];
 `);
 	const protokoll = wf.tabelle('Fehler protokollieren', [1540, -100], 'insert', 'epa_fehler_log', {}, { onError: 'continueRegularOutput' });
-	const melden = wf.code('Ergebnis melden', [1760, 0], [], `
+	// Link merken (nach erfolgreichem Versand): Hash, Ablauf und die Teams-Nachricht, damit EPA-16 sie entfernen kann.
+	const merkenFrage = wf.node('Erledigt-Link merken?', 'n8n-nodes-base.if', [1320, 120], {
+		conditions: bedingungen([bedingung("={{ Boolean($('Erledigt-Knopf anhängen').isExecuted && $('Erledigt-Knopf anhängen').first().json.erledigt_hash) }}", { type: 'boolean', operation: 'true', singleValue: true })]),
+		options: {},
+	});
+	const merkenDaten = wf.code('Erledigt-Link (Daten)', [1540, 120], ['erledigt'], `
+const e = $('Eingabe prüfen').first().json;
+const k = $('Erledigt-Knopf anhängen').first().json;
+const r = $('Teams-Nachricht senden').first().json || {};
+return [{ json: erledigt.linkZeile({ kunde_id: e.kunde_id, vorgangs_id: e.vorgangs_id, hash: k.erledigt_hash, jetzt: new Date().toISOString(), teams: { team_id: r.team_id, channel_id: r.channel_id, nachricht_id: r.nachricht_id } }) }];
+`);
+	const merken = wf.tabelle('Erledigt-Link speichern', [1760, 120], 'insert', 'epa_erledigt_links', {}, { onError: 'continueRegularOutput' });
+	const melden = wf.code('Ergebnis melden', [1980, 0], [], `
 const v = $('Versand prüfen').first().json;
 const p = $('Fehler protokollieren').isExecuted ? $('Fehler protokollieren').first().json : null;
 return [{ json: { gesendet: v.gesendet, fehler_id: p && p.id !== undefined ? p.id : null } }];
@@ -108,9 +138,12 @@ return [{ json: { gesendet: v.gesendet, fehler_id: p && p.id !== undefined ? p.i
 	// Kanal je Anlass (Config kanaele: anfragen, rueckfragen, ansehen, system, logs; Zuordnung src/kanaele.js);
 	// ohne kanaele der übergebene Kanal.
 	const kanal = wf.code('Kanal wählen', [770, 80], ['kanaele'], codeDatei('benachrichtigen-kanal-waehlen.js'));
-	wf.kette(kunde, kanal, senden, pruefen, fehlgeschlagen);
+	wf.kette(kunde, kanal, knopf, senden, pruefen, fehlgeschlagen);
 	wf.verbinde(fehlgeschlagen, fehlerZeile, 0);
-	wf.verbinde(fehlgeschlagen, melden, 1);
+	wf.verbinde(fehlgeschlagen, merkenFrage, 1);
+	wf.verbinde(merkenFrage, merkenDaten, 0);
+	wf.verbinde(merkenFrage, melden, 1);
+	wf.kette(merkenDaten, merken, melden);
 	wf.kette(fehlerZeile, protokoll, melden);
 	return wf;
 };

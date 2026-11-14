@@ -7,7 +7,7 @@ module.exports = function () {
 	const wf = new Workflow('EPA SW Log-Karte');
 	wf.notiz('Notiz Zweck', [-80, -360], [
 		'## EPA SW Log-Karte',
-		'**Zweck:** Schickt bei "Bereit zur Bearbeitung" oder "Abgeschlossen" eine Abschlusskarte (Adaptive Card) mit erfassten Daten und Zeitleiste aus dem Audit-Log in den Teams-Kanal "Logs" des Kunden.',
+		'**Zweck:** Schickt bei "Abgeschlossen" (z. B. Knopf „Erledigt“ in „Vollständige Anfragen“, EPA-16) eine Abschlusskarte (Adaptive Card) mit erfassten Daten und Zeitleiste aus dem Audit-Log in den Teams-Kanal "Logs" des Kunden.',
 		'**Trigger:** Aufruf durch "EPA SW Status setzen" (wartet nicht auf das Ende).',
 		'**Eingaben:** kunde_id, vorgangs_id, neuer_status.',
 		'**Config:** epa_config_allgemein.log_channel_id (leer = keine Karte), benachrichtigung.team_id.',

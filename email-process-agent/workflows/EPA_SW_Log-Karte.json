@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## EPA SW Log-Karte\n**Zweck:** Schickt bei \"Bereit zur Bearbeitung\" oder \"Abgeschlossen\" eine Abschlusskarte (Adaptive Card) mit erfassten Daten und Zeitleiste aus dem Audit-Log in den Teams-Kanal \"Logs\" des Kunden.\n**Trigger:** Aufruf durch \"EPA SW Status setzen\" (wartet nicht auf das Ende).\n**Eingaben:** kunde_id, vorgangs_id, neuer_status.\n**Config:** epa_config_allgemein.log_channel_id (leer = keine Karte), benachrichtigung.team_id.\n**Fehler:** Wirft nie nach außen; ohne Kanal oder bei Fehlern wird nichts gesendet.",
+        "content": "## EPA SW Log-Karte\n**Zweck:** Schickt bei \"Abgeschlossen\" (z. B. Knopf „Erledigt“ in „Vollständige Anfragen“, EPA-16) eine Abschlusskarte (Adaptive Card) mit erfassten Daten und Zeitleiste aus dem Audit-Log in den Teams-Kanal \"Logs\" des Kunden.\n**Trigger:** Aufruf durch \"EPA SW Status setzen\" (wartet nicht auf das Ende).\n**Eingaben:** kunde_id, vorgangs_id, neuer_status.\n**Config:** epa_config_allgemein.log_channel_id (leer = keine Karte), benachrichtigung.team_id.\n**Fehler:** Wirft nie nach außen; ohne Kanal oder bei Fehlern wird nichts gesendet.",
         "width": 680,
         "height": 260,
         "color": 7
@@ -50,7 +50,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "\n// ----- Node-Logik -----\nconst e = $input.first().json;\nconst weiter = ['Bereit zur Bearbeitung', 'Abgeschlossen'].includes(e.neuer_status) && Boolean(e.vorgangs_id) && Boolean(e.kunde_id);\nreturn [{ json: { weiter, kunde_id: e.kunde_id || '', vorgangs_id: e.vorgangs_id || '', neuer_status: e.neuer_status || '' } }];\n"
+        "jsCode": "\n// ----- Node-Logik -----\n// Abschlusskarte in \"Logs\" erst, wenn der Vorgang abgeschlossen ist (z. B. per Knopf \"Erledigt\" auf der Karte in\n// \"Vollständige Anfragen\", EPA-16). \"Bereit zur Bearbeitung\" steht als Karte in \"Vollständige Anfragen\".\nconst e = $input.first().json;\nconst weiter = e.neuer_status === 'Abgeschlossen' && Boolean(e.vorgangs_id) && Boolean(e.kunde_id);\nreturn [{ json: { weiter, kunde_id: e.kunde_id || '', vorgangs_id: e.vorgangs_id || '', neuer_status: e.neuer_status || '' } }];\n"
       },
       "id": "0aef4537-902f-49b3-a6f2-2752290d55de",
       "name": "Status prüfen",
