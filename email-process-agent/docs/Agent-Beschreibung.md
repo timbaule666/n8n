@@ -83,7 +83,7 @@ Prompts liegen versioniert vor (v1–v4) mit Prüfsumme. Die Version wird je Kun
    - **Widerspruch Mailtext ↔ PDF** (z. B. 600 kg im Text, 900 kg im PDF): Das Feld gilt als fehlend und wird mit beiden Werten zur Bestätigung zurückgefragt.
    - Zwei verschiedene Daten gelten als mehrdeutig.
 7. **Ergebnis:**
-   - **Vollständig:** Status „Bereit zur Bearbeitung“, Meldung im Kanal „1 Vollständige Anfragen“, Outlook-Kategorie „AI Geprüft“ (grün). Bei Terminanfragen folgt zusätzlich die Kalenderprüfung (3.7).
+   - **Vollständig:** Status „Bereit zur Bearbeitung“, Meldung im Kanal „1 Vollständige Anfragen“, Outlook-Kategorie „AI Geprüft“ (grün). Die Karte trägt den Knopf **„✅ Erledigt – Karte entfernen“** (Einmal-Link, 30 Tage gültig, EPA-16): Nach Bestätigung mit Namen wird der Vorgang „Abgeschlossen“, die Karte verschwindet aus dem Kanal und die Abschlusskarte kommt in „6 Logs“. Bei Terminanfragen folgt zusätzlich die Kalenderprüfung (3.7).
    - **Lücken:** Status „Lücken erkannt“, weiter zu EPA-02. Outlook-Kategorie „AI Rückfragen“ (rot).
    - **Manipulationsverdacht:** Siehe Abschnitt 6.
 
@@ -149,7 +149,7 @@ Jeder Kunde bekommt dasselbe Team-Layout. Der Baustein „Teams einrichten“ le
 
 | Kanal | Inhalt |
 |---|---|
-| **1 Vollständige Anfragen** | Anfragen, Bestellungen, Termine, Reklamationen mit allen Pflichtangaben – bereit zur Bearbeitung; Kalenderergebnis bei Terminen |
+| **1 Vollständige Anfragen** | Anfragen, Bestellungen, Termine, Reklamationen mit allen Pflichtangaben – bereit zur Bearbeitung; Kalenderergebnis bei Terminen. Knopf „Erledigt“ schließt den Vorgang ab und entfernt die Karte |
 | **2 Rückfragen** | Nur **offene Freigaben** (Entwurf prüfen, freigeben, bearbeiten, ablehnen) sowie Kundenantworten mit weiter fehlenden Angaben und leere Antworten. Abgelehnte oder überholte Karten werden an Ort und Stelle als erledigt markiert. |
 | **3 Warten auf Kunde** | Rückfrage ist verschickt, Antwort steht aus („⏳ Wartet auf Antwort des Kunden“ mit Gefragtem und Frist). Die Karte wandert nach dem Versand aus „2 Rückfragen“ hierher und verschwindet, sobald der Kunde antwortet, die Mail nicht ankam oder der Kunde nicht reagiert. |
 | **4 Bitte ansehen** | Keine normale Anfrage, aber ein Mensch muss entscheiden: Stornierung (auch in einer Antwort), Inhalt nur im Anhang, Mischmail mit weiterem Anliegen, Manipulationsverdacht (nur bei bearbeiteten Mails), unklare Zuordnung/Klassifizierung, fehlgeschlagene Extraktion, maximale Rundenzahl erreicht, Kunde reagiert nicht, unzustellbare Rückfrage |

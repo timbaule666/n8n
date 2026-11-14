@@ -8,7 +8,7 @@ Jedes Kunden-Team hat sechs Kanäle. „EPA SW Teams einrichten“ legt sie an u
 
 | Kanal | Nachrichten (Nummern unten) | Für wen |
 |---|---|---|
-| 1 Vollständige Anfragen | 1, 2, 14, Kalender geprüft (frei/belegt); 16, wenn der Vorgang danach vollständig ist | Sachbearbeiter |
+| 1 Vollständige Anfragen | 1, 2, 14, Kalender geprüft (frei/belegt); 16, wenn der Vorgang danach vollständig ist. Karten zu vollständigen Vorgängen haben den Knopf „✅ Erledigt – Karte entfernen“: Vorgang „Abgeschlossen“, Karte weg, Abschlusskarte in „6 Logs“ | Sachbearbeiter |
 | 2 Rückfragen | offene Freigabe-Karten mit Button (3, 15, 22–27), 4, 17; 16, wenn noch Angaben fehlen | Freigeber |
 | 3 Warten auf Kunde | „⏳ Wartet auf Antwort des Kunden“ je verschickter Rückfrage (verschwindet bei Antwort, Unzustellbarkeit oder Eskalation) | alle (Überblick) |
 | 4 Bitte ansehen | 5–13, 18–21, 29, 30 | Sachbearbeiter |
