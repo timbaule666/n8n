@@ -213,7 +213,7 @@ const SOLL_KANAL = {
 	rueckfrage_verschickt: 'warten',
 	freigabe: 'rueckfragen', luecken: 'rueckfragen', antwort_luecken: 'rueckfragen', antwort_keine_daten: 'rueckfragen',
 	antwort_gemeldet: 'ansehen', antwort_storno: 'ansehen', antwort_zusatzinfo: 'ansehen', antwort_manipulation: 'ansehen', manipulation: 'ansehen',
-	systemwarnung_manipulation: 'ansehen', zuordnung_unklar: 'ansehen', klassifizierung_unklar: 'ansehen', extraktion_fehlgeschlagen: 'ansehen',
+	systemwarnung_manipulation: 'ansehen', zuordnung_unklar: 'ansehen', klassifizierung_unklar: 'ansehen', weiteres_anliegen: 'ansehen', extraktion_fehlgeschlagen: 'ansehen',
 	max_runden: 'ansehen', keine_reaktion: 'ansehen', nicht_zugestellt: 'ansehen', keine_anfrage_storno: 'ansehen', keine_anfrage_reklamation: 'ansehen',
 	freigabe_nicht_zugestellt: 'system', zustelltest_fehlgeschlagen: 'system', regeln_google_sheet: 'system', tagesuebersicht: 'system',
 	manuell_gesendet: 'system', kalender_kalender_fehler: 'system', unbekannter_anlass: 'system',

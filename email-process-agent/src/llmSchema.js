@@ -23,6 +23,9 @@ function klassifizierungSchema(vorgangstypen) {
 			vorgangstyp: { type: ['string', 'null'], enum: [...typen, null] },
 			sprache: { type: 'string', pattern: '^[a-z]{2}$' },
 			verdacht_manipulation: { type: 'boolean' },
+			// Ab Prompt v5: weitere erlaubte Vorgangsarten, die dieselbe Mail ZUSÄTZLICH enthält (Mischmail). Optional für
+			// ältere Prompt-Versionen; für OpenAI (strict) ist jedes Feld Pflicht, null = keine weiteren.
+			weitere_vorgangstypen: { type: ['array', 'null'], items: { type: 'string', enum: typen } },
 		},
 	};
 }
@@ -124,7 +127,11 @@ function fuerOpenAi(schema) {
 	const KERN = ['type', 'enum', 'properties', 'required', 'additionalProperties', 'items', 'description'];
 	const out = {};
 	for (const k of KERN) if (k in schema) out[k] = schema[k];
-	if (out.properties) out.properties = Object.fromEntries(Object.entries(out.properties).map(([k, v]) => [k, fuerOpenAi(v)]));
+	if (out.properties) {
+		out.properties = Object.fromEntries(Object.entries(out.properties).map(([k, v]) => [k, fuerOpenAi(v)]));
+		// Structured Outputs (strict) verlangt jedes Feld als Pflichtfeld; optionale Felder sind dort nullable.
+		out.required = Object.keys(out.properties);
+	}
 	if (out.items) out.items = fuerOpenAi(out.items);
 	return out;
 }

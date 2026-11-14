@@ -151,3 +151,21 @@ test('Klassifizierung: Vorgangsarten mit Name und Beschreibung im Prompt', () =>
 	assert.equal(llm.vorgangstypenText(['transport'], undefined), 'transport');
 	assert.equal(llm.vorgangstypenText([], arten), '(keine)');
 });
+
+test('Klassifizierung: weitere_vorgangstypen optional (alte Prompts), erlaubt null und Liste erlaubter Arten', () => {
+	const s = llm.klassifizierungSchema(['reklamation', 'bestellung']);
+	const basis = { klasse: 'anfrage', konfidenz: 0.9, begruendung_kurz: 'x', vorgangstyp: 'reklamation', sprache: 'de', verdacht_manipulation: false };
+	assert.deepEqual(llm.validieren(basis, s), []);
+	assert.deepEqual(llm.validieren({ ...basis, weitere_vorgangstypen: null }, s), []);
+	assert.deepEqual(llm.validieren({ ...basis, weitere_vorgangstypen: ['bestellung'] }, s), []);
+	assert.notDeepEqual(llm.validieren({ ...basis, weitere_vorgangstypen: ['storno'] }, s), []);
+	assert.notDeepEqual(llm.validieren({ ...basis, weitere_vorgangstypen: 'bestellung' }, s), []);
+});
+
+test('OpenAI-Schema (strict): jedes Feld ist Pflicht, auch das optionale weitere_vorgangstypen', () => {
+	const body = llm.anfrageBauen('klassifizierung', { system: 's', user_vorlage: '{{MAIL}}', version: 'v5' }, { mail: { betreff: 'b', text: 't' }, vorgangstypen: ['reklamation', 'bestellung'] }, { modell: 'm', temperatur: 0, max_tokens: 10 });
+	const sch = body.response_format.json_schema.schema;
+	assert.deepEqual([...sch.required].sort(), Object.keys(sch.properties).sort());
+	assert.ok(sch.required.includes('weitere_vorgangstypen'));
+	assert.deepEqual(sch.properties.weitere_vorgangstypen.items.enum, ['reklamation', 'bestellung']);
+});

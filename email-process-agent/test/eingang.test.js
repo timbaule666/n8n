@@ -238,3 +238,40 @@ test('Vorgangsart in Meldungen nur bei mehreren Vorgangsarten', () => {
 	assert.match(g, /Vorgangsnummer: <b>V-1<\/b><br>Art: <b>Bestellung<\/b>/);
 	assert.doesNotMatch(e.meldungGeprueft('V-1', MAIL, [], { vollstaendig: true, daten: {}, fehlende: [], hinweise: [], unsicher: [] }, {}), /Art:/);
 });
+
+// ---------------------------------------------------------------- Mischmail: weiteres Anliegen
+{
+	const CFG_M = { konfidenz_schwelle: 0.75, vorgangstypen: { reklamation: [], bestellung: [], transport: [] }, vorgangsarten: { reklamation: { name: 'Reklamation' }, bestellung: { name: 'Bestellung' } } };
+	const mailM = { vertrauenswuerdig: false, betreff: 'Glasbruch und Nachbestellung', absender_adresse: 'a@b.example' };
+	test('Mischmail: weiteres Anliegen wird aus der Klassifizierung übernommen (ohne Hauptart, ohne Unbekanntes, ohne Doppelte)', () => {
+		const a = e.klasseAuswerten(llm({ vorgangstyp: 'reklamation', weitere_vorgangstypen: ['bestellung', 'reklamation', 'unbekannt', 'bestellung'] }), CFG_M, mailM);
+		assert.equal(a.weg, 'pruefen');
+		assert.equal(a.vorgangstyp, 'reklamation');
+		assert.deepEqual(a.details.weitere_vorgangstypen, ['bestellung']);
+		assert.deepEqual(e.weitereAnliegen(a, CFG_M), [{ typ: 'bestellung', name: 'Bestellung' }]);
+	});
+	test('Mischmail: ohne weiteres Anliegen (null, fehlt, leer) kein Hinweis', () => {
+		for (const w of [null, undefined, []]) {
+			const a = e.klasseAuswerten(llm({ vorgangstyp: 'reklamation', weitere_vorgangstypen: w }), CFG_M, mailM);
+			assert.equal(a.details.weitere_vorgangstypen, undefined);
+			assert.deepEqual(e.weitereAnliegen(a, CFG_M), []);
+			assert.equal(e.hinweisWeitereAnliegen(e.weitereAnliegen(a, CFG_M), 'Reklamation'), null);
+		}
+	});
+	test('Mischmail: Warnzeile nennt beide Anliegen und erscheint auf der Karte unter "Bitte beachten"', () => {
+		const h = e.hinweisWeitereAnliegen([{ typ: 'bestellung', name: 'Bestellung' }], 'Reklamation');
+		assert.match(h, /zusätzlich: Bestellung/);
+		assert.match(h, /nur die Reklamation/);
+		const pruefung = { vollstaendig: false, daten: {}, fehlende: [{ feldname: 'Telefon', anzeigename: 'Telefonnummer', grund: 'fehlt' }], hinweise: [], unsicher: [] };
+		const html = e.meldungGeprueft('V-2026-0001', mailM, [], pruefung, { text_hinweise: [h], ohneRueckfrageText: true });
+		assert.match(html, /Bitte beachten/);
+		assert.match(html, /⚠️ Die Mail enthält zusätzlich: Bestellung/);
+	});
+	test('Mischmail: Meldung für "Bitte ansehen" sagt, dass kein eigener Vorgang angelegt wurde (escaped)', () => {
+		const html = e.meldungWeitereAnliegen('V-2026-0001', mailM, [{ typ: 'x', name: '<b>Bestellung</b>' }], 'Reklamation');
+		assert.match(html, /mehreren Anliegen/);
+		assert.match(html, /kein eigener Vorgang/);
+		assert.match(html, /&lt;b&gt;Bestellung/);
+		assert.equal(require('../src/kanaele').kanalArt('weiteres_anliegen'), 'ansehen');
+	});
+}

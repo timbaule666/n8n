@@ -61,6 +61,10 @@ function klasseAuswerten(llm, config, mail) {
 	}
 	const e = llm.ergebnis;
 	const details = { klasse: e.klasse, konfidenz: e.konfidenz, begruendung: e.begruendung_kurz, sprache: e.sprache, verdacht_manipulation: e.verdacht_manipulation === true };
+	// Mischmail (ab Prompt v5): weitere erlaubte Vorgangsarten in derselben Mail. Es bleibt bei einem Vorgang; das
+	// weitere Anliegen wird gemeldet (weitereAnliegen/meldungWeitereAnliegen), damit es nicht verloren geht.
+	const weitere = [...new Set((Array.isArray(e.weitere_vorgangstypen) ? e.weitere_vorgangstypen : []).filter((t) => typen.includes(t) && t !== e.vorgangstyp))];
+	if (weitere.length) details.weitere_vorgangstypen = weitere;
 	if (e.klasse === 'unklar') return unklar('KI ist unsicher, ob es eine Anfrage ist', details);
 	if (e.konfidenz < schwelle) return unklar(`Konfidenz ${e.konfidenz} unter Schwelle ${schwelle}`, details);
 	if (e.klasse === 'keine_anfrage') {
@@ -72,6 +76,34 @@ function klasseAuswerten(llm, config, mail) {
 	if (typen.length === 1) typ = typen[0];
 	if (!typ || !typen.includes(typ)) return unklar('Vorgangstyp nicht bestimmbar', details);
 	return { weg: 'pruefen', status: 'In Prüfung', ausloeser: 'KI', vorgangstyp: typ, grund: 'Anfrage erkannt', details };
+}
+
+// ---------------------------------------------------------------- Mischmail: weiteres Anliegen
+
+/** Weitere Anliegen der Mail (aus der Klassifizierung) als [{ typ, name }], ohne die Vorgangsart des Vorgangs. */
+function weitereAnliegen(auswertung, config) {
+	const typen = Object.keys((config && config.vorgangstypen) || {});
+	const haupt = auswertung && auswertung.vorgangstyp;
+	const liste = (auswertung && auswertung.details && auswertung.details.weitere_vorgangstypen) || [];
+	return [...new Set(Array.isArray(liste) ? liste : [])]
+		.filter((t) => typen.includes(t) && t !== haupt)
+		.map((t) => ({ typ: t, name: ((((config && config.vorgangsarten) || {})[t]) || {}).name || t }));
+}
+
+/** Warnzeile für die Karte (erscheint unter "Bitte beachten" mit ⚠️). */
+function hinweisWeitereAnliegen(liste, hauptName) {
+	if (!liste || !liste.length) return null;
+	const namen = liste.map((x) => x.name).join(', ');
+	return `Die Mail enthält zusätzlich: ${namen}. Dieser Vorgang deckt nur ${hauptName ? 'die ' + hauptName : 'das Hauptanliegen'} ab – bitte das weitere Anliegen separat bearbeiten.`;
+}
+
+/** Eigene Meldung in "Bitte ansehen", damit das weitere Anliegen nicht untergeht. */
+function meldungWeitereAnliegen(vorgangsId, mail, liste, hauptName, opts = {}) {
+	const namen = liste.map((x) => esc(x.name)).join(', ');
+	return kopf('Mail mit mehreren Anliegen – bitte separat bearbeiten', vorgangsId, mail, { zone: opts.zone }) +
+		`<br><br>Der Agent hat die Mail als <b>${esc(hauptName || 'Hauptanliegen')}</b> bearbeitet (Vorgang ${esc(vorgangsId)}).` +
+		`<br>⚠️ Zusätzlich enthält die Mail: <b>${namen}</b>. Dafür wurde <b>kein eigener Vorgang</b> angelegt.` +
+		'<br>Bitte das weitere Anliegen manuell bearbeiten (oder den Kunden bitten, es in einer eigenen Mail zu senden).';
 }
 
 // ---------------------------------------------------------------- Meldungen (Teams, HTML)
@@ -396,6 +428,9 @@ function meldungManipulation({ vorgangs_id: vid, mail, erkannt_bei, begruendung,
 }
 
 module.exports = {
+	weitereAnliegen,
+	hinweisWeitereAnliegen,
+	meldungWeitereAnliegen,
 	TRENNER,
 	erfasstText,
 	verdaechtigeStellen,

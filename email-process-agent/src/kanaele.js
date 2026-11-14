@@ -36,6 +36,7 @@ const ZUORDNUNG = Object.freeze({
 	systemwarnung_manipulation: 'ansehen',
 	zuordnung_unklar: 'ansehen',
 	klassifizierung_unklar: 'ansehen',
+	weiteres_anliegen: 'ansehen',
 	extraktion_fehlgeschlagen: 'ansehen',
 	max_runden: 'ansehen',
 	keine_reaktion: 'ansehen',

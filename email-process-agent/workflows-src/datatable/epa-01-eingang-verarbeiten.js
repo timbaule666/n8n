@@ -437,7 +437,7 @@ const p = $('Pflichtfelder prüfen').first().json;
 const v = $('Vorgang anlegen').first().json.vorgang;
 const mail = $('Mail normalisieren').first().json.mail;
 const kat = (config.outlook_kategorien || {})['Freigabe ausstehend'];
-return [{ json: { kontext_html: eingang.meldungGeprueft(v.vorgangs_id, mail, config.vorgangstypen[k.vorgangstyp], p.pruefung, { manipulation_hinweis: p.manipulation_hinweis, ohneRueckfrageText: true, text_hinweise: textHinweise.alle(mail, { felder: config.vorgangstypen[k.vorgangstyp] }).hinweise, zone: config.zeitzone, kategorie: kat && kat.name, besonderheiten: p.besonderheiten, vorgangsart: eingang.vorgangsartName(config, k.vorgangstyp) }) } }];
+return [{ json: { kontext_html: eingang.meldungGeprueft(v.vorgangs_id, mail, config.vorgangstypen[k.vorgangstyp], p.pruefung, { manipulation_hinweis: p.manipulation_hinweis, ohneRueckfrageText: true, text_hinweise: textHinweise.alle(mail, { felder: config.vorgangstypen[k.vorgangstyp] }).hinweise.concat([eingang.hinweisWeitereAnliegen(eingang.weitereAnliegen(k, config), eingang.vorgangsartName(config, k.vorgangstyp))].filter(Boolean)), zone: config.zeitzone, kategorie: kat && kat.name, besonderheiten: p.besonderheiten, vorgangsart: eingang.vorgangsartName(config, k.vorgangstyp) }) } }];
 `);
 	// Fehler in EPA-02 meldet EPA-05 selbst (Alarm, Vorgang sichern); die Mailverarbeitung läuft weiter.
 	const rueckfrage = wf.aufruf('Rückfrage anfordern', [4840, 40], 'EPA-02 Rückfrage anfordern', [
@@ -460,7 +460,7 @@ const html = p.weg === 'extraktion_fehlgeschlagen'
 		kategorie: ((config.outlook_kategorien || {})[p.pruefung.vollstaendig ? 'Bereit zur Bearbeitung' : 'Freigabe ausstehend'] || {}).name,
 		besonderheiten: p.besonderheiten,
 		manipulation_hinweis: p.manipulation_hinweis,
-		text_hinweise: textHinweise.alle(mail, { felder: config.vorgangstypen[k.vorgangstyp] }).hinweise,
+		text_hinweise: textHinweise.alle(mail, { felder: config.vorgangstypen[k.vorgangstyp] }).hinweise.concat([eingang.hinweisWeitereAnliegen(eingang.weitereAnliegen(k, config), eingang.vorgangsartName(config, k.vorgangstyp))].filter(Boolean)),
 		vorgangsart: eingang.vorgangsartName(config, k.vorgangstyp),
 		rueckfrage: $('Rückfrage anfordern').isExecuted ? $('Rückfrage anfordern').first().json : null,
 	});
@@ -569,6 +569,31 @@ return [{ json: {
 		['anlass', 'string', 'systemwarnung_manipulation'],
 	], { onError: 'continueRegularOutput' });
 
+	// Mischmail: Die Mail enthält neben dem bearbeiteten Anliegen ein weiteres (z. B. Reklamation + Bestellung).
+	// Es bleibt bei einem Vorgang; das weitere Anliegen kommt als eigene Meldung in "Bitte ansehen".
+	const weiteresPruefen = wf.code('Weiteres Anliegen prüfen', [5940, 300], ['eingang'], `
+if (!$('Klasse auswerten').isExecuted || !$('Pflichtfelder prüfen').isExecuted) return [];
+const k = $('Klasse auswerten').first().json;
+if (k.weg !== 'pruefen') return [];
+const config = $('Config laden').first().json.config;
+const liste = eingang.weitereAnliegen(k, config);
+if (!liste.length) return [];
+const mail = $('Mail normalisieren').first().json.mail;
+const vid = $('Abschluss vorbereiten').first().json.vorgangs_id;
+return [{ json: { vorgangs_id: vid, nachricht_html: eingang.meldungWeitereAnliegen(vid, mail, liste, eingang.vorgangsartName(config, k.vorgangstyp), { zone: config.zeitzone }) } }];
+`);
+	const weiteresMelden = wf.aufruf('Weiteres Anliegen melden', [6160, 300], 'EPA SW Benachrichtigen', [
+		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
+		['vorgangs_id', 'string', '={{ $json.vorgangs_id || "" }}'],
+		['team_id', 'string', `={{ ${C}.benachrichtigung.team_id }}`],
+		['channel_id', 'string', `={{ ${C}.benachrichtigung.channel_id }}`],
+		['kanal', 'string', `={{ ${C}.benachrichtigung.kanal }}`],
+		['chat_id', 'string', `={{ ${C}.benachrichtigung.chat_id || '' }}`],
+		['telegram_workflow_id', 'string', `={{ ${C}.benachrichtigung.telegram_workflow_id || '' }}`],
+		['nachricht_html', 'string', '={{ $json.nachricht_html }}'],
+		['anlass', 'string', 'weiteres_anliegen'],
+	], { onError: 'continueRegularOutput' });
+
 	wf.kette(trigger, config, normalisieren, vormerken, eintragen, lesen, weg, wegWeiche);
 	wf.verbinde(wegWeiche, dupAudit, 0);
 	wf.verbinde(wegWeiche, ignAudit, 1);
@@ -614,6 +639,8 @@ return [{ json: {
 	wf.kette(informieren, nachMeldung, abschluss);
 	wf.verbinde(abschluss, warnungPruefen);
 	wf.kette(warnungPruefen, warnen);
+	wf.verbinde(abschluss, weiteresPruefen);
+	wf.kette(weiteresPruefen, weiteresMelden);
 	wf.kette(abschluss, abschliessen, melden);
 
 
