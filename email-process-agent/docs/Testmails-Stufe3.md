@@ -976,3 +976,11 @@ Hinweis aus dem Test: Freigabe-Links mit 2 h Gültigkeit laufen nachts ab; im No
 | Neustart nach dem Aufräumen der Testdaten | V-2026-0001/0002 | Nummern beginnen wieder bei 0001, Verarbeitung normal | ✅ |
 | Rückfrage direkt in Outlook gesendet (an Teams vorbei) | V-2026-0001 | EPA-04 (Versandprüfung) erkennt den Versand: entscheidung „manuell_gesendet“, Entscheider „Outlook (direkt gesendet)“, Karte nach „Warten auf Kunde“, Meldung in „Systemmeldungen“. Erkennung erst beim nächsten Nachfass-Lauf (werktags stündlich). | ✅ |
 | Freigabe liegt 72 h | V-2026-0002 | Mit simuliertem Zeitpunkt (Helper „EPA-TEST Nachfassen mit Zeitpunkt“, EPA-04 mit Eingabe „jetzt“): Aufgabe freigabe_eskalation, eskaliert_am gesetzt, neue Karte mit neuem Link, volle Karte bleibt gemerkt. Erster Versuch (Di 19:04 simuliert) korrekt übersprungen: „ausserhalb_geschaeftszeit“. | ✅ |
+
+## „Nur die 4 Vorgangsarten zählen“ – Live-Test (14.11.2026)
+
+| Mail | Ergebnis | Bewertung |
+|---|---|---|
+| Rechnung RE-2026-4471 | ergebnis „ignoriert“, **kein Vorgang**, keine Teams-Meldung | ✅ |
+| Stornierung Bestellung 8812 (keine Antwort auf eine Rückfrage) | ergebnis „ignoriert_gemeldet“, **kein Vorgang**, Meldung in „Bitte ansehen“ ohne Vorgangsnummer | ✅ |
+| Transportanfrage Bonn – Koblenz (vollständig) | V-2026-0003 „Bereit zur Bearbeitung“ | ✅ |
