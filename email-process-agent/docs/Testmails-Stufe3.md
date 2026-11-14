@@ -968,3 +968,11 @@ Gefundene und behobene Fehler:
 - Nach Erinnerung/Erneuerung an den Freigeber wurde die gemerkte volle Karte geleert (Warten-Karte wieder kurz); doppeltes ⚠️; ⏰-Text „Link gilt nicht mehr“ war bei einer Erinnerung falsch. Behoben (`a998b79`).
 
 Hinweis aus dem Test: Freigabe-Links mit 2 h Gültigkeit laufen nachts ab; im Normalbetrieb gelten 48 h.
+
+## Direktversand in Outlook und Freigabe-Eskalation nach 72 h – Live-Test (14.11.2026)
+
+| Fall | Vorgang | Ergebnis | Bewertung |
+|---|---|---|---|
+| Neustart nach dem Aufräumen der Testdaten | V-2026-0001/0002 | Nummern beginnen wieder bei 0001, Verarbeitung normal | ✅ |
+| Rückfrage direkt in Outlook gesendet (an Teams vorbei) | V-2026-0001 | EPA-04 (Versandprüfung) erkennt den Versand: entscheidung „manuell_gesendet“, Entscheider „Outlook (direkt gesendet)“, Karte nach „Warten auf Kunde“, Meldung in „Systemmeldungen“. Erkennung erst beim nächsten Nachfass-Lauf (werktags stündlich). | ✅ |
+| Freigabe liegt 72 h | V-2026-0002 | Mit simuliertem Zeitpunkt (Helper „EPA-TEST Nachfassen mit Zeitpunkt“, EPA-04 mit Eingabe „jetzt“): Aufgabe freigabe_eskalation, eskaliert_am gesetzt, neue Karte mit neuem Link, volle Karte bleibt gemerkt. Erster Versuch (Di 19:04 simuliert) korrekt übersprungen: „ausserhalb_geschaeftszeit“. | ✅ |
