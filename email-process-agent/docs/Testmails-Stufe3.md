@@ -984,3 +984,7 @@ Hinweis aus dem Test: Freigabe-Links mit 2 h Gültigkeit laufen nachts ab; im No
 | Rechnung RE-2026-4471 | ergebnis „ignoriert“, **kein Vorgang**, keine Teams-Meldung | ✅ |
 | Stornierung Bestellung 8812 (keine Antwort auf eine Rückfrage) | ergebnis „ignoriert_gemeldet“, **kein Vorgang**, Meldung in „Bitte ansehen“ ohne Vorgangsnummer | ✅ |
 | Transportanfrage Bonn – Koblenz (vollständig) | V-2026-0003 „Bereit zur Bearbeitung“ | ✅ |
+
+## Knopf „Erledigt“ in „Vollständige Anfragen“ – Live-Test (14.11.2026)
+
+V-2026-0004 „Angebot Möbeltransport Siegburg“: Karte mit Knopf, Link (nur Hash) in epa_erledigt_links. Klick → Bestätigungsseite → Name gewählt → Status „Abgeschlossen“ (Auslöser Mitarbeiter, Audit „Auftrag bearbeitet (Knopf Erledigt in Teams)“), Link verbraucht, Karte aus „Vollständige Anfragen“ entfernt, Abschlusskarte in „Logs“ (von Tim bestätigt). ✅
