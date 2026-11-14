@@ -309,6 +309,16 @@ function meldungKeineAnfrage(vorgangsId, mail, h, passend = [], opts = {}) {
 	return z.join('<br>') + warnungen(mail);
 }
 
+// Regel des Betreibers: Nur die Vorgangsarten des Kunden (Angebot, Bestellung, Termin, Reklamation) zählen. Alles andere
+// bekommt keinen Vorgang und keine Meldung – mit zwei Ausnahmen, weil sie eine der Vorgangsarten betreffen können:
+// eine Stornierung (betrifft eine Bestellung) und eine Mail, deren Inhalt nur im nicht ausgewerteten Anhang steht.
+const KEINE_ANFRAGE_MELDEN = Object.freeze(['storno', 'anhang']);
+
+/** Soll eine Mail, die keine Anfrage ist, trotzdem gemeldet werden? h aus textHinweise.handlungKeineAnfrage. */
+function keineAnfrageMelden(h) {
+	return Boolean(h && KEINE_ANFRAGE_MELDEN.includes(h.anlass));
+}
+
 // ---------------------------------------------------------------- Systemwarnung Prompt-Injection
 
 // Typische Formulierungen von Anweisungen an eine KI. Breit gefasst: Ein Treffer allein sperrt nicht, er bestätigt
@@ -428,6 +438,8 @@ function meldungManipulation({ vorgangs_id: vid, mail, erkannt_bei, begruendung,
 }
 
 module.exports = {
+	KEINE_ANFRAGE_MELDEN,
+	keineAnfrageMelden,
 	weitereAnliegen,
 	hinweisWeitereAnliegen,
 	meldungWeitereAnliegen,

@@ -275,3 +275,17 @@ test('Vorgangsart in Meldungen nur bei mehreren Vorgangsarten', () => {
 		assert.equal(require('../src/kanaele').kanalArt('weiteres_anliegen'), 'ansehen');
 	});
 }
+
+// ---------------------------------------------------------------- Nur die Vorgangsarten zählen
+test('Keine Anfrage: nur Stornierung und "Inhalt nur im Anhang" werden gemeldet, alles andere bleibt still', () => {
+	assert.deepEqual([...e.KEINE_ANFRAGE_MELDEN], ['storno', 'anhang']);
+	assert.equal(e.keineAnfrageMelden({ anlass: 'storno' }), true);
+	assert.equal(e.keineAnfrageMelden({ anlass: 'anhang' }), true);
+	for (const a of ['rueckruf', 'status', 'reklamation', 'sonstiges']) assert.equal(e.keineAnfrageMelden({ anlass: a }), false, a);
+	assert.equal(e.keineAnfrageMelden(null), false);
+});
+test('Keine Anfrage: Meldung ohne Vorgangsnummer (es wird kein Vorgang angelegt)', () => {
+	const html = e.meldungKeineAnfrage(null, MAIL, { anlass: 'storno', stelle: 'bitte stornieren' }, []);
+	assert.doesNotMatch(html, /Vorgangsnummer/);
+	assert.match(html, /Stornierung/);
+});

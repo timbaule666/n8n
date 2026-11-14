@@ -68,7 +68,7 @@ Prompts liegen versioniert vor (v1–v4) mit Prüfsumme. Die Version wird je Kun
    - Passt der Thread, aber der Absender ist fremd, entsteht nie automatisch ein neuer Vorgang. Der Fall wird als „Zuordnung unklar“ gemeldet.
 4. **Klassifizierung (KI) + Musterprüfung:**
    - Ist es eine konfigurierte Vorgangsart? Unter der Konfidenzschwelle (Standard 0,75) gilt der Fall als „Klassifizierung unklar“ und wird gemeldet.
-   - Keine Anfrage, aber wichtig: Stornierung, Reklamation (wenn nicht als Vorgangsart eingerichtet), Rückrufbitte, Statusfrage, nur Anhang ohne Text. Diese Fälle werden im Kanal „Bitte ansehen“ gemeldet. Sonstiges wird ignoriert, aber nicht gelöscht.
+   - Keine der Vorgangsarten: Es wird **kein Vorgang angelegt** (keine Nummer, keine Teams-Meldung, kein Log), die Mail bleibt unverändert im Posteingang. Die Klassifizierung läuft dafür vor dem Anlegen. Ausnahmen mit Meldung in „Bitte ansehen“ (ohne Vorgangsnummer): eine Stornierung und eine Mail, deren Inhalt nur im nicht ausgewerteten Anhang steht. Ist die KI unsicher, ob es eine Vorgangsart ist, kommt weiterhin „Klassifizierung unklar“.
 5. **Extraktion (KI)** der Felder dieser Vorgangsart.
 6. **Pflichtfeldprüfung (Code):**
    - Typen: Text, PLZ, Datum, Zahl, E-Mail, Telefon, Auswahl.
@@ -152,7 +152,7 @@ Jeder Kunde bekommt dasselbe Team-Layout. Der Baustein „Teams einrichten“ le
 | **1 Vollständige Anfragen** | Anfragen, Bestellungen, Termine, Reklamationen mit allen Pflichtangaben – bereit zur Bearbeitung; Kalenderergebnis bei Terminen |
 | **2 Rückfragen** | Nur **offene Freigaben** (Entwurf prüfen, freigeben, bearbeiten, ablehnen) sowie Kundenantworten mit weiter fehlenden Angaben und leere Antworten. Abgelehnte oder überholte Karten werden an Ort und Stelle als erledigt markiert. |
 | **3 Warten auf Kunde** | Rückfrage ist verschickt, Antwort steht aus („⏳ Wartet auf Antwort des Kunden“ mit Gefragtem und Frist). Die Karte wandert nach dem Versand aus „2 Rückfragen“ hierher und verschwindet, sobald der Kunde antwortet, die Mail nicht ankam oder der Kunde nicht reagiert. |
-| **4 Bitte ansehen** | Keine normale Anfrage, aber ein Mensch muss entscheiden: Stornierung (auch in einer Antwort), Reklamation ohne eingerichtete Vorgangsart, Rückrufbitte, Statusfrage, Manipulationsverdacht, unklare Zuordnung/Klassifizierung, fehlgeschlagene Extraktion, maximale Rundenzahl erreicht, Kunde reagiert nicht, unzustellbare Rückfrage |
+| **4 Bitte ansehen** | Keine normale Anfrage, aber ein Mensch muss entscheiden: Stornierung (auch in einer Antwort), Inhalt nur im Anhang, Mischmail mit weiterem Anliegen, Manipulationsverdacht (nur bei bearbeiteten Mails), unklare Zuordnung/Klassifizierung, fehlgeschlagene Extraktion, maximale Rundenzahl erreicht, Kunde reagiert nicht, unzustellbare Rückfrage |
 | **5 Systemmeldungen** | Technik und Betrieb: Zustellfehler von Freigabe-Nachrichten, Zustelltest, Regel-Abgleich, Tagesübersicht, Kalenderfehler |
 | **6 Logs** | Eine Abschlusskarte pro Vorgang (Protokoll) |
 

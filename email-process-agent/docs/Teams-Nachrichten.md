@@ -294,7 +294,7 @@ Möglicherweise betroffen:
 Die Mail wurde nicht automatisch bearbeitet und liegt weiter im Posteingang. An bestehenden Vorgängen wurde nichts geändert.
 ```
 
-### 9. Keine Anfrage – Rückrufbitte
+### 9. Keine Anfrage – Rückrufbitte (seit 14.11.2026 nicht mehr gemeldet: nur die Vorgangsarten zählen)
 
 **Wann:** Keine Anfrage, aber jemand muss handeln. Am Vorgang ändert sich nichts.  
 **Quelle:** `src/eingang.js · meldungKeineAnfrage`
@@ -312,7 +312,7 @@ Kunde schreibt: „bitte rufen Sie mich zurück, wir planen ab Januar regelmäß
 Die Mail wurde nicht automatisch bearbeitet und liegt weiter im Posteingang. An bestehenden Vorgängen wurde nichts geändert.
 ```
 
-### 10. Keine Anfrage – Frage zu einem Vorgang
+### 10. Keine Anfrage – Frage zu einem Vorgang (seit 14.11.2026 nicht mehr gemeldet: nur die Vorgangsarten zählen)
 
 **Wann:** Keine Anfrage, aber jemand muss handeln. Am Vorgang ändert sich nichts.  
 **Quelle:** `src/eingang.js · meldungKeineAnfrage`

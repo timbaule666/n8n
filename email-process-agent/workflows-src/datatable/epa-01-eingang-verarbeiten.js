@@ -328,9 +328,10 @@ return [{ json: {
 `);
 
 	// ---------------------------------------------------------------- Klassifizierung (A4)
+	// Klassifizierung VOR dem Anlegen: Mails außerhalb der Vorgangsarten bekommen keinen Vorgang (keine Nummer, kein Log).
 	const klassifizieren = wf.aufruf('Klassifizieren', [2860, 240], 'EPA SW LLM aufrufen', [
 		['kunde_id', 'string', `={{ ${C}.kunde_id }}`],
-		['vorgangs_id', 'string', `={{ ${V}.vorgangs_id }}`],
+		['vorgangs_id', 'string', ''],
 		['aufgabe', 'string', 'klassifizierung'],
 		['prompt_version', 'string', `={{ ${C}.prompt_versionen.klassifizierung }}`],
 		['profil', 'object', `={{ ${C}.llm_profil.klassifizierung }}`],
@@ -355,6 +356,10 @@ return [{ json: { ...a, llm: { modell: llm.modell, prompt_version: llm.prompt_ve
 		['nur_wenn_erlaubt', 'boolean', '={{ false }}'],
 	]);
 	const kWeiche = weiche(wf, 'Nach Klasse', [3520, 240], `={{ ${K}.weg }}`, ['pruefen', 'unklar', 'ignoriert']);
+	const anfrageFrage = wf.node('Vorgangsart erkannt?', 'n8n-nodes-base.if', [3080, 240], {
+		conditions: bedingungen([bedingung(`={{ ${K}.weg }}`, { type: 'string', operation: 'notEquals' }, 'ignoriert')]),
+		options: {},
+	});
 
 	const mKlasse = wf.code('Meldung: Klassifizierung unklar', [3740, 300], ['eingang'], `
 const k = $('Klasse auswerten').first().json;
@@ -370,20 +375,20 @@ return [{ json: {
 	// Keine Anfrage: still ignorieren – außer jemand muss handeln (Stornierung, Rückrufbitte, Frage zu einem Vorgang,
 	// Inhalt nur im Anhang). Dann eine Meldung; am Vorgang und an bestehenden Vorgängen ändert sich nichts.
 	const kiIgnoriert = wf.code('Ergebnis: Keine Anfrage', [3740, 460], ['eingang', 'textHinweise'], `
-const v = $('Vorgang anlegen').first().json.vorgang;
+// Kein Vorgang: Die Mail ist keine der Vorgangsarten. Gemeldet werden nur Stornierung und "Inhalt nur im Anhang".
 const k = $('Klasse auswerten').first().json;
 const mail = $('Mail normalisieren').first().json.mail;
 const config = $('Config laden').first().json.config;
 const h = textHinweise.handlungKeineAnfrage(mail, k.details && k.details.begruendung);
-if (!h) return [{ json: { ergebnis: 'ignoriert', vorgangs_id: v.vorgangs_id, melden: false } }];
+if (!eingang.keineAnfrageMelden(h)) return [{ json: { ergebnis: 'ignoriert', vorgangs_id: null, melden: false } }];
 const kandidaten = $('Kandidaten suchen').isExecuted ? ($('Kandidaten suchen').first().json.kandidaten || []) : [];
-const passend = ['storno', 'status'].includes(h.anlass) ? eingang.passendeVorgaenge(mail, kandidaten.filter((x) => x.vorgangs_id !== v.vorgangs_id)) : [];
+const passend = h.anlass === 'storno' ? eingang.passendeVorgaenge(mail, kandidaten) : [];
 return [{ json: {
-	vorgangs_id: v.vorgangs_id,
+	vorgangs_id: null,
 	melden: true,
 	anlass: 'keine_anfrage_' + h.anlass,
-	nachricht_html: eingang.meldungKeineAnfrage(v.vorgangs_id, mail, h, passend, { zone: config.zeitzone }),
-	ergebnis: { ergebnis: 'ignoriert_gemeldet', vorgangs_id: v.vorgangs_id },
+	nachricht_html: eingang.meldungKeineAnfrage(null, mail, h, passend, { zone: config.zeitzone }),
+	ergebnis: { ergebnis: 'ignoriert_gemeldet', vorgangs_id: null },
 } }];
 `);
 	const kiMelden = wf.node('Keine Anfrage melden?', 'n8n-nodes-base.if', [3960, 460], {
@@ -534,8 +539,9 @@ if ($('Pflichtfelder prüfen').isExecuted) {
 	if (r.verdacht_manipulation === true) erkannt = eingang.manipulationQuellen(r.manipulation || { ki: true }, 'Kundenantwort');
 } else if ($('Klasse auswerten').isExecuted) {
 	const k = $('Klasse auswerten').first().json;
+	// Mails außerhalb der Vorgangsarten werden nicht bearbeitet: keine Systemwarnung (nichts in "Bitte ansehen").
 	const b = eingang.manipulationBewerten(Boolean(k.details && k.details.verdacht_manipulation === true), mail);
-	if (b.stufe === 'sperren') erkannt = eingang.manipulationQuellen(b, 'Klassifizierung');
+	if (k.weg !== 'ignoriert' && b.stufe === 'sperren') erkannt = eingang.manipulationQuellen(b, 'Klassifizierung');
 }
 if (!erkannt.length) return [];
 const a = $('Abschluss vorbereiten').first().json;
@@ -615,14 +621,17 @@ return [{ json: { vorgangs_id: vid, nachricht_html: eingang.meldungWeitereAnlieg
 	wf.kette(ignAudit, ignErgebnis, abschluss);
 	wf.kette(kandidaten, zuordnen, zWeiche);
 	wf.verbinde(zWeiche, zAudit, 0);
-	wf.verbinde(zWeiche, anlegen, 1);
-	wf.verbinde(zWeiche, anlegen, 2);
+	wf.verbinde(zWeiche, klassifizieren, 1);
+	wf.verbinde(zWeiche, klassifizieren, 2);
 	wf.kette(zAudit, antwortVerarbeiten, antwortErgebnis, abschluss);
+	wf.kette(klassifizieren, klasse, anfrageFrage);
+	wf.verbinde(anfrageFrage, anlegen, 0);
+	wf.verbinde(anfrageFrage, kiIgnoriert, 1);
 	wf.kette(anlegen, unklarFrage);
 	wf.verbinde(unklarFrage, statusUnklar, 0);
-	wf.verbinde(unklarFrage, klassifizieren, 1);
+	wf.verbinde(unklarFrage, statusKlasse, 1);
 	wf.kette(statusUnklar, mUnklar, informieren);
-	wf.kette(klassifizieren, klasse, statusKlasse, kWeiche);
+	wf.kette(statusKlasse, kWeiche);
 	wf.verbinde(kWeiche, extrahieren, 0);
 	wf.verbinde(kWeiche, mKlasse, 1);
 	wf.verbinde(kWeiche, kiIgnoriert, 2);
