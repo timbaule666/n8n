@@ -41,7 +41,7 @@ test('karteZustand: abgelehnt mit Grund, fehler, ersetzt, erneuert, unzustellbar
 	assert.match(karteText(ab), /Grund: Kunde ruft selbst an/);
 	assert.equal(f.karteZustand({ ...FG, status: 'fehler' }).karte.body[0].style, 'warning');
 	assert.equal(f.karteZustand({ ...FG, status: 'ersetzt' }).titel, '↩️ Nicht mehr nötig');
-	assert.equal(f.karteZustand({ ...FG, status: 'offen' }, { zustand: 'erneuert' }).titel, '⏰ Dieser Link gilt nicht mehr');
+	assert.equal(f.karteZustand({ ...FG, status: 'offen' }, { zustand: 'erneuert' }).titel, '⏰ Ersetzt durch eine neue Karte');
 	assert.equal(f.karteZustand({ ...FG, status: 'unzustellbar' }).titel, '📭 Gesendet, aber nicht zugestellt');
 });
 

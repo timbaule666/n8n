@@ -27,7 +27,7 @@ Jedes Kunden-Team hat sechs Kanäle. „EPA SW Teams einrichten“ legt sie an u
 | ❌ Abgelehnt (rot, mit Name und Grund) | Karte wird an Ort und Stelle ersetzt (`teams_kanal_aendern`) |
 | ⚠️ Versand fehlgeschlagen (gelb) | Karte wird ersetzt; kommt nach Behebung mit neuem Link erneut |
 | ↩️ Nicht mehr nötig | Karte wird ersetzt: Kunde hat geantwortet, bevor freigegeben wurde (EPA-03) |
-| ⏰ Dieser Link gilt nicht mehr | Karte wird ersetzt: neuer Link nach Ablauf oder Eskalation, die neue Karte steht weiter unten |
+| ⏰ Ersetzt durch eine neue Karte | Karte wird ersetzt: neuer Link nach Erinnerung, Ablauf oder Eskalation, die neue Karte steht weiter unten |
 
 Ohne Kanal „Warten auf Kunde“ in der Config (ältere Kunden) wird bei „verschickt“ die Karte nur ersetzt. Die Teams-Nachricht wird an der Freigabe gespeichert (`epa_freigaben.teams_nachricht`). Gilt nur für Karten im Kanal, nicht für 1:1-Chats. Schlägt das Ändern fehl, bleibt die alte Karte stehen; an Freigabe und Versand ändert das nichts.
 

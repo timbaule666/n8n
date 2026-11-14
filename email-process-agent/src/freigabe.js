@@ -283,8 +283,9 @@ function karteZustand(fg, { zustand, zeitzone, jetzt, frist, original } = {}) {
 		titel = '↩️ Nicht mehr nötig'; stil = 'emphasis';
 		zeilen = ['Der Kunde hat geantwortet, bevor die Rückfrage freigegeben wurde. Die Antwort wird verarbeitet.', zeitText(jetzt, zeitzone)];
 	} else if (z === 'erneuert') {
-		titel = '⏰ Dieser Link gilt nicht mehr'; stil = 'warning';
-		zeilen = ['Ein neuer Freigabe-Link für diesen Vorgang steht weiter unten im Kanal.', zeitText(jetzt, zeitzone)];
+		// Gilt für Erinnerung (alter Link noch gültig) und Erneuerung (alter Link gesperrt): immer die neue Karte nehmen.
+		titel = '⏰ Ersetzt durch eine neue Karte'; stil = 'warning';
+		zeilen = ['Für diesen Vorgang steht weiter unten im Kanal eine neue Karte mit neuem Freigabe-Link. Bitte nur die neue Karte verwenden.', zeitText(jetzt, zeitzone)];
 	} else if (z === 'unzustellbar') {
 		titel = '📭 Gesendet, aber nicht zugestellt'; stil = 'attention';
 		zeilen = ['Die Mail kam beim Kunden nicht an. Siehe Meldung im Kanal „Bitte ansehen“.', zeitText(jetzt, zeitzone)];

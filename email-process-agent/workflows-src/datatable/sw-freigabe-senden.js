@@ -112,6 +112,8 @@ let karte = '';
 const m = String(e.nachricht_html || '').match(/<!--EPA_KARTE:([A-Za-z0-9+\\/=]+)-->/);
 // Ohne Button und ohne Link: Freigabe-Links werden nie im Klartext gespeichert (nur als Hash in epa_freigabe_tokens).
 if (neu && m) { try { const k = freigabe.karteOhneLink(JSON.parse(Buffer.from(m[1], 'base64').toString('utf8'))); karte = k ? JSON.stringify(k) : ''; } catch (err) { karte = ''; } }
+// Erinnerung/Erneuerung an den Freigeber kommt ohne fertige Karte: dann die schon gemerkte vollständige Karte behalten.
+if (neu && !karte && typeof f.teams_karte === 'string' && f.teams_karte.trim().startsWith('{')) karte = f.teams_karte;
 return [{ json: { merken: Boolean(neu), alt_ersetzen: Boolean(neu && alt && alt.id !== neu.id), alt: alt ? JSON.stringify(alt) : '', teams_nachricht: neu ? JSON.stringify(neu) : '', teams_karte: karte } }];
 `, kOpt);
 	const kMerken = wf.node('Karte merken?', 'n8n-nodes-base.if', [2200, 120], {

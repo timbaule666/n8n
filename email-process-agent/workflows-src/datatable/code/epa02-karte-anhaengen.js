@@ -23,7 +23,7 @@ try {
 	let vorhanden = felderDef.filter((f) => !fehlt.has(f.feldname) && wertText(f)).map((f) => '✅ ' + (f.anzeigename || f.feldname) + ': ' + wertText(f));
 	if (vorhanden.length > 10) vorhanden = vorhanden.slice(0, 10).concat(['… und weitere']);
 	const fehlend = (r.fehlende || []).map((f) => '❌ ' + (f.anzeigename || f.feldname));
-	const warnungen = kontext.split('<br>').filter((s) => s.includes('⚠️')).map((s) => entsch(s.replace(/<[^>]+>/g, '')).trim()).filter(Boolean);
+	const warnungen = kontext.split('<br>').filter((s) => s.includes('⚠️')).map((s) => entsch(s.replace(/<[^>]+>/g, '')).trim().replace(/^(⚠️\s*)+/u, '')).filter(Boolean);
 	const erinnerung = r.freigabe_art === 'erinnerung';
 	const erneut = r.art === 'erneut';
 	const absender = v.absender_name || v.absender_adresse || '';
