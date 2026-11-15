@@ -1,0 +1,578 @@
+{
+ "id": "Y28VPD1If2qPcEvr",
+ "name": "EPA-T4 Nachfass-Test (Test) *",
+ "active": false,
+ "updatedAt": "2026-11-14T20:24:58.284Z",
+ "versionId": "3ffd12a8-196c-418e-a1fd-11c8f170db58",
+ "activeVersionId": null,
+ "nodes": [
+  {
+   "id": "8642d403-ab67-466f-b643-435f318f9f3c",
+   "name": "Bei Aufruf",
+   "type": "n8n-nodes-base.executeWorkflowTrigger",
+   "typeVersion": 1.1,
+   "position": [
+    0,
+    192
+   ],
+   "parameters": {
+    "workflowInputs": {
+     "values": [
+      {
+       "name": "aktion"
+      },
+      {
+       "name": "nr"
+      },
+      {
+       "name": "vorgang"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "0a8de5ef-c20d-4a97-b50b-8f0e2f8aa38f",
+   "name": "Plan",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    224,
+    192
+   ],
+   "parameters": {
+    "jsCode": "\n// Erfundene Testmails (Testdaten), Empfänger fest: Testpostfach.\nconst ZIEL = 'demo@tb-agenttest.de';\nconst M = {\n N1: { name: 'Frank Albrecht', betreff: 'Transport Dortmund - Essen', text: 'Guten Tag,\\n\\nbitte um ein Angebot: Abholung am 24.11.2026 in 44135 Dortmund, Lieferung nach 45127 Essen.\\n2 Paletten Fliesen, zusammen 700 kg.\\n\\nAnsprechpartner ist Herr Frank Albrecht.\\n\\nMit freundlichen Grüßen\\nFrank Albrecht\\nAlbrecht Baustoffe GmbH' },\n N2: { name: 'Claudia Rehm', betreff: 'Bestellung Kopierpapier', text: 'Hallo,\\n\\nhiermit bestellen wir verbindlich 40 Kartons Kopierpapier A4 (80 g).\\nUnsere Bestellnummer: B-77812\\nLieferadresse: Hafenweg 12, 48155 Münster\\n\\nViele Grüße\\nClaudia Rehm\\nEinkauf, Rehm Büroservice' },\n N3: { name: 'Markus Feld', betreff: 'Besichtigung Lager Bielefeld', text: 'Guten Tag,\\n\\nwir würden gerne einen Termin zur Besichtigung unseres Lagers vereinbaren,\\nOrt: Industriestraße 5, 33602 Bielefeld. Am besten um 10:00 Uhr.\\n\\nGruß\\nMarkus Feld' },\n F1: { name: 'Sven Kühne', betreff: 'Anfrage Transport Hannover - Braunschweig', text: 'Hallo,\\n\\nwir brauchen einen Transport von 30159 Hannover nach 38100 Braunschweig,\\n3 Paletten Getränke, insgesamt 1.100 kg.\\n\\nAnsprechpartner: Sven Kühne, Tel. 0511 5553101\\n\\nGruß\\nSven Kühne' },\n F2: { name: 'Petra Lorenz', betreff: 'Bestellung Schutzhandschuhe', text: 'Guten Tag,\\n\\nwir bestellen Schutzhandschuhe Größe 9 (Art. SH-209).\\nBestellnummer 4500-3311, Lieferung bis 27.11.2026\\nan Werkstraße 3, 59065 Hamm.\\n\\nFreundliche Grüße\\nPetra Lorenz' },\n S1: { name: 'Jörg Brandner', betreff: 'Paletten nach Bochum', text: 'Moin,\\n\\nkönnt ihr am 25.11.2026 in 45127 Essen 4 Paletten Ersatzteile (zusammen 1.300 kg) abholen\\nund nach 44787 Bochum bringen? Ansprechpartner bin ich.\\n\\nGruß\\nJörg Brandner' },\n S2: { name: 'Nina Weiß', betreff: 'Bestellung Etiketten', text: 'Hallo,\\n\\nwir bestellen 12 Rollen Versandetiketten 100x150 mm,\\nBestellnummer E-2290.\\nLieferung bitte nach Carl-Bertelsmann-Straße 20, 33332 Gütersloh.\\n\\nDanke und Gruß\\nNina Weiß' },\n S3: { name: 'Holger Sand', betreff: 'Transportanfrage Duisburg - Krefeld', text: 'Guten Tag,\\n\\nAbholung am 26.11.2026 in 47051 Duisburg, Lieferung nach 47798 Krefeld.\\n5 Gitterboxen Schrauben.\\n\\nAnsprechpartner: Holger Sand, Telefon 0203 5553105\\n\\nMit freundlichen Grüßen\\nHolger Sand' },\n S4: { name: 'Andrea Wolff', betreff: 'Beschädigte Lieferung und Nachbestellung', text: 'Guten Tag,\\n\\nbei der Lieferung vom 10.11.2026 (Lieferschein LS-88123) waren 2 von 10 Kartons\\nGläser zerbrochen. Bitte prüfen Sie das.\\n\\nAußerdem bestellen wir 20 weitere Kartons Gläser (Art. GL-300),\\nLieferung bis 30.11.2026 an Am Markt 4, 44787 Bochum, Bestellnummer 7781.\\n\\nFreundliche Grüße\\nAndrea Wolff' },\n S4B: { name: 'Andrea Wolff', betreff: 'Glasbruch LS-88123 und 20 Kartons Gläser', text: 'Guten Tag,\\n\\nbei der Lieferung vom 10.11.2026 (Lieferschein LS-88123) waren 2 von 10 Kartons\\nGläser zerbrochen. Bitte prüfen Sie das.\\n\\nAußerdem bestellen wir 20 weitere Kartons Gläser (Art. GL-300),\\nLieferung bis 30.11.2026 an Am Markt 4, 44787 Bochum, Bestellnummer 7781.\\n\\nFreundliche Grüße\\nAndrea Wolff' },\n S5: { name: 'Ralf Becker', betreff: 'Reklamation falsche Ware', text: 'Hallo,\\n\\nwir haben statt 6 Paletten Pflastersteine grau leider 6 Paletten in rot bekommen.\\nAuftragsnummer A-55410. Bitte um Klärung.\\n\\nGruß\\nRalf Becker\\nBecker Garten- und Landschaftsbau' },\n X1: { name: 'Buchhaltung Kroll Logistik', betreff: 'Rechnung RE-2026-4471', text: 'Sehr geehrte Damen und Herren,\\n\\nanbei erhalten Sie unsere Rechnung RE-2026-4471 vom 13.11.2026 über 1.240,00 EUR.\\nZahlbar innerhalb von 14 Tagen ohne Abzug.\\n\\nMit freundlichen Grüßen\\nBuchhaltung\\nKroll Logistik GmbH' },\n X2: { name: 'Martin Seidel', betreff: 'Stornierung unserer Bestellung 8812', text: 'Guten Tag,\\n\\nbitte stornieren Sie unsere Bestellung Nr. 8812 vom 10.11.2026 (30 Kartons Folie).\\nWir benötigen die Ware nicht mehr.\\n\\nVielen Dank und Gruß\\nMartin Seidel' },\n X3: { name: 'Lena Hartmann', betreff: 'Transportanfrage Bonn - Koblenz', text: 'Guten Tag,\\n\\nwir benötigen ein Angebot: Abholung am 27.11.2026 in 53111 Bonn, Lieferung nach 56068 Koblenz.\\n3 Paletten Möbel, zusammen 900 kg.\\n\\nAnsprechpartnerin: Lena Hartmann, Tel. 0228 5554321\\n\\nViele Grüße\\nLena Hartmann' },\n A_N3: { art: 'antwort', name: 'Markus Feld', text: 'Hallo,\\n\\nder Termin wäre am 01.12.2026 um 10:00 Uhr.\\n\\nGruß\\nMarkus Feld' },\n A_S3: { art: 'antwort', name: 'Holger Sand', text: 'Guten Tag,\\n\\ndas Gewicht beträgt insgesamt ca. 1.800 kg.\\n\\nGruß\\nHolger Sand' },\n A_S5: { art: 'antwort', name: 'Ralf Becker', text: 'Hallo,\\n\\ndie Lieferung war am 11.11.2026.\\n\\nGruß\\nRalf Becker' },\n};\nconst e = $input.first().json;\nconst CFG = {\n config_test: { frist_stunden: 1, frist_nur_geschaeftszeit: false, erinnerung_intervall_stunden: 1, anzahl_erinnerungen: 1, freigabe_erinnerung_stunden: 1, freigabe_ablauf_stunden: 2, geschaeftszeiten: JSON.stringify({ tage: [1,2,3,4,5,6,7], von: '00:00', bis: '23:59' }) },\n config_zurueck: { frist_stunden: 48, frist_nur_geschaeftszeit: true, erinnerung_intervall_stunden: 24, anzahl_erinnerungen: 2, freigabe_erinnerung_stunden: 4, freigabe_ablauf_stunden: 48, geschaeftszeiten: JSON.stringify({ tage: [1,2,3,4,5], von: '08:00', bis: '17:00' }) },\n};\nif (CFG[e.aktion]) return [{ json: { art: 'config', ...CFG[e.aktion] } }];\nlet liste = e.aktion === 'mails' ? ['N1','N2','N3','F1','F2','S1','S2','S3','S4','S5'] : String(e.nr || '').split(',').map((s) => s.trim()).filter(Boolean);\nif (e.aktion === 'mails' && e.nr) liste = String(e.nr).split(',').map((s) => s.trim());\nreturn liste.map((nr) => {\n const v = M[nr];\n if (!v) throw new Error('Unbekannte Vorlage ' + nr);\n if (v.art === 'antwort' && !/^V-\\d{4}-\\d{4,}$/.test(e.vorgang || '')) throw new Error(nr + ': vorgang angeben');\n return { json: { art: v.art || 'neu', nr, an: ZIEL, betreff: v.betreff || '', text: v.text, absender_name: v.name, vorgang: e.vorgang || '' } };\n});\n"
+   }
+  },
+  {
+   "id": "62bd794f-e08f-4404-9777-b89ed23809bc",
+   "name": "Art?",
+   "type": "n8n-nodes-base.switch",
+   "typeVersion": 3.2,
+   "position": [
+    448,
+    176
+   ],
+   "parameters": {
+    "rules": {
+     "values": [
+      {
+       "outputKey": "config",
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "loose"
+        },
+        "conditions": [
+         {
+          "leftValue": "={{ $json.art }}",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          },
+          "rightValue": "config"
+         }
+        ],
+        "combinator": "and"
+       }
+      },
+      {
+       "outputKey": "neu",
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "loose"
+        },
+        "conditions": [
+         {
+          "leftValue": "={{ $json.art }}",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          },
+          "rightValue": "neu"
+         }
+        ],
+        "combinator": "and"
+       }
+      },
+      {
+       "outputKey": "antwort",
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "loose"
+        },
+        "conditions": [
+         {
+          "leftValue": "={{ $json.art }}",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          },
+          "rightValue": "antwort"
+         }
+        ],
+        "combinator": "and"
+       }
+      }
+     ]
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "0f43a2cc-ce10-4388-8f34-81ce320744d8",
+   "name": "Config setzen",
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    672,
+    0
+   ],
+   "parameters": {
+    "resource": "row",
+    "operation": "update",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "oTBuAY0RpfLKghRX"
+    },
+    "matchType": "allConditions",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "kunde_id",
+       "condition": "eq",
+       "keyValue": "epa-m365"
+      }
+     ]
+    },
+    "columns": {
+     "mappingMode": "defineBelow",
+     "value": {
+      "frist_stunden": "={{ $json.frist_stunden }}",
+      "frist_nur_geschaeftszeit": "={{ $json.frist_nur_geschaeftszeit }}",
+      "erinnerung_intervall_stunden": "={{ $json.erinnerung_intervall_stunden }}",
+      "anzahl_erinnerungen": "={{ $json.anzahl_erinnerungen }}",
+      "freigabe_erinnerung_stunden": "={{ $json.freigabe_erinnerung_stunden }}",
+      "freigabe_ablauf_stunden": "={{ $json.freigabe_ablauf_stunden }}",
+      "geschaeftszeiten": "={{ $json.geschaeftszeiten }}"
+     },
+     "matchingColumns": [],
+     "schema": [
+      {
+       "id": "frist_stunden",
+       "displayName": "frist_stunden",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "number",
+       "readOnly": false,
+       "removed": false
+      },
+      {
+       "id": "frist_nur_geschaeftszeit",
+       "displayName": "frist_nur_geschaeftszeit",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "boolean",
+       "readOnly": false,
+       "removed": false
+      },
+      {
+       "id": "erinnerung_intervall_stunden",
+       "displayName": "erinnerung_intervall_stunden",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "number",
+       "readOnly": false,
+       "removed": false
+      },
+      {
+       "id": "anzahl_erinnerungen",
+       "displayName": "anzahl_erinnerungen",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "number",
+       "readOnly": false,
+       "removed": false
+      },
+      {
+       "id": "freigabe_erinnerung_stunden",
+       "displayName": "freigabe_erinnerung_stunden",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "number",
+       "readOnly": false,
+       "removed": false
+      },
+      {
+       "id": "freigabe_ablauf_stunden",
+       "displayName": "freigabe_ablauf_stunden",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "number",
+       "readOnly": false,
+       "removed": false
+      },
+      {
+       "id": "geschaeftszeiten",
+       "displayName": "geschaeftszeiten",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "readOnly": false,
+       "removed": false
+      }
+     ]
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "7be765ac-434e-4cb1-b57f-352319e30a95",
+   "name": "Mail senden",
+   "type": "n8n-nodes-base.gmail",
+   "typeVersion": 2.2,
+   "position": [
+    896,
+    128
+   ],
+   "parameters": {
+    "sendTo": "={{ $json.an }}",
+    "subject": "={{ $('Eingabe').first().json.betreff || $json.betreff }}",
+    "emailType": "text",
+    "message": "={{ $json.text }}",
+    "options": {
+     "appendAttribution": false,
+     "senderName": "={{ $json.absender_name }}"
+    }
+   },
+   "credentials": {
+    "gmailOAuth2": {
+     "id": "Oi8TlgGarWUwJ8OM",
+     "name": "Gmail account"
+    }
+   },
+   "webhookId": "62475c9c-c3a2-48ff-927c-480691cb13a9"
+  },
+  {
+   "id": "6250d149-b923-45ef-90f0-f43f87fd0480",
+   "name": "2 Minuten warten",
+   "type": "n8n-nodes-base.wait",
+   "typeVersion": 1.1,
+   "position": [
+    1120,
+    192
+   ],
+   "parameters": {
+    "resume": "timeInterval",
+    "amount": 2,
+    "unit": "minutes"
+   },
+   "webhookId": "09487f0c-3298-4715-bb7a-2ea6d76b0c42"
+  },
+  {
+   "id": "0ff2f2bc-974f-44f7-81a2-4371b6bf0b3e",
+   "name": "Je Mail",
+   "type": "n8n-nodes-base.splitInBatches",
+   "typeVersion": 3,
+   "position": [
+    672,
+    192
+   ],
+   "parameters": {
+    "batchSize": 1,
+    "options": {}
+   }
+  },
+  {
+   "id": "4c50eb98-023d-42da-b4d8-c410a9f8517d",
+   "name": "Rückfrage suchen",
+   "type": "n8n-nodes-base.gmail",
+   "typeVersion": 2.2,
+   "position": [
+    672,
+    528
+   ],
+   "parameters": {
+    "operation": "getAll",
+    "limit": 1,
+    "filters": {
+     "q": "={{ 'in:anywhere from:' + $json.an + ' \"' + $json.vorgang + '\"' }}",
+     "readStatus": "both"
+    }
+   },
+   "credentials": {
+    "gmailOAuth2": {
+     "id": "Oi8TlgGarWUwJ8OM",
+     "name": "Gmail account"
+    }
+   },
+   "alwaysOutputData": true,
+   "webhookId": "e70ad95d-72ba-450d-9f43-de5f693faf7a"
+  },
+  {
+   "id": "db0a4eeb-ceb2-47a0-83fa-aee04e5dc773",
+   "name": "Gefunden?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    896,
+    528
+   ],
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "loose"
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ !!$json.id }}",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "44851132-6df9-4d42-bef3-6eb235ce6a0c",
+   "name": "Antworten",
+   "type": "n8n-nodes-base.gmail",
+   "typeVersion": 2.2,
+   "position": [
+    1120,
+    432
+   ],
+   "parameters": {
+    "operation": "reply",
+    "messageId": "={{ $json.id }}",
+    "emailType": "text",
+    "message": "={{ $('Plan').first().json.text }}",
+    "options": {
+     "appendAttribution": false,
+     "replyToSenderOnly": true
+    }
+   },
+   "credentials": {
+    "gmailOAuth2": {
+     "id": "Oi8TlgGarWUwJ8OM",
+     "name": "Gmail account"
+    }
+   },
+   "webhookId": "5f875e34-3978-4ad0-8667-54803476cf59"
+  },
+  {
+   "id": "153dbdf6-4e75-4791-9e54-351b350dd6d9",
+   "name": "Antwort als neue Mail",
+   "type": "n8n-nodes-base.gmail",
+   "typeVersion": 2.2,
+   "position": [
+    1120,
+    624
+   ],
+   "parameters": {
+    "sendTo": "={{ $('Plan').first().json.an }}",
+    "subject": "={{ 'AW: Ihre Anfrage [' + $('Plan').first().json.vorgang + ']' }}",
+    "emailType": "text",
+    "message": "={{ $('Plan').first().json.text }}",
+    "options": {
+     "appendAttribution": false,
+     "senderName": "={{ $('Plan').first().json.absender_name }}"
+    }
+   },
+   "credentials": {
+    "gmailOAuth2": {
+     "id": "Oi8TlgGarWUwJ8OM",
+     "name": "Gmail account"
+    }
+   },
+   "webhookId": "c4ddcad4-9823-449a-84b2-8b3f503534b9"
+  },
+  {
+   "id": "0efef58c-1c5b-4916-ba8e-a458b4899984",
+   "name": "Testlauf",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2.1,
+   "position": [
+    -400,
+    200
+   ],
+   "parameters": {
+    "httpMethod": "POST",
+    "options": {},
+    "path": "epa-t4-test"
+   },
+   "webhookId": "bd093c00-0fa6-4a21-be24-d9d7f8599951"
+  },
+  {
+   "id": "26193797-c2bf-4205-8d19-bf59b621a808",
+   "name": "Eingabe",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    -200,
+    200
+   ],
+   "parameters": {
+    "jsCode": "const b = $input.first().json.body || {};\nreturn [{ json: { aktion: b.aktion || '', nr: b.nr || '', vorgang: b.vorgang || '', betreff: b.betreff || '' } }];"
+   }
+  }
+ ],
+ "connections": {
+  "Bei Aufruf": {
+   "main": [
+    [
+     {
+      "node": "Plan",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Plan": {
+   "main": [
+    [
+     {
+      "node": "Art?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Art?": {
+   "main": [
+    [
+     {
+      "node": "Config setzen",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Je Mail",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Rückfrage suchen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Mail senden": {
+   "main": [
+    [
+     {
+      "node": "2 Minuten warten",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "2 Minuten warten": {
+   "main": [
+    [
+     {
+      "node": "Je Mail",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Je Mail": {
+   "main": [
+    [],
+    [
+     {
+      "node": "Mail senden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Rückfrage suchen": {
+   "main": [
+    [
+     {
+      "node": "Gefunden?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Gefunden?": {
+   "main": [
+    [
+     {
+      "node": "Antworten",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Antwort als neue Mail",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Testlauf": {
+   "main": [
+    [
+     {
+      "node": "Eingabe",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Eingabe": {
+   "main": [
+    [
+     {
+      "node": "Plan",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true
+ }
+}

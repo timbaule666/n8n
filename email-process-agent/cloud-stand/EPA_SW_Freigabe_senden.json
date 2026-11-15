@@ -1,0 +1,935 @@
+{
+ "id": "41ZGdeyiNVWwrJfW",
+ "name": "EPA SW Freigabe senden *",
+ "active": true,
+ "updatedAt": "2026-11-14T10:15:35.856Z",
+ "versionId": "80b2654b-a266-4b81-b079-2d85687ffb6c",
+ "activeVersionId": "80b2654b-a266-4b81-b079-2d85687ffb6c",
+ "nodes": [
+  {
+   "id": "f573fe1b-d3ee-4d65-adcf-6b1b8feca5cb",
+   "name": "Notiz Zweck",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -80,
+    -420
+   ],
+   "parameters": {
+    "content": "## EPA SW Freigabe senden\n**Zweck:** Schickt den Freigabe-Link nach Teams. Ist in der Config der Kanal \"Rückfragen\" eingerichtet (kanaele.rueckfragen), kommt freigeber = \"kanal\": eine Karte im Kanal für alle Freigeber; wer entscheidet, wählt auf der Freigabe-Seite seinen Namen. Sonst (ältere Kunden) der persönliche Link im 1:1-Chat an jeden Freigeber.\n**Trigger:** Aufruf durch EPA-02 und SW Nachfassen (je Link ein Aufruf).\n**Eingaben:** kunde_id, vorgangs_id, freigeber (E-Mail/UPN), kanal, chat_id, nachricht_html, freigabe_id.\n**Karte im Kanal:** Die Teams-Nachricht der Karte wird an der Freigabe gespeichert (teams_nachricht), damit „EPA SW Freigabe-Karte“ sie nach der Entscheidung ersetzen kann. Gab es für diese Freigabe schon eine Karte (neuer Link nach Ablauf/Eskalation), wird die alte als „⏰ Link ersetzt“ markiert.\n**Nur für interne Tests:** kanal = \"telegram_test\" schickt den Link über \"EPA-T2 Telegram senden (Test)\" an chat_id (Zuordnung je Freigeber in benachrichtigung.freigeber_chat_ids, sonst benachrichtigung.chat_id). Kunden nutzen immer Teams.\n**Ausgabe:** { gesendet, fehler_id }. Ein Fehler bricht nichts ab; er landet im Fehlerlog, EPA-02 meldet dann im Kanal, dass die Freigabe nicht zugestellt wurde.\n**Teams je Kunde:** Der Chat läuft über die Postfach-Kopie des Kunden (Aktion teams_chat). Dort steckt das Teams-Credential aus dem Tenant des Kunden; Agent-Konto und Freigeber müssen in diesem Tenant zwei verschiedene Benutzer sein.\n**Einrichten:** nichts.",
+    "width": 700,
+    "height": 320,
+    "color": 7
+   }
+  },
+  {
+   "id": "22684f22-9edb-42d3-a203-83202d112b48",
+   "name": "Bei Aufruf",
+   "type": "n8n-nodes-base.executeWorkflowTrigger",
+   "typeVersion": 1.1,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {
+    "inputSource": "workflowInputs",
+    "workflowInputs": {
+     "values": [
+      {
+       "name": "kunde_id",
+       "type": "string"
+      },
+      {
+       "name": "vorgangs_id",
+       "type": "string"
+      },
+      {
+       "name": "freigeber",
+       "type": "string"
+      },
+      {
+       "name": "kanal",
+       "type": "string"
+      },
+      {
+       "name": "chat_id",
+       "type": "string"
+      },
+      {
+       "name": "telegram_workflow_id",
+       "type": "string"
+      },
+      {
+       "name": "nachricht_html",
+       "type": "string"
+      },
+      {
+       "name": "freigabe_id",
+       "type": "string"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "654159c1-6ea6-45ad-a175-3c323519d7cb",
+   "name": "Eingabe prüfen",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    220,
+    0
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\n// Fehler aus diesen Workflows werden gemeldet, aber nicht durch \"Vorgang sichern\" eskaliert: EPA-05 sichert Vorgänge\n// selbst über \"EPA SW Status setzen\". Schlüge das fehl und würde erneut gesichert, entstünde eine Fehlerschleife.\nconst OHNE_SICHERUNG_AUS = Object.freeze(['EPA SW Status setzen']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\t// Markierung \" *\" (fehlende Credentials) gehört nicht zum Namen\n\tconst ausSicherung = OHNE_SICHERUNG_AUS.includes(String(workflow.name || '').replace(/\\s*\\*$/, ''));\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId) && !ausSicherung,\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\n// Klartext je Fehlerklasse für die Alarmmeldung (Mitarbeiter sollen verstehen, was passiert ist).\nconst KLASSE_TEXT = Object.freeze({\n\tUpstream: 'Ein externer Dienst (Outlook, KI oder Telegram) hat nicht wie erwartet geantwortet.',\n\tKonfiguration: 'Die Konfiguration ist unvollständig oder fehlerhaft.',\n\tAuthentifizierung: 'Zugangsdaten sind ungültig oder abgelaufen.',\n\tKonflikt: 'Zwei Abläufe haben sich überschnitten.',\n\tEingabe: 'Ein Ablauf hat ungültige Daten erhalten.',\n\tLLM: 'Die KI hat keine verwertbare Antwort geliefert.',\n\tFreigabe: 'Eine Freigabe ist abgelaufen.',\n\t'Nicht gefunden': 'Ein Datensatz wurde nicht gefunden.',\n\tUnbekannt: 'Ein unerwarteter Fehler ist aufgetreten.',\n});\n\n/** Konkrete Handlungsempfehlung aus Fehlercode und Meldung. */\nfunction alarmEmpfehlung(e) {\n\tconst m = String(e.meldung || '').toLowerCase();\n\tif (/suspend|gesperrt|blocked/.test(m)) return 'Das Postfach-Konto wurde vom Anbieter gesperrt. Im Postfach anmelden und die Bestätigung durchführen. Nicht gesendete Nachrichten kommen danach automatisch mit neuem Link erneut zur Freigabe (Prüfung stündlich).';\n\tif (/401|unauthori|token|anmeld/.test(m) || e.klasse === 'Authentifizierung') return 'Zugang (Credential) in n8n prüfen und neu verbinden.';\n\tif (e.klasse === 'Konfiguration') return 'Konfiguration bzw. Regel-Sheet des Kunden prüfen.';\n\tif (e.retrybar) return 'Meist vorübergehend. Tritt der Fehler wiederholt auf, die Ausführung öffnen und prüfen.';\n\treturn 'Bitte die Ausführung öffnen und prüfen.';\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst meldung = String(e.meldung || '');\n\t// Titel: erster Satzteil der Meldung (\"Rückfrage nicht gesendet: …\"), sonst die Fehlerklasse\n\tconst kopf = meldung.split(/[:.]/)[0].trim();\n\tconst titel = kopf && kopf.length <= 70 ? kopf : (KLASSE_TEXT[e.klasse] || 'Systemfehler');\n\tconst zeilen = [\n\t\t`🚨 <b>Systemfehler: ${escapeHtml(titel)}</b>`,\n\t\tescapeHtml(KLASSE_TEXT[e.klasse] || KLASSE_TEXT.Unbekannt),\n\t];\n\tif (e.vorgangs_id) zeilen.push(`Vorgang: <b>${escapeHtml(e.vorgangs_id)}</b>`);\n\tzeilen.push(`Grund: ${escapeHtml(meldung || '–')}`);\n\tzeilen.push(`Was tun: ${escapeHtml(alarmEmpfehlung(e))}`);\n\tzeilen.push('');\n\tzeilen.push(`Technik: ${escapeHtml(e.workflow_name || e.workflow_id || '?')} · ${escapeHtml(e.node || '?')} · EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)} (${escapeHtml(e.klasse)})`);\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tOHNE_SICHERUNG_AUS,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\talarmEmpfehlung,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n// ===== eingebettet aus src/telegram.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst telegram = (() => {\nconst module = { exports: {} };\n// Telegram als Benachrichtigungskanal NUR für interne Tests (Config: kanal \"telegram_test\"); Kunden nutzen immer Teams.\n// Die Meldungstexte werden für Teams als HTML gebaut. Telegram versteht nur wenige Tags (b, i, u, s, a, code, pre)\n// und keine Zeilenumbruch-Tags; alles andere wird in Text bzw. Zeilenumbrüche umgesetzt.\n\nconst MAX_LAENGE = 4096;\nconst ERLAUBT = { b: 'b', strong: 'b', i: 'i', em: 'i', u: 'u', s: 's', code: 'code', pre: 'pre' };\nconst BENANNT = { nbsp: ' ', amp: '&amp;', lt: '&lt;', gt: '&gt;', quot: '&quot;', apos: '&#39;' };\n\nfunction escapeText(s) {\n\treturn String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\n\n/** Teams-HTML -> Telegram-HTML (parse_mode HTML), höchstens 4096 Zeichen. */\nfunction htmlZuTelegram(html) {\n\tlet s = String(html ?? '');\n\ts = s.replace(/<(script|style)\\b[\\s\\S]*?<\\/\\1>/gi, '');\n\ts = s.replace(/<br\\s*\\/?>/gi, '\\n');\n\ts = s.replace(/<\\/(p|div|ul|ol|tr|table|h[1-6]|dl|dd)>/gi, '\\n');\n\ts = s.replace(/<(ul|ol)\\b[^>]*>/gi, '\\n');\n\ts = s.replace(/<li\\b[^>]*>/gi, '• ');\n\ts = s.replace(/<\\/li>/gi, '\\n');\n\ts = s.replace(/<dt\\b[^>]*>/gi, '').replace(/<\\/dt>/gi, ': ');\n\ts = s.replace(/<\\/td>/gi, ' ');\n\t// Übrige Tags: erlaubte normalisieren, Links behalten (nur http/https), alles andere entfernen.\n\ts = s.replace(/<(\\/?)([a-z0-9]+)([^>]*)>/gi, (m, zu, tag, rest) => {\n\t\tconst t = tag.toLowerCase();\n\t\tif (Object.hasOwn(ERLAUBT, t)) return `<${zu}${ERLAUBT[t]}>`;\n\t\tif (t === 'a') {\n\t\t\tif (zu) return '</a>';\n\t\t\tconst href = (rest.match(/href\\s*=\\s*\"([^\"]*)\"/i) || rest.match(/href\\s*=\\s*'([^']*)'/i) || [])[1];\n\t\t\treturn href && /^https?:\\/\\//i.test(href) ? `<a href=\"${href.replace(/\"/g, '&quot;')}\">` : '<a>';\n\t\t}\n\t\treturn '';\n\t});\n\t// <a> ohne gültiges Ziel samt Endtag auflösen\n\ts = s.replace(/<a>([\\s\\S]*?)<\\/a>/g, '$1');\n\t// Entitäten: Telegram kennt nur &lt; &gt; &amp; &quot; und numerische.\n\ts = s.replace(/&([a-z]+);/gi, (m, n) => (Object.hasOwn(BENANNT, n.toLowerCase()) ? BENANNT[n.toLowerCase()] : m.replace('&', '&amp;')));\n\ts = s.replace(/&(?!(amp|lt|gt|quot|#\\d+|#x[0-9a-f]+);)/gi, '&amp;');\n\ts = s.replace(/[ \\t]+\\n/g, '\\n').replace(/\\n{3,}/g, '\\n\\n').trim();\n\tif (s.length <= MAX_LAENGE) return s;\n\t// Zu lang: ohne Formatierung kürzen, damit kein Tag mitten im Text abgeschnitten wird.\n\tconst text = s.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&#39;/g, \"'\").replace(/&amp;/g, '&');\n\tlet kurz = escapeText(text.slice(0, MAX_LAENGE - 40));\n\twhile (kurz.length > MAX_LAENGE - 20) kurz = kurz.slice(0, -1).replace(/&[a-z#0-9]*$/i, '');\n\treturn `${kurz}\\n… (gekürzt)`;\n}\n\n/** Chat-ID für Telegram: Zahl (Gruppen negativ) oder @kanalname. */\nfunction istChatId(v) {\n\treturn /^-?\\d{3,20}$/.test(String(v ?? '').trim()) || /^@[A-Za-z0-9_]{5,32}$/.test(String(v ?? '').trim());\n}\n\n/** Ziel-Chat für einen Freigeber: eigene Zuordnung, sonst der allgemeine Chat. */\nfunction chatFuerFreigeber(benachrichtigung, freigeber) {\n\tconst b = benachrichtigung || {};\n\tconst map = b.freigeber_chat_ids || {};\n\treturn String(map[String(freigeber || '').toLowerCase()] || b.chat_id || '');\n}\n\nmodule.exports = { MAX_LAENGE, htmlZuTelegram, istChatId, chatFuerFreigeber, escapeText };\nreturn module.exports;\n})();\n// ===== Ende src/telegram.js =====\n\n// ----- Node-Logik -----\nconst e = $input.first().json;\nconst vid = e.vorgangs_id || null;\nconst kanal = e.kanal === 'telegram_test' ? 'telegram_test' : 'teams';\nif (e.freigeber !== 'kanal' && !/^[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}$/.test(String(e.freigeber || ''))) throw fehlerklassen.epaFehler('UNGUELTIGES_FORMAT', vid, 'freigeber ist keine gültige Adresse');\nif (typeof e.nachricht_html !== 'string' || !e.nachricht_html.trim()) throw fehlerklassen.epaFehler('UNGUELTIGES_FORMAT', vid, 'Nachricht fehlt');\nconst basis = { ...e, kanal, vorgangs_id: vid, freigeber: e.freigeber.trim().toLowerCase() };\nif (kanal !== 'telegram_test') return [{ json: basis }];\n// Ohne gültige Chat-ID: nicht abbrechen, sondern wie ein Zustellfehler behandeln (EPA-02 warnt dann im Kanal).\nconst wfOk = /^[A-Za-z0-9]{8,32}$/.test(String(e.telegram_workflow_id || ''));\nreturn [{ json: { ...basis, chat_id: telegram.istChatId(e.chat_id) && wfOk ? String(e.chat_id).trim() : '' } }];\n"
+   }
+  },
+  {
+   "id": "3c10d9c1-c9a4-40c3-a152-043809207bd9",
+   "name": "Testkanal Telegram?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    440,
+    0
+   ],
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 3
+     },
+     "conditions": [
+      {
+       "id": "46666687-1622-44f9-aebd-df4bf0cb5c45",
+       "leftValue": "={{ $json.kanal }}",
+       "operator": {
+        "type": "string",
+        "operation": "equals"
+       },
+       "rightValue": "telegram_test"
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "5607d990-1ec8-48b4-a526-de34ff645423",
+   "name": "Telegram-Link senden",
+   "type": "n8n-nodes-base.executeWorkflow",
+   "typeVersion": 1.3,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "position": [
+    660,
+    -160
+   ],
+   "parameters": {
+    "workflowId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "={{ $json.chat_id ? $json.telegram_workflow_id : 'keineId0' }}"
+    },
+    "workflowInputs": {
+     "mappingMode": "defineBelow",
+     "value": {
+      "chat_id": "={{ $json.chat_id }}",
+      "nachricht_html": "={{ $json.nachricht_html }}"
+     },
+     "matchingColumns": [],
+     "schema": [
+      {
+       "id": "chat_id",
+       "displayName": "chat_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      },
+      {
+       "id": "nachricht_html",
+       "displayName": "nachricht_html",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      }
+     ],
+     "attemptToConvertTypes": false,
+     "convertFieldsToString": false
+    },
+    "mode": "once",
+    "options": {
+     "waitForSubWorkflow": true
+    }
+   }
+  },
+  {
+   "id": "d83a0a61-8b2b-470e-ac5a-e0118bb8238f",
+   "name": "Kunde lesen",
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "alwaysOutputData": true,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    660,
+    80
+   ],
+   "parameters": {
+    "resource": "row",
+    "operation": "get",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "name",
+     "value": "epa_config_allgemein"
+    },
+    "matchType": "allConditions",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "kunde_id",
+       "condition": "eq",
+       "keyValue": "={{ $json.kunde_id || '__kein_kunde__' }}"
+      }
+     ]
+    },
+    "limit": 1
+   }
+  },
+  {
+   "id": "8c0e369e-a987-4973-ad5e-558075a00377",
+   "name": "Freigabe-Chat senden",
+   "type": "n8n-nodes-base.executeWorkflow",
+   "typeVersion": 1.3,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "position": [
+    880,
+    80
+   ],
+   "parameters": {
+    "workflowId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "={{ /^[A-Za-z0-9]{8,32}$/.test(String($json.postfach_workflow_id || '')) ? $json.postfach_workflow_id : 'keineId0' }}"
+    },
+    "workflowInputs": {
+     "mappingMode": "defineBelow",
+     "value": {
+      "aktion": "={{ $('Eingabe prüfen').first().json.freigeber === 'kanal' ? 'teams_kanal' : 'teams_chat' }}",
+      "postfach": "={{ $json.postfach }}",
+      "graph_id": "",
+      "internet_message_id": "",
+      "entwurf_id": "",
+      "freigabe_id": "",
+      "vorgangs_id": "={{ $('Eingabe prüfen').first().json.vorgangs_id || '' }}",
+      "html": "={{ $('Eingabe prüfen').first().json.nachricht_html }}",
+      "empfaenger": "={{ $('Eingabe prüfen').first().json.freigeber === 'kanal' ? '' : $('Eingabe prüfen').first().json.freigeber }}",
+      "team_id": "={{ $('Eingabe prüfen').first().json.freigeber === 'kanal' ? (() => { try { return JSON.parse($json.benachrichtigung || '{}').team_id || ''; } catch (e) { return ''; } })() : '' }}",
+      "channel_id": "={{ $('Eingabe prüfen').first().json.freigeber === 'kanal' ? (() => { try { return JSON.parse($json.kanaele || '{}').rueckfragen || ''; } catch (e) { return ''; } })() : '' }}"
+     },
+     "matchingColumns": [],
+     "schema": [
+      {
+       "id": "aktion",
+       "displayName": "aktion",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      },
+      {
+       "id": "postfach",
+       "displayName": "postfach",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      },
+      {
+       "id": "graph_id",
+       "displayName": "graph_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      },
+      {
+       "id": "internet_message_id",
+       "displayName": "internet_message_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      },
+      {
+       "id": "entwurf_id",
+       "displayName": "entwurf_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      },
+      {
+       "id": "freigabe_id",
+       "displayName": "freigabe_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      },
+      {
+       "id": "vorgangs_id",
+       "displayName": "vorgangs_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      },
+      {
+       "id": "html",
+       "displayName": "html",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      },
+      {
+       "id": "empfaenger",
+       "displayName": "empfaenger",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      },
+      {
+       "id": "team_id",
+       "displayName": "team_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      },
+      {
+       "id": "channel_id",
+       "displayName": "channel_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      }
+     ],
+     "attemptToConvertTypes": false,
+     "convertFieldsToString": false
+    },
+    "mode": "once",
+    "options": {
+     "waitForSubWorkflow": true
+    }
+   }
+  },
+  {
+   "id": "d8b2873a-099a-4210-acbe-0b7db44d4d82",
+   "name": "Zustellung prüfen",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1320,
+    0
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "// ===== eingebettet aus src/fehlerklassen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst fehlerklassen = (() => {\nconst module = { exports: {} };\n// Fehlerklassen und Statuscode-Mapping (Masterprompt 3, Bauplan 3).\n// EPA-Fehler werden als Text \"[EPA:<status>:<CODE>:<Vorgangs-ID|->] <Meldung>\" geworfen,\n// damit der Error-Handler (EPA-05) sie aus execution.error.message zurücklesen kann.\n\nconst FEHLERCODES = Object.freeze({\n\tUNGUELTIGES_FORMAT: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNGUELTIGER_AUSLOESER: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tUNBEKANNTER_STATUS: { status: 400, klasse: 'Eingabe', retrybar: false },\n\tAUTH_FEHLER: { status: 401, klasse: 'Authentifizierung', retrybar: false },\n\tKEINE_BERECHTIGUNG: { status: 403, klasse: 'Authentifizierung', retrybar: false },\n\tVORGANG_NICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tKONFIG_NICHT_GEFUNDEN: { status: 404, klasse: 'Konfiguration', retrybar: false },\n\tNICHT_GEFUNDEN: { status: 404, klasse: 'Nicht gefunden', retrybar: false },\n\tDUPLIKAT: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_STATUSWECHSEL: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tUNZULAESSIGER_AUSLOESER: { status: 409, klasse: 'Konflikt', retrybar: false },\n\tVERSIONSKONFLIKT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tGESPERRT: { status: 409, klasse: 'Konflikt', retrybar: true },\n\tKONFIG_MEHRDEUTIG: { status: 409, klasse: 'Konfiguration', retrybar: false },\n\tFREIGABE_ABGELAUFEN: { status: 410, klasse: 'Freigabe', retrybar: false },\n\tEXTRAKTION_UNGUELTIG: { status: 422, klasse: 'LLM', retrybar: false },\n\tKONFIGURATIONSFEHLER: { status: 424, klasse: 'Konfiguration', retrybar: false },\n\tRATE_LIMIT: { status: 429, klasse: 'Upstream', retrybar: true },\n\tUPSTREAM_FEHLER: { status: 502, klasse: 'Upstream', retrybar: true },\n\tNICHT_ERREICHBAR: { status: 503, klasse: 'Upstream', retrybar: true },\n\tZEITUEBERSCHREITUNG: { status: 504, klasse: 'Upstream', retrybar: true },\n\tUNBEKANNT: { status: 500, klasse: 'Unbekannt', retrybar: false },\n});\n\n// Bei diesen Codes bearbeitet eine andere Ausführung den Vorgang bzw. die Mail ist schon verarbeitet:\n// der Vorgang wird NICHT auf \"Eskaliert / Manuell\" gesetzt (sonst würde ein Parallellauf gestört).\nconst OHNE_ESKALATION = Object.freeze(['VERSIONSKONFLIKT', 'GESPERRT', 'DUPLIKAT']);\n\n// Fehler aus diesen Workflows werden gemeldet, aber nicht durch \"Vorgang sichern\" eskaliert: EPA-05 sichert Vorgänge\n// selbst über \"EPA SW Status setzen\". Schlüge das fehl und würde erneut gesichert, entstünde eine Fehlerschleife.\nconst OHNE_SICHERUNG_AUS = Object.freeze(['EPA SW Status setzen']);\n\nconst EPA_MUSTER = /^\\[EPA:(\\d{3}):([A-Z_]+):([^\\]]*)\\]\\s*([\\s\\S]*)$/;\n\nfunction formatEpaFehler(code, vorgangsId, meldung) {\n\tconst def = FEHLERCODES[code] || FEHLERCODES.UNBEKANNT;\n\treturn `[EPA:${def.status}:${FEHLERCODES[code] ? code : 'UNBEKANNT'}:${vorgangsId || '-'}] ${meldung || ''}`.trim();\n}\n\n/** Wirft einen EPA-Fehler (für Code-Nodes). */\nfunction epaFehler(code, vorgangsId, meldung) {\n\tconst err = new Error(formatEpaFehler(code, vorgangsId, meldung));\n\terr.epaCode = code;\n\treturn err;\n}\n\nfunction parseEpaFehler(text) {\n\tif (typeof text !== 'string') return null;\n\t// n8n stellt der Meldung manchmal Präfixe voran; das Muster darf irgendwo in der ersten Zeile beginnen.\n\tconst start = text.indexOf('[EPA:');\n\tif (start < 0) return null;\n\tconst m = text.slice(start).match(EPA_MUSTER);\n\tif (!m) return null;\n\treturn {\n\t\tstatus: Number(m[1]),\n\t\tcode: m[2],\n\t\tvorgangsId: m[3] === '-' ? null : m[3],\n\t\tmeldung: m[4].trim(),\n\t};\n}\n\n/** Entfernt personenbezogene Daten und kürzt (keine Mail-Inhalte im Fehlerlog). */\nfunction bereinigeMeldung(text, maxLaenge = 300) {\n\tif (text === undefined || text === null) return '';\n\tlet s = String(text)\n\t\t.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '<email>')\n\t\t.replace(/\\+?\\d[\\d\\s/().-]{7,}\\d/g, '<nummer>')\n\t\t.replace(/Bearer\\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <token>')\n\t\t.replace(/\\s+/g, ' ')\n\t\t.trim();\n\tif (s.length > maxLaenge) s = s.slice(0, maxLaenge - 1) + '…';\n\treturn s;\n}\n\nfunction codeAusHttpStatus(status) {\n\tconst n = Number(status);\n\tif (!Number.isFinite(n)) return null;\n\tif (n === 400 || n === 422) return 'UNGUELTIGES_FORMAT';\n\tif (n === 401) return 'AUTH_FEHLER';\n\tif (n === 403) return 'KEINE_BERECHTIGUNG';\n\tif (n === 404) return 'NICHT_GEFUNDEN';\n\tif (n === 408 || n === 504) return 'ZEITUEBERSCHREITUNG';\n\tif (n === 409) return 'DUPLIKAT';\n\tif (n === 429) return 'RATE_LIMIT';\n\tif (n === 503) return 'NICHT_ERREICHBAR';\n\tif (n >= 500 && n < 600) return 'UPSTREAM_FEHLER';\n\treturn null;\n}\n\nfunction codeAusText(text) {\n\tconst t = String(text || '');\n\tif (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms/i.test(t)) return 'ZEITUEBERSCHREITUNG';\n\tif (/ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|service unavailable/i.test(t)) return 'NICHT_ERREICHBAR';\n\tif (/rate.?limit|too many requests/i.test(t)) return 'RATE_LIMIT';\n\tif (/invalid_grant|unauthori[sz]ed|token (has )?expired|invalid.?token|authentication failed|password authentication/i.test(t)) return 'AUTH_FEHLER';\n\tif (/forbidden|insufficient privileges|access denied|permission denied/i.test(t)) return 'KEINE_BERECHTIGUNG';\n\tif (/duplicate key|unique constraint/i.test(t)) return 'DUPLIKAT';\n\treturn null;\n}\n\n/**\n * Klassifiziert einen Fehler.\n * @param {{message?: string, description?: string, httpCode?: string|number}} fehler\n */\nfunction klassifiziereFehler(fehler) {\n\tconst f = fehler || {};\n\tconst epa = parseEpaFehler(f.message) || parseEpaFehler(f.description);\n\tlet code;\n\tlet vorgangsId = null;\n\tlet meldung;\n\tif (epa) {\n\t\tcode = FEHLERCODES[epa.code] ? epa.code : 'UNBEKANNT';\n\t\tvorgangsId = epa.vorgangsId;\n\t\tmeldung = epa.meldung;\n\t} else {\n\t\tcode = codeAusHttpStatus(f.httpCode) || codeAusText(`${f.message || ''} ${f.description || ''}`) || 'UNBEKANNT';\n\t\tmeldung = f.message || f.description || '';\n\t}\n\tconst def = FEHLERCODES[code];\n\treturn {\n\t\tstatuscode: def.status,\n\t\tfehlercode: code,\n\t\tklasse: def.klasse,\n\t\tretrybar: def.retrybar,\n\t\teskalieren: !OHNE_ESKALATION.includes(code),\n\t\tvorgangsId,\n\t\tmeldung: bereinigeMeldung(meldung),\n\t};\n}\n\n/**\n * Baut aus der Ausgabe des Error Trigger einen Fehlerlog-Eintrag (ohne Mail-Inhalte).\n * Error Trigger liefert entweder {execution, workflow} oder bei Trigger-Fehlern {trigger, workflow}.\n */\nfunction ausErrorTrigger(json) {\n\tconst j = json || {};\n\tconst exec = j.execution || {};\n\tconst err = exec.error || (j.trigger && j.trigger.error) || {};\n\tconst k = klassifiziereFehler({\n\t\tmessage: err.message,\n\t\tdescription: err.description,\n\t\thttpCode: err.httpCode,\n\t});\n\tconst node = (err.node && err.node.name) || exec.lastNodeExecuted || null;\n\tconst workflow = j.workflow || {};\n\t// Markierung \" *\" (fehlende Credentials) gehört nicht zum Namen\n\tconst ausSicherung = OHNE_SICHERUNG_AUS.includes(String(workflow.name || '').replace(/\\s*\\*$/, ''));\n\treturn {\n\t\tstatuscode: k.statuscode,\n\t\tfehlercode: k.fehlercode,\n\t\tklasse: k.klasse,\n\t\tretrybar: k.retrybar,\n\t\teskalieren: k.eskalieren && Boolean(k.vorgangsId) && !ausSicherung,\n\t\tworkflow_id: workflow.id || null,\n\t\tworkflow_name: workflow.name || null,\n\t\tnode,\n\t\texecution_id: exec.id !== undefined && exec.id !== null ? String(exec.id) : null,\n\t\texecution_url: exec.url || null,\n\t\tmodus: exec.mode || (j.trigger && j.trigger.mode) || null,\n\t\tvorgangs_id: k.vorgangsId,\n\t\tmeldung: k.meldung,\n\t};\n}\n\nfunction escapeHtml(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\n// Klartext je Fehlerklasse für die Alarmmeldung (Mitarbeiter sollen verstehen, was passiert ist).\nconst KLASSE_TEXT = Object.freeze({\n\tUpstream: 'Ein externer Dienst (Outlook, KI oder Telegram) hat nicht wie erwartet geantwortet.',\n\tKonfiguration: 'Die Konfiguration ist unvollständig oder fehlerhaft.',\n\tAuthentifizierung: 'Zugangsdaten sind ungültig oder abgelaufen.',\n\tKonflikt: 'Zwei Abläufe haben sich überschnitten.',\n\tEingabe: 'Ein Ablauf hat ungültige Daten erhalten.',\n\tLLM: 'Die KI hat keine verwertbare Antwort geliefert.',\n\tFreigabe: 'Eine Freigabe ist abgelaufen.',\n\t'Nicht gefunden': 'Ein Datensatz wurde nicht gefunden.',\n\tUnbekannt: 'Ein unerwarteter Fehler ist aufgetreten.',\n});\n\n/** Konkrete Handlungsempfehlung aus Fehlercode und Meldung. */\nfunction alarmEmpfehlung(e) {\n\tconst m = String(e.meldung || '').toLowerCase();\n\tif (/suspend|gesperrt|blocked/.test(m)) return 'Das Postfach-Konto wurde vom Anbieter gesperrt. Im Postfach anmelden und die Bestätigung durchführen. Nicht gesendete Nachrichten kommen danach automatisch mit neuem Link erneut zur Freigabe (Prüfung stündlich).';\n\tif (/401|unauthori|token|anmeld/.test(m) || e.klasse === 'Authentifizierung') return 'Zugang (Credential) in n8n prüfen und neu verbinden.';\n\tif (e.klasse === 'Konfiguration') return 'Konfiguration bzw. Regel-Sheet des Kunden prüfen.';\n\tif (e.retrybar) return 'Meist vorübergehend. Tritt der Fehler wiederholt auf, die Ausführung öffnen und prüfen.';\n\treturn 'Bitte die Ausführung öffnen und prüfen.';\n}\n\nfunction alarmHtml(eintrag) {\n\tconst e = eintrag;\n\tconst meldung = String(e.meldung || '');\n\t// Titel: erster Satzteil der Meldung (\"Rückfrage nicht gesendet: …\"), sonst die Fehlerklasse\n\tconst kopf = meldung.split(/[:.]/)[0].trim();\n\tconst titel = kopf && kopf.length <= 70 ? kopf : (KLASSE_TEXT[e.klasse] || 'Systemfehler');\n\tconst zeilen = [\n\t\t`🚨 <b>Systemfehler: ${escapeHtml(titel)}</b>`,\n\t\tescapeHtml(KLASSE_TEXT[e.klasse] || KLASSE_TEXT.Unbekannt),\n\t];\n\tif (e.vorgangs_id) zeilen.push(`Vorgang: <b>${escapeHtml(e.vorgangs_id)}</b>`);\n\tzeilen.push(`Grund: ${escapeHtml(meldung || '–')}`);\n\tzeilen.push(`Was tun: ${escapeHtml(alarmEmpfehlung(e))}`);\n\tzeilen.push('');\n\tzeilen.push(`Technik: ${escapeHtml(e.workflow_name || e.workflow_id || '?')} · ${escapeHtml(e.node || '?')} · EPA-Fehler ${e.statuscode} ${escapeHtml(e.fehlercode)} (${escapeHtml(e.klasse)})`);\n\tif (e.execution_url) zeilen.push(`<a href=\"${escapeHtml(e.execution_url)}\">Ausführung ${escapeHtml(e.execution_id)} öffnen</a>`);\n\treturn zeilen.join('<br>');\n}\n\nmodule.exports = {\n\tFEHLERCODES,\n\tOHNE_ESKALATION,\n\tOHNE_SICHERUNG_AUS,\n\tformatEpaFehler,\n\tepaFehler,\n\tparseEpaFehler,\n\tbereinigeMeldung,\n\tklassifiziereFehler,\n\tausErrorTrigger,\n\talarmHtml,\n\talarmEmpfehlung,\n\tescapeHtml,\n};\nreturn module.exports;\n})();\n// ===== Ende src/fehlerklassen.js =====\n\n// ----- Node-Logik -----\nconst e = $('Eingabe prüfen').first().json;\nconst schritte = e.kanal === 'telegram_test' ? ['Telegram-Link senden'] : ['Freigabe-Chat senden'];\nlet fehler = e.kanal === 'telegram_test' && !e.chat_id ? 'keine gültige Telegram-Chat-ID bzw. telegram_workflow_id für diesen Freigeber' : null;\nfor (const s of fehler ? [] : schritte) {\n\tif (!$(s).isExecuted) { fehler = fehler || s + ' nicht ausgeführt'; continue; }\n\tconst j = $(s).first().json || {};\n\tconst ok = j.gesendet === true;\n\tif (j.error || !ok) { fehler = s + ': ' + (j.error ? (j.error.message || String(j.error)) : (j.meldung || 'keine ID')); break; }\n}\nif (!fehler) return [{ json: { gesendet: true } }];\nreturn [{ json: {\n\tgesendet: false,\n\tfehler: {\n\t\tstatuscode: 502, fehlercode: 'UPSTREAM_FEHLER', klasse: 'Upstream', retrybar: true, eskalieren: false,\n\t\tworkflow_id: String($workflow.id), workflow_name: $workflow.name, node: 'Freigabe-Nachricht', execution_id: String($execution.id),\n\t\texecution_url: null, modus: $execution.mode, vorgangs_id: e.vorgangs_id, kunde_id: e.kunde_id || null,\n\t\tmeldung: fehlerklassen.bereinigeMeldung('Freigabe-Link nicht zugestellt: ' + fehler), eskaliert: false, alarmiert_am: null,\n\t},\n} }];\n"
+   }
+  },
+  {
+   "id": "b540c5a9-fe12-48fe-afb1-89d9e6d6d571",
+   "name": "Zustellung fehlgeschlagen?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    1540,
+    0
+   ],
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 3
+     },
+     "conditions": [
+      {
+       "id": "817f15f2-27a4-4a58-aea8-1bae3e24fb0b",
+       "leftValue": "={{ $json.gesendet }}",
+       "operator": {
+        "type": "boolean",
+        "operation": "false",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "2191d07b-23af-4308-a20a-5730038a68bf",
+   "name": "Fehlerlog vorbereiten",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1760,
+    -100
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: $input.first().json.fehler }];\n"
+   }
+  },
+  {
+   "id": "8835179a-4fa3-476f-adfc-a26aa04cb606",
+   "name": "Fehler protokollieren",
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "onError": "continueRegularOutput",
+   "position": [
+    1980,
+    -100
+   ],
+   "parameters": {
+    "resource": "row",
+    "operation": "insert",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "name",
+     "value": "epa_fehler_log"
+    },
+    "columns": {
+     "mappingMode": "autoMapInputData",
+     "value": {},
+     "matchingColumns": [],
+     "schema": []
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "fab4eeba-a79b-497d-a554-0ff99f7f3e5c",
+   "name": "Freigabe zur Karte lesen",
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "alwaysOutputData": true,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "onError": "continueRegularOutput",
+   "position": [
+    1760,
+    120
+   ],
+   "parameters": {
+    "resource": "row",
+    "operation": "get",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "name",
+     "value": "epa_freigaben"
+    },
+    "matchType": "allConditions",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "freigabe_id",
+       "condition": "eq",
+       "keyValue": "={{ $('Eingabe prüfen').first().json.freigabe_id || '__keine__' }}"
+      }
+     ]
+    },
+    "limit": 1
+   }
+  },
+  {
+   "id": "aa96933e-b3d4-4584-a771-a36d5116952d",
+   "name": "Karte merken (Plan)",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "position": [
+    1980,
+    120
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "// ===== eingebettet aus src/freigabe.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst freigabe = (() => {\nconst module = { exports: {} };\n// Freigabe Variante B (Bauplan 6): einmaliges, ablaufendes Token je Freigeber. Gespeichert wird nur der\n// SHA-256-Hash. Der Endpunkt EPA-07 zeigt ein Formular (Vorschau, Text bearbeitbar, Senden/Ablehnen) und\n// verbraucht die Freigabe atomar (bedingtes Update auf status = 'offen').\n\nconst TOKEN_MUSTER = /^[A-Za-z0-9_-]{43}$/; // 32 Byte base64url\nconst AKTIONEN = ['senden', 'ablehnen'];\n// Freigabe im Teams-Kanal \"Rückfragen\": ein Link für alle Freigeber statt je einer pro Person. Wer entscheidet,\n// wählt seinen Namen auf der Freigabe-Seite; nur Adressen aus der Freigeber-Liste sind erlaubt.\nconst KANAL = 'kanal';\n\n/** Für wen Links erzeugt werden: ein Kanal-Link, sobald der Kanal \"Rückfragen\" eingerichtet ist, sonst je Freigeber. */\nfunction linkEmpfaenger(config) {\n\tconst k = config && config.kanaele;\n\treturn k && k.rueckfragen ? [KANAL] : (config.freigeber || []);\n}\n\n/** Darf der Inhaber dieses Links überhaupt entscheiden? (vor der Anzeige) */\nfunction freigeberErlaubt(tokenFreigeber, liste) {\n\tconst l = (liste || []).map((s) => String(s).toLowerCase());\n\tif (String(tokenFreigeber || '') === KANAL) return l.length > 0;\n\treturn l.includes(String(tokenFreigeber || '').toLowerCase());\n}\n\n/**\n * Wer entscheidet (für Protokoll und Status). Kanal-Link: die gewählte Adresse muss in der Freigeber-Liste stehen.\n * @returns {{ ok: true, entscheider: string } | { ok: false, meldung: string }}\n */\nfunction entscheiderBestimmen(tokenFreigeber, liste, wer) {\n\tconst l = (liste || []).map((s) => String(s).toLowerCase());\n\tif (String(tokenFreigeber || '') !== KANAL) return { ok: true, entscheider: String(tokenFreigeber || '').toLowerCase() };\n\tconst w = String(wer || '').trim().toLowerCase();\n\tif (!w) return { ok: false, meldung: 'Bitte wählen Sie Ihren Namen aus.' };\n\tif (!l.includes(w)) return { ok: false, meldung: 'Sie sind für diesen Kunden nicht als Freigeber eingetragen.' };\n\treturn { ok: true, entscheider: w };\n}\n\n/** @param {object} c Node-Modul \"crypto\" (im Code-Node per require('crypto')) */\nfunction tokenErzeugen(c) {\n\tconst token = c.randomBytes(32).toString('base64url');\n\treturn { token, hash: tokenHash(c, token) };\n}\n\nfunction tokenHash(c, token) {\n\treturn c.createHash('sha256').update(String(token), 'utf8').digest('hex');\n}\n\nfunction freigabeIdErzeugen(c) {\n\treturn 'F-' + c.randomUUID();\n}\n\nfunction istGueltigesToken(t) {\n\treturn typeof t === 'string' && TOKEN_MUSTER.test(t);\n}\n\n/** Basis-URL der Instanz aus $execution.resumeUrl (…/webhook-waiting/<id>) bzw. einem Override. */\nfunction basisUrl(resumeUrl, override) {\n\tif (override) return String(override).replace(/\\/+$/, '');\n\tconst m = String(resumeUrl || '').match(/^(https?:\\/\\/[^/]+(?:\\/[^/]+)*?)\\/webhook-waiting\\//);\n\tif (!m) throw new Error('Basis-URL der Instanz nicht ermittelbar');\n\treturn m[1];\n}\n\nfunction link(basis, token) {\n\treturn `${basis}/webhook/epa-freigabe?t=${encodeURIComponent(token)}`;\n}\n\n/**\n * Prüft Token und Freigabe vor Anzeige bzw. Entscheidung.\n * @returns {{ ok: true } | { ok: false, status: number, code: string, meldung: string }}\n */\nfunction freigabePruefen({ token, freigabe, freigeberErlaubt, jetzt }) {\n\tconst nein = (status, code, meldung) => ({ ok: false, status, code, meldung });\n\tif (!token || token.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Dieser Freigabe-Link ist ungültig.');\n\tif (!freigabe || freigabe.id === undefined) return nein(404, 'NICHT_GEFUNDEN', 'Die Freigabe existiert nicht mehr.');\n\tif (freigabe.status !== 'offen') {\n\t\tconst wer = freigabe.entscheider ? ` von ${freigabe.entscheider}` : '';\n\t\tconst was = { in_versand: 'wird gerade versendet', gesendet: 'wurde bereits freigegeben und gesendet', abgelehnt: 'wurde bereits abgelehnt', abgelaufen: 'ist abgelaufen', ersetzt: 'wurde durch eine neuere Freigabe ersetzt', fehler: 'ist beim Versand fehlgeschlagen', unzustellbar: 'wurde gesendet, kam beim Kunden aber nicht an', nicht_zugestellt: 'wurde gesendet, kam beim Kunden aber nicht an' }[freigabe.status] || `hat den Status \"${freigabe.status}\"`;\n\t\t// Betreff nennen, damit klar ist, um welche Anfrage es geht (mehrere Links in einem Chat).\n\t\tconst betrifft = freigabe.betreff ? ` Betrifft: ${String(freigabe.betreff).slice(0, 150)}` : '';\n\t\treturn nein(freigabe.status === 'abgelaufen' ? 410 : 409, freigabe.status === 'abgelaufen' ? 'FREIGABE_ABGELAUFEN' : 'DUPLIKAT', `Diese ${freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage'} ${was}${freigabe.status === 'gesendet' || freigabe.status === 'abgelehnt' ? wer : ''}.${betrifft}`);\n\t}\n\tif (token.verbraucht_am) return nein(409, 'DUPLIKAT', 'Dieser Link wurde bereits verwendet.');\n\tif (new Date(freigabe.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Ein neuer Link wird automatisch verschickt.');\n\t// Ab M5: Links haben eine eigene Ablaufzeit. Bei der Erneuerung einer abgelaufenen Freigabe werden alle alten Links gesperrt.\n\tif (token.ablauf && new Date(token.ablauf).getTime() <= new Date(jetzt).getTime()) return nein(410, 'FREIGABE_ABGELAUFEN', 'Dieser Freigabe-Link ist abgelaufen. Sie haben inzwischen einen neuen Link erhalten.');\n\tif (!freigeberErlaubt) return nein(403, 'KEINE_BERECHTIGUNG', 'Sie sind für diesen Kunden nicht (mehr) als Freigeber eingetragen.');\n\treturn { ok: true };\n}\n\n/** Formulardaten aus EPA-07 (POST, application/x-www-form-urlencoded). */\nfunction formularLesen(body) {\n\tconst b = body && typeof body === 'object' ? body : {};\n\tconst aktion = String(b.aktion || '');\n\tif (!AKTIONEN.includes(aktion)) return { ok: false, meldung: 'Unbekannte Aktion.' };\n\tif (!istGueltigesToken(b.t)) return { ok: false, meldung: 'Ungültiger Link.' };\n\tconst grund = String(b.grund || '').trim().slice(0, 500);\n\tif (aktion === 'ablehnen' && !grund) return { ok: false, meldung: 'Bitte einen Grund für die Ablehnung angeben.' };\n\treturn { ok: true, aktion, token: b.t, text: typeof b.text === 'string' ? b.text : '', grund, wer: String(b.wer || '').trim().toLowerCase().slice(0, 200) };\n}\n\nfunction istBearbeitet(original, neu) {\n\tconst n = (s) => String(s ?? '').replace(/\\r\\n?/g, '\\n').replace(/[ \\t]+/g, ' ').replace(/\\s+$/gm, '').trim();\n\treturn n(original) !== n(neu);\n}\n\n// ---------------------------------------------------------------- HTML\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\nconst STIL = `body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;margin:0;background:#f4f5f7;color:#1d2433}\nmain{max-width:760px;margin:0 auto;padding:16px}\n.karte{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}\nh1{font-size:1.3rem;margin:0 0 12px}dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0}\ndt{color:#5b6475}dd{margin:0;overflow-wrap:anywhere}textarea{width:100%;box-sizing:border-box;min-height:260px;font:inherit;padding:8px}\npre{white-space:pre-wrap;font:inherit;color:#5b6475;margin:8px 0 0}.knoepfe{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}\nbutton{font:inherit;padding:10px 16px;border-radius:6px;border:0;cursor:pointer}.senden{background:#1f6f43;color:#fff}.ablehnen{background:#a3222b;color:#fff}\ninput[type=text],select{width:100%;box-sizing:border-box;font:inherit;padding:8px}.hinweis{color:#5b6475;font-size:.9rem}\n.ok{border-left:4px solid #1f6f43}.fehler{border-left:4px solid #a3222b}`;\n\nfunction seite(titel, inhalt) {\n\treturn `<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><title>${esc(titel)}</title><style>${STIL}</style></head><body><main>${inhalt}</main></body></html>`;\n}\n\nfunction seiteFormular({ token, freigabe, vorgang, fehlende, text, abschluss, auswahl }) {\n\tconst luecken = (fehlende || []).map((f) => `<li>${esc(f.anzeigename)}${f.grund ? ` <span class=\"hinweis\">(${esc(f.grund)})</span>` : ''}</li>`).join('');\n\tconst was = freigabe.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';\n\treturn seite(`${was} ${vorgang.vorgangs_id}`, `\n<div class=\"karte\"><h1>${was} freigeben – ${esc(vorgang.vorgangs_id)}</h1>\n<dl><dt>An</dt><dd>${esc(freigabe.empfaenger)}</dd><dt>Betreff</dt><dd>${esc(freigabe.betreff)}</dd>\n<dt>Runde</dt><dd>${esc(Number(vorgang.rundenzaehler || 0) + 1)}</dd><dt>Gültig bis</dt><dd>${esc(new Date(freigabe.ablauf).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }))}</dd></dl>\n<p>Fehlende Angaben:</p><ul>${luecken}</ul>${freigabe.fallback ? '<p class=\"hinweis\">Hinweis: Die KI-Formulierung hat die Prüfung nicht bestanden, es wird die Standardvorlage verwendet.</p>' : ''}</div>\n<form class=\"karte\" method=\"post\" onsubmit=\"var f=this;setTimeout(function(){var b=f.querySelectorAll('button');for(var i=0;i<b.length;i++)b[i].disabled=true},0)\">\n<input type=\"hidden\" name=\"t\" value=\"${esc(token)}\">\n${Array.isArray(auswahl) && auswahl.length ? `<label for=\"wer\"><b>Wer entscheidet?</b></label><select id=\"wer\" name=\"wer\" required><option value=\"\">Bitte Namen wählen …</option>${auswahl.map((a) => `<option value=\"${esc(a)}\">${esc(a)}</option>`).join('')}</select><p class=\"hinweis\">Ihr Name wird im Protokoll gespeichert.</p>` : ''}\n<label for=\"text\"><b>Text der Mail</b> (bearbeitbar)</label>\n<textarea id=\"text\" name=\"text\">${esc(text)}</textarea>\n<pre>${esc(abschluss)}</pre>\n<p class=\"hinweis\">Signatur und KI-Hinweis werden immer automatisch angehängt.</p>\n<label for=\"grund\">Grund (nur bei Ablehnung)</label><input type=\"text\" id=\"grund\" name=\"grund\" maxlength=\"500\">\n<div class=\"knoepfe\"><button class=\"senden\" name=\"aktion\" value=\"senden\">Freigeben und senden</button>\n<button class=\"ablehnen\" name=\"aktion\" value=\"ablehnen\">Ablehnen (manuell bearbeiten)</button></div>\n<p class=\"hinweis\">Der Link ist nur einmal verwendbar. Nichts wird ohne Ihren Klick versendet.</p></form>`);\n}\n\nfunction seiteMeldung(titel, text, art = 'ok') {\n\treturn seite(titel, `<div class=\"karte ${art === 'ok' ? 'ok' : 'fehler'}\"><h1>${esc(titel)}</h1><p>${esc(text)}</p></div>`);\n}\n\n/** Teams-Nachricht an den Freigeber (1:1-Chat). */\nconst ANLASS = Object.freeze({\n\tfreigabe_erinnerung: 'Erinnerung: Diese Freigabe ist noch offen. Hier ist ein neuer Link.',\n\tfreigabe_erneuern: 'Der bisherige Link ist abgelaufen und gilt nicht mehr. Hier ist ein neuer Link.',\n\tfreigabe_nach_fehler: 'Diese Nachricht wurde wegen eines Fehlers NICHT gesendet. Das Postfach ist wieder erreichbar, bitte erneut freigeben. Die bisherigen Links gelten nicht mehr.',\n\tfreigabe_eskalation: 'Bitte jetzt entscheiden: freigeben, bearbeiten oder ablehnen. Hier ist ein neuer Link; alle bisherigen Links gelten nicht mehr.',\n\tfreigabe_nach_unzustellbar: 'Der Zustelltest war wieder erfolgreich, der Versand funktioniert. Bitte prüfen und erneut freigeben; gesendet wird eine neue Mail mit demselben Text.',\n});\n\n/**\n * Nachricht an einen Freigeber. kontext_html (optional, vom Aufrufer erzeugt, bereits escaped) ist die Übersicht\n * zur Mail (erkannte und fehlende Angaben, Warnhinweise). Dann ersetzt diese eine Nachricht die sonst zusätzliche\n * Eingangsmeldung, und die Liste der fehlenden Angaben steht nicht doppelt drin.\n */\nfunction nachrichtFreigeber({ vorgang, freigabe, fehlende, link: url, ablaufText, art, anlass, kontext_html: kontext, wartet_stunden: wartet, kanal }) {\n\tconst liste = (fehlende || []).map((f) => `• ${esc(f.anzeigename)}`).join('<br>');\n\tconst was = art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';\n\tlet hinweis = ANLASS[anlass] ? `<i>${esc(ANLASS[anlass])}</i><br>` : '';\n\tif (anlass === 'freigabe_nach_fehler') {\n\t\thinweis = `<b>🔁 Erneut zur Freigabe: Versand war fehlgeschlagen</b><br>${freigabe.grund ? `Grund: ${esc(freigabe.grund)}<br>` : ''}${hinweis}<br>`;\n\t} else if (anlass === 'freigabe_eskalation') {\n\t\tconst dauer = Number.isFinite(Number(wartet)) && wartet !== null ? `seit ${Number(wartet)} Stunden` : 'seit längerer Zeit';\n\t\thinweis = `<b>⏰ Eskalation: Diese Freigabe wartet ${esc(dauer)}</b><br>Der Kunde hat noch keine Antwort bekommen.<br>${hinweis}<br>`;\n\t} else if (anlass === 'freigabe_nach_unzustellbar') {\n\t\t// freigabe.grund trägt hier den Grund der vorigen (nicht zugestellten) Freigabe.\n\t\thinweis = `<b>🔁 Erneut zur Freigabe: Die Nachricht kam beim Kunden nicht an</b><br>${freigabe.grund ? `${esc(freigabe.grund)}<br>` : ''}${hinweis}<br>`;\n\t}\n\tconst link = `<a href=\"${esc(url)}\">Entwurf ansehen, bearbeiten oder freigeben</a><br><i>${kanal\n\t\t? `Der Link ist einmal verwendbar und gültig bis ${esc(ablaufText)}. Beim Öffnen wählen Sie Ihren Namen; er wird im Protokoll gespeichert.`\n\t\t: `Dieser persönliche Link ist einmal verwendbar und gültig bis ${esc(ablaufText)}. Bitte nicht weiterleiten.`}</i>`;\n\tconst empfang = `An: ${esc(freigabe.empfaenger)}<br>Betreff: ${esc(freigabe.betreff)}<br><br>`;\n\tif (kontext && typeof kontext === 'string' && kontext.trim()) {\n\t\treturn `${hinweis}${kontext}<br><br><b>${was} an den Kunden wurde erstellt</b><br>${empfang}${link}`;\n\t}\n\treturn `${hinweis}<b>${was} an den Kunden freigeben</b><br><br>Vorgangsnummer: <b>${esc(vorgang.vorgangs_id)}</b><br>${empfang}` +\n\t\t(liste ? `<b>Fehlende Angaben</b><br>${liste}<br><br>` : '') + link;\n}\n\n/** Teams-Nachricht einer Freigabe-Karte (Spalte teams_nachricht: JSON { team_id, channel_id, id }). */\nfunction teamsNachrichtLesen(wert) {\n\tlet o = wert;\n\tif (typeof o === 'string') { try { o = JSON.parse(o); } catch (e) { return null; } }\n\tif (!o || typeof o !== 'object') return null;\n\tconst team = String(o.team_id || '').trim();\n\tconst kanal = String(o.channel_id || '').trim();\n\tconst id = String(o.id || '').trim();\n\tif (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(team) || !/^19:[^\\s]+@thread\\.[a-z0-9]+$/i.test(kanal) || !/^\\d{6,20}$/.test(id)) return null;\n\treturn { team_id: team, channel_id: kanal, id };\n}\n\nfunction zeitText(iso, zeitzone) {\n\tconst d = new Date(iso);\n\tif (!iso || Number.isNaN(d.getTime())) return '';\n\ttry { return d.toLocaleString('de-DE', { timeZone: zeitzone || 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return d.toISOString(); }\n}\n\n/** Freigabe-Karte ohne Buttons und ohne Link-Adressen (zum Speichern). Gibt null zurück, wenn ein Link übrig bliebe. */\nfunction karteOhneLink(karte) {\n\tif (!karte || typeof karte !== 'object' || !Array.isArray(karte.body)) return null;\n\t// $schema ist nur die Schema-Adresse von Adaptive Cards (kein Link für Menschen) und wird nicht gespeichert.\n\tconst { actions, selectAction, $schema, ...rest } = karte;\n\tconst k = JSON.parse(JSON.stringify(rest));\n\tconst weg = (o) => {\n\t\tif (Array.isArray(o)) return o.forEach(weg);\n\t\tif (o && typeof o === 'object') {\n\t\t\tdelete o.selectAction; delete o.actions;\n\t\t\tfor (const v of Object.values(o)) weg(v);\n\t\t}\n\t};\n\tweg(k);\n\treturn /https?:\\/\\/|epa-freigabe\\?t=/i.test(JSON.stringify(k)) ? null : k;\n}\n\n/**\n * Warten-Karte aus der ursprünglichen Freigabe-Karte (Spalte teams_karte): alle Angaben (vorhanden, fehlt noch,\n * Hinweise) bleiben, der Kopf zeigt \"Wartet auf Antwort\", der Entwurf wird durch den verschickten Text ersetzt,\n * Link-Hinweis und Button entfallen. Gibt null zurück, wenn die Karte nicht lesbar ist.\n */\nfunction karteWarten(original, f, { kopf, zeilen }) {\n\tlet k = original;\n\tif (typeof k === 'string') { try { k = JSON.parse(k); } catch (e) { return null; } }\n\tif (!k || !Array.isArray(k.body) || !k.body.length) return null;\n\tconst tb = (text, extra) => ({ type: 'TextBlock', text, wrap: true, ...(extra || {}) });\n\tconst body = [];\n\tfor (const b of k.body.slice(1)) {\n\t\tif (b && b.type === 'TextBlock' && b.isSubtle && /Link|Es wird nichts ohne Klick/.test(String(b.text || ''))) continue;\n\t\tif (b && b.type === 'TextBlock' && /Erneut zur Freigabe/.test(String(b.text || ''))) continue;\n\t\tif (b && b.type === 'Container' && Array.isArray(b.items) && /ENTWURF DER/.test(String((b.items[0] || {}).text || ''))) {\n\t\t\tbody.push({ ...b, items: [tb('VERSCHICKTE ' + (f.art === 'erinnerung' ? 'ERINNERUNG' : 'RÜCKFRAGE'), { weight: 'Bolder', size: 'Small', isSubtle: true }), tb(String(f.entwurf_text || (b.items[1] || {}).text || '').slice(0, 800))] });\n\t\t\tcontinue;\n\t\t}\n\t\tbody.push(b);\n\t}\n\tconst head = { type: 'ColumnSet', columns: [\n\t\t{ type: 'Column', width: 'stretch', items: [tb(kopf, { weight: 'Bolder', size: 'Medium' })] },\n\t\t{ type: 'Column', width: 'auto', items: [tb('WARTET', { weight: 'Bolder', size: 'Small', color: 'Accent' })] },\n\t] };\n\tconst info = { type: 'Container', style: 'accent', spacing: 'Medium', items: zeilen.filter(Boolean).map((t) => tb(t, { spacing: 'Small' })) };\n\treturn { type: 'AdaptiveCard', $schema: 'http://adaptivecards.io/schemas/adaptive-card.json', version: '1.4', body: [head, ...body.slice(0, 1), info, ...body.slice(1)] };\n}\n\n/**\n * Karte, die eine Freigabe-Karte im Kanal nach der Entscheidung ersetzt (ohne Link).\n * zustand: Status der Freigabe (gesendet, abgelehnt, fehler, ersetzt, unzustellbar) oder \"erneuert\" (neuer Link verschickt).\n * Gibt null zurück, wenn die Karte (noch) nicht geändert werden soll (offen, in_versand, unbekannt).\n */\nfunction karteZustand(fg, { zustand, zeitzone, jetzt, frist, original } = {}) {\n\tconst f = fg || {};\n\tconst z = String(zustand || f.status || '');\n\tconst wer = String(f.entscheider || '').trim();\n\tlet titel; let stil; let zeilen = [];\n\tif (z === 'gesendet') {\n\t\t// Karte im Kanal \"Warten auf Kunde\": Rückfrage ist raus, Antwort steht aus.\n\t\tconst manuell = f.entscheidung === 'manuell_gesendet';\n\t\tconst was0 = f.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';\n\t\ttitel = '⏳ Wartet auf Antwort des Kunden';\n\t\tstil = 'accent';\n\t\tlet gefragt = [];\n\t\ttry { gefragt = (typeof f.fehlende_felder === 'string' ? JSON.parse(f.fehlende_felder || '[]') : (f.fehlende_felder || [])).map((x) => x.anzeigename || x.feldname).filter(Boolean); } catch (e) { gefragt = []; }\n\t\tzeilen = [\n\t\t\twas0 + (manuell ? ' direkt in Outlook verschickt' : f.bearbeitet ? ' bearbeitet und verschickt' : ' verschickt') + (manuell || !wer ? '' : ' von ' + wer) + ' · ' + zeitText(f.gesendet_am || jetzt, zeitzone),\n\t\t\tgefragt.length ? 'Gefragt: ' + gefragt.join(', ').slice(0, 300) : '',\n\t\t\tfrist ? 'Antwort erwartet bis ' + zeitText(frist, zeitzone) : '',\n\t\t];\n\t} else if (z === 'abgelehnt') {\n\t\ttitel = '❌ Abgelehnt'; stil = 'attention';\n\t\tzeilen = [(wer ? 'Von ' + wer + ' · ' : '') + zeitText(jetzt, zeitzone), f.grund ? 'Grund: ' + String(f.grund).slice(0, 300) : '', 'Der Vorgang liegt jetzt bei einem Mitarbeiter (Eskaliert / Manuell).'];\n\t} else if (z === 'fehler') {\n\t\ttitel = '⚠️ Versand fehlgeschlagen'; stil = 'warning';\n\t\tzeilen = [(wer ? 'Freigegeben von ' + wer + ' · ' : '') + zeitText(jetzt, zeitzone), 'Die Mail wurde nicht gesendet. Nach Behebung kommt sie automatisch mit neuem Link erneut zur Freigabe.'];\n\t} else if (z === 'ersetzt') {\n\t\ttitel = '↩️ Nicht mehr nötig'; stil = 'emphasis';\n\t\tzeilen = ['Der Kunde hat geantwortet, bevor die Rückfrage freigegeben wurde. Die Antwort wird verarbeitet.', zeitText(jetzt, zeitzone)];\n\t} else if (z === 'erneuert') {\n\t\t// Gilt für Erinnerung (alter Link noch gültig) und Erneuerung (alter Link gesperrt): immer die neue Karte nehmen.\n\t\ttitel = '⏰ Ersetzt durch eine neue Karte'; stil = 'warning';\n\t\tzeilen = ['Für diesen Vorgang steht weiter unten im Kanal eine neue Karte mit neuem Freigabe-Link. Bitte nur die neue Karte verwenden.', zeitText(jetzt, zeitzone)];\n\t} else if (z === 'unzustellbar') {\n\t\ttitel = '📭 Gesendet, aber nicht zugestellt'; stil = 'attention';\n\t\tzeilen = ['Die Mail kam beim Kunden nicht an. Siehe Meldung im Kanal „Bitte ansehen“.', zeitText(jetzt, zeitzone)];\n\t} else {\n\t\treturn null;\n\t}\n\tconst was = f.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage' + (Number(f.runde) > 0 ? ' (Runde ' + Number(f.runde) + ')' : '');\n\tconst fakten = [{ title: 'Vorgang', value: String(f.vorgangs_id || '–') }, { title: 'Art', value: was }];\n\tif (f.betreff) fakten.push({ title: 'Betreff', value: String(f.betreff).slice(0, 150) });\n\tconst tb = (text, extra) => ({ type: 'TextBlock', text, wrap: true, ...(extra || {}) });\n\tconst karte = {\n\t\ttype: 'AdaptiveCard', $schema: 'http://adaptivecards.io/schemas/adaptive-card.json', version: '1.4',\n\t\tbody: [\n\t\t\t{ type: 'Container', style: stil, bleed: true, items: [tb(titel, { weight: 'bolder', size: 'medium' })] },\n\t\t\t{ type: 'FactSet', facts: fakten, spacing: 'Medium' },\n\t\t\t...zeilen.filter(Boolean).map((t) => tb(t, { spacing: 'Small', isSubtle: true })),\n\t\t],\n\t};\n\t// Warten: möglichst die vollständige Freigabe-Karte mit allen Angaben übernehmen.\n\tconst voll = z === 'gesendet' && original ? karteWarten(original, f, { kopf: titel, zeilen }) : null;\n\tconst ziel = voll || karte;\n\tconst marker = Buffer.from(JSON.stringify(ziel), 'utf8').toString('base64');\n\tconst html = `<b>${esc(titel)}</b><br>Vorgang ${esc(f.vorgangs_id || '')}<br>${zeilen.filter(Boolean).map(esc).join('<br>')}<!--EPA_KARTE:${marker}-->`;\n\t// Verschickt: Die Karte verschwindet aus \"Rückfragen\" und kommt in \"Warten auf Kunde\" (Anlass rueckfrage_verschickt).\n\treturn { titel, karte: ziel, html, verschieben: z === 'gesendet' };\n}\n\n/**\n * Kurzmeldung für \"Systemmeldungen\", wenn eine Rückfrage verschickt wurde: Absender und wichtigste Daten.\n * v = Vorgang (absender_name, absender_adresse, betreff, vorgangs_id).\n */\nfunction meldungVerschickt(f, v, { zeitzone, jetzt, frist } = {}) {\n\tconst vg = v || {};\n\tlet gefragt = [];\n\ttry { gefragt = (typeof f.fehlende_felder === 'string' ? JSON.parse(f.fehlende_felder || '[]') : (f.fehlende_felder || [])).map((x) => x.anzeigename || x.feldname).filter(Boolean); } catch (e) { gefragt = []; }\n\tconst was = f.art === 'erinnerung' ? 'Erinnerung' : 'Rückfrage';\n\tconst titel = '✅ ' + was + ' verschickt';\n\tconst absender = [vg.absender_name, vg.absender_adresse ? '<' + vg.absender_adresse + '>' : ''].filter(Boolean).join(' ');\n\tconst manuell = f.entscheidung === 'manuell_gesendet';\n\tconst fakten = [\n\t\t{ title: 'Absender', value: absender || '–' },\n\t\t{ title: 'Betreff', value: String(vg.betreff || f.betreff || '–').slice(0, 150) },\n\t\t{ title: 'Vorgang', value: String(f.vorgangs_id || vg.vorgangs_id || '–') + (Number(f.runde) > 0 ? ' · Runde ' + Number(f.runde) : '') },\n\t\t{ title: 'Gefragt', value: gefragt.length ? gefragt.join(', ').slice(0, 200) : '–' },\n\t\t{ title: 'Verschickt', value: (manuell ? 'direkt in Outlook' : (f.entscheider ? 'von ' + f.entscheider : '')) + ' · ' + zeitText(f.gesendet_am || jetzt, zeitzone) },\n\t];\n\tif (frist) fakten.push({ title: 'Antwort bis', value: zeitText(frist, zeitzone) });\n\tconst karte = { type: 'AdaptiveCard', $schema: 'http://adaptivecards.io/schemas/adaptive-card.json', version: '1.4', body: [\n\t\t{ type: 'TextBlock', text: titel, weight: 'Bolder', size: 'Medium', color: 'Good', wrap: true },\n\t\t{ type: 'FactSet', facts: fakten, spacing: 'Small' },\n\t\t{ type: 'TextBlock', text: 'Die Karte steht jetzt in „3 Warten auf Kunde“, bis der Kunde antwortet.', isSubtle: true, size: 'Small', wrap: true, spacing: 'Small' },\n\t] };\n\tconst html = `<b>${esc(titel)}</b><br>${fakten.map((x) => esc(x.title) + ': ' + esc(x.value)).join('<br>')}<!--EPA_KARTE:${Buffer.from(JSON.stringify(karte), 'utf8').toString('base64')}-->`;\n\treturn { titel, karte, html };\n}\n\n/**\n * Weitere Freigabe-Karten desselben Vorgangs im Kanal (Doppelte, alte Karten), die beim Verschicken mit weg sollen.\n * nachrichten: [{ id, geloescht, text }] aus der Postfach-Aktion teams_kanal_lesen.\n */\nfunction weitereKarten(nachrichten, vorgangsId, ausnahmen) {\n\tconst vid = String(vorgangsId || '');\n\tif (!/^V-\\d{4}-\\d{4,}$/.test(vid)) return [];\n\tconst aus = new Set((ausnahmen || []).map(String));\n\treturn (nachrichten || []).filter((m) => m && m.id && !m.geloescht && !aus.has(String(m.id))\n\t\t&& String(m.text || '').includes('(' + vid + ')') && /Freigabe erforderlich/.test(String(m.text || ''))).map((m) => String(m.id));\n}\n\n/**\n * Was mit der Karte einer Freigabe passiert (EPA SW Freigabe-Karte).\n * - Karte in \"Rückfragen\", Freigabe verschickt: verschieben (neue Karte in \"Warten auf Kunde\", alte entfernen,\n *   dazu ältere Warten-Karten desselben Vorgangs entfernen, z. B. nach einer Erinnerung).\n * - Karte in \"Warten\", Zustand nicht mehr \"gesendet\" (Kunde hat geantwortet, nicht zugestellt, keine Reaktion): entfernen.\n * - Sonst Karte an Ort und Stelle ersetzen (abgelehnt, ersetzt, Link erneuert, Versand fehlgeschlagen).\n * @returns {{ aktion: 'verschieben'|'entfernen'|'aendern'|'nichts', grund?: string, html?: string, karte_ort?: object, ziel_channel_id?: string, entfernen?: object[] }}\n */\nfunction kartenPlan({ fg, andere, zustand, wartenKanal, teamsNachricht, zeitzone, jetzt, frist }) {\n\tconst f = fg || {};\n\tconst tn = teamsNachrichtLesen(teamsNachricht || f.teams_nachricht);\n\tif (!f.freigabe_id) return { aktion: 'nichts', grund: 'Freigabe nicht gefunden' };\n\tif (!tn) return { aktion: 'nichts', grund: 'keine Teams-Karte gespeichert' };\n\tconst z = String(zustand || f.status || '');\n\tconst warten = /^19:[^\\s]+@thread\\.[a-z0-9]+$/i.test(String(wartenKanal || '')) ? String(wartenKanal) : '';\n\tconst inWarten = Boolean(warten) && tn.channel_id === warten;\n\tif (inWarten) {\n\t\tif (z === 'gesendet') return { aktion: 'nichts', grund: 'Karte steht schon in \"Warten auf Kunde\"' };\n\t\treturn { aktion: 'entfernen', karte_ort: tn, entfernen: [tn] };\n\t}\n\tconst k = karteZustand(f, { zustand: z, zeitzone, jetzt, frist, original: f.teams_karte });\n\tif (!k) return { aktion: 'nichts', grund: 'Zustand ' + (z || '-') + ' ändert die Karte nicht' };\n\tif (k.verschieben && warten) {\n\t\tconst alte = (andere || [])\n\t\t\t.filter((a) => a && a.freigabe_id && a.freigabe_id !== f.freigabe_id)\n\t\t\t.map((a) => teamsNachrichtLesen(a.teams_nachricht))\n\t\t\t.filter((t) => t && t.channel_id === warten);\n\t\treturn { aktion: 'verschieben', html: k.html, karte_ort: tn, ziel_channel_id: warten, entfernen: [tn, ...alte] };\n\t}\n\treturn { aktion: 'aendern', html: k.html, karte_ort: tn };\n}\n\nmodule.exports = {\n\tTOKEN_MUSTER, AKTIONEN, KANAL, linkEmpfaenger, freigeberErlaubt, entscheiderBestimmen, tokenErzeugen, tokenHash, freigabeIdErzeugen, istGueltigesToken, basisUrl, link,\n\tfreigabePruefen, formularLesen, istBearbeitet, esc, seite, seiteFormular, seiteMeldung, nachrichtFreigeber, ANLASS,\n\tteamsNachrichtLesen, karteZustand, kartenPlan, karteWarten, karteOhneLink, meldungVerschickt, weitereKarten,\n};\nreturn module.exports;\n})();\n// ===== Ende src/freigabe.js =====\n\n// ----- Node-Logik -----\nconst e = $('Eingabe prüfen').first().json;\nconst r = $('Freigabe-Chat senden').isExecuted ? ($('Freigabe-Chat senden').first().json || {}) : {};\nconst f = $input.first().json || {};\nconst neu = e.freigeber === freigabe.KANAL && f.freigabe_id ? freigabe.teamsNachrichtLesen({ team_id: r.team_id, channel_id: r.channel_id, id: r.nachricht_id }) : null;\nconst alt = f.freigabe_id ? freigabe.teamsNachrichtLesen(f.teams_nachricht) : null;\n// Die vollständige Karte merken: daraus wird nach dem Versand die Karte in \"Warten auf Kunde\".\nlet karte = '';\nconst m = String(e.nachricht_html || '').match(/<!--EPA_KARTE:([A-Za-z0-9+\\/=]+)-->/);\n// Ohne Button und ohne Link: Freigabe-Links werden nie im Klartext gespeichert (nur als Hash in epa_freigabe_tokens).\nif (neu && m) { try { const k = freigabe.karteOhneLink(JSON.parse(Buffer.from(m[1], 'base64').toString('utf8'))); karte = k ? JSON.stringify(k) : ''; } catch (err) { karte = ''; } }\n// Erinnerung/Erneuerung an den Freigeber kommt ohne fertige Karte: dann die schon gemerkte vollständige Karte behalten.\nif (neu && !karte && typeof f.teams_karte === 'string' && f.teams_karte.trim().startsWith('{')) karte = f.teams_karte;\nreturn [{ json: { merken: Boolean(neu), alt_ersetzen: Boolean(neu && alt && alt.id !== neu.id), alt: alt ? JSON.stringify(alt) : '', teams_nachricht: neu ? JSON.stringify(neu) : '', teams_karte: karte } }];\n"
+   }
+  },
+  {
+   "id": "1e6caa38-5da7-4f3d-ae39-d9b5fa7809c2",
+   "name": "Karte merken?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    2200,
+    120
+   ],
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 3
+     },
+     "conditions": [
+      {
+       "id": "968777ff-ffb5-4da0-aa8b-571066c1c3c2",
+       "leftValue": "={{ $json.merken }}",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "f42ce290-d3bd-4a9c-a034-119906616e95",
+   "name": "Alte Karte vorhanden?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    2420,
+    40
+   ],
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 3
+     },
+     "conditions": [
+      {
+       "id": "51c4c0b1-8fd8-4f5e-aa60-294272ec0211",
+       "leftValue": "={{ $('Karte merken (Plan)').first().json.alt_ersetzen }}",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "8f988f2f-07b1-40cb-adb7-2d8b5a0cbb5e",
+   "name": "Alte Karte als ersetzt markieren",
+   "type": "n8n-nodes-base.executeWorkflow",
+   "typeVersion": 1.3,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "position": [
+    2640,
+    -40
+   ],
+   "parameters": {
+    "workflowId": {
+     "__rl": true,
+     "mode": "list",
+     "value": "jgwfWvV74M58d4oW",
+     "cachedResultName": "EPA SW Freigabe-Karte"
+    },
+    "workflowInputs": {
+     "mappingMode": "defineBelow",
+     "value": {
+      "freigabe_id": "={{ $('Eingabe prüfen').first().json.freigabe_id }}",
+      "zustand": "erneuert",
+      "teams_nachricht": "={{ $('Karte merken (Plan)').first().json.alt }}"
+     },
+     "matchingColumns": [],
+     "schema": [
+      {
+       "id": "freigabe_id",
+       "displayName": "freigabe_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      },
+      {
+       "id": "zustand",
+       "displayName": "zustand",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      },
+      {
+       "id": "teams_nachricht",
+       "displayName": "teams_nachricht",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      }
+     ],
+     "attemptToConvertTypes": false,
+     "convertFieldsToString": false
+    },
+    "mode": "once",
+    "options": {
+     "waitForSubWorkflow": true
+    }
+   }
+  },
+  {
+   "id": "e9513e79-1387-4637-a7fa-983dfb350036",
+   "name": "Teams-Nachricht (Daten)",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2860,
+    40
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst p = $('Karte merken (Plan)').first().json;\nreturn [{ json: { teams_nachricht: p.teams_nachricht, teams_karte: p.teams_karte } }];\n"
+   }
+  },
+  {
+   "id": "84196c00-f2d3-4975-a926-38c38b0189cc",
+   "name": "Teams-Nachricht speichern",
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "position": [
+    3080,
+    40
+   ],
+   "parameters": {
+    "resource": "row",
+    "operation": "update",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "name",
+     "value": "epa_freigaben"
+    },
+    "matchType": "allConditions",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "freigabe_id",
+       "condition": "eq",
+       "keyValue": "={{ $('Eingabe prüfen').first().json.freigabe_id }}"
+      }
+     ]
+    },
+    "columns": {
+     "mappingMode": "autoMapInputData",
+     "value": {},
+     "matchingColumns": [],
+     "schema": []
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "0c953709-de95-4830-ab7e-126d70e2573e",
+   "name": "Ergebnis melden",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    3300,
+    0
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst p = $('Fehler protokollieren').isExecuted ? $('Fehler protokollieren').first().json : null;\nreturn [{ json: { gesendet: $('Zustellung prüfen').first().json.gesendet, fehler_id: p && p.id !== undefined ? p.id : null } }];\n"
+   }
+  }
+ ],
+ "connections": {
+  "Bei Aufruf": {
+   "main": [
+    [
+     {
+      "node": "Eingabe prüfen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Eingabe prüfen": {
+   "main": [
+    [
+     {
+      "node": "Testkanal Telegram?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Testkanal Telegram?": {
+   "main": [
+    [
+     {
+      "node": "Telegram-Link senden",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Kunde lesen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Telegram-Link senden": {
+   "main": [
+    [
+     {
+      "node": "Zustellung prüfen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Kunde lesen": {
+   "main": [
+    [
+     {
+      "node": "Freigabe-Chat senden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Freigabe-Chat senden": {
+   "main": [
+    [
+     {
+      "node": "Zustellung prüfen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Zustellung prüfen": {
+   "main": [
+    [
+     {
+      "node": "Zustellung fehlgeschlagen?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Zustellung fehlgeschlagen?": {
+   "main": [
+    [
+     {
+      "node": "Fehlerlog vorbereiten",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Freigabe zur Karte lesen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Freigabe zur Karte lesen": {
+   "main": [
+    [
+     {
+      "node": "Karte merken (Plan)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Karte merken (Plan)": {
+   "main": [
+    [
+     {
+      "node": "Karte merken?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Karte merken?": {
+   "main": [
+    [
+     {
+      "node": "Alte Karte vorhanden?",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Ergebnis melden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Alte Karte vorhanden?": {
+   "main": [
+    [
+     {
+      "node": "Alte Karte als ersetzt markieren",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Teams-Nachricht (Daten)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Alte Karte als ersetzt markieren": {
+   "main": [
+    [
+     {
+      "node": "Teams-Nachricht (Daten)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Teams-Nachricht (Daten)": {
+   "main": [
+    [
+     {
+      "node": "Teams-Nachricht speichern",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Teams-Nachricht speichern": {
+   "main": [
+    [
+     {
+      "node": "Ergebnis melden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Fehlerlog vorbereiten": {
+   "main": [
+    [
+     {
+      "node": "Fehler protokollieren",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Fehler protokollieren": {
+   "main": [
+    [
+     {
+      "node": "Ergebnis melden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "saveManualExecutions": true,
+  "callerPolicy": "workflowsFromSameOwner",
+  "saveDataSuccessExecution": "none",
+  "binaryMode": "separate",
+  "errorWorkflow": "nMkGyI82z0mwm9ud"
+ }
+}

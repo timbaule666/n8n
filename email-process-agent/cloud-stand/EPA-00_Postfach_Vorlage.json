@@ -1,0 +1,2839 @@
+{
+ "id": "fi1VnvQ26qBQ8aMQ",
+ "name": "EPA-00 Postfach (Vorlage) *",
+ "active": false,
+ "updatedAt": "2026-10-17T10:13:44.869Z",
+ "versionId": "92168431-0ef3-4b56-bb3f-c9310f8acd73",
+ "activeVersionId": null,
+ "nodes": [
+  {
+   "id": "73b25480-6f19-4279-a5aa-b9c3e7ef07da",
+   "name": "Notiz Zweck",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -120,
+    -620
+   ],
+   "parameters": {
+    "content": "## EPA-00 Postfach (Vorlage, je Postfach eine Kopie)\n**Zweck:** Holt neue Mails aus dem Posteingang (Polling, Bauplan 5.1), lädt Header und Anhänge über Microsoft Graph, liest PDF-Text und bereitet Bilder für die KI auf und übergibt alles an \"EPA-01 Eingang verarbeiten\". Aussortierte Mails (Newsletter, Auto-Replies, Blockliste) werden danach in den Archivordner verschoben, nie gelöscht.\n**Trigger:** Microsoft Outlook Trigger (jede Minute, nur Posteingang). Jede Mail wird als eigene Ausführung dieses Workflows verarbeitet (Aufruf von sich selbst), damit ein Fehler nur diese eine Mail betrifft.\n**Einrichten:** 1) Workflow duplizieren und umbenennen (z. B. \"EPA-00 Postfach anfragen@kunde.de\"). 2) Im Node \"Postfach festlegen\" die Adresse eintragen (muss in epa_config_allgemein.postfach stehen). 3) Outlook-Credential (Microsoft Outlook OAuth2, bei Shared Mailbox mit \"Use Shared Mailbox\") im Trigger und in allen Graph-Nodes zuweisen. 4) Archivordner (Config: archivordner) als Ordner auf oberster Ebene im Postfach anlegen. 5) Veröffentlichen.\n**Postfach-Aktionen (für EPA-02/EPA-07):** entwurf_anlegen (Antwort im Thread, Betreff mit Vorgangs-ID, Freigabe-ID als Extended Property), entwurf_aktualisieren, entwurf_senden (prüft vorher, ob der Entwurf noch existiert; sonst Suche in Gesendete Elemente: kein Doppelversand). Ab M6: verbindung_pruefen (Watchdog: Posteingang lesbar?) und entwurf_loeschen (Löschjob: nur ersetzte Entwürfe mit passender Freigabe-Kennung). kategorien_setzen: Outlook-Kategorie (z. B. \"AI Geprüft\") an den Kundenmails eines Vorgangs setzen oder entfernen; legt die Kategorie mit Farbe an, wenn die Berechtigung reicht. Fehler hier stören die Verarbeitung nie. zustelltest_senden (EPA-11): Kontrollmail mit Zustelltest-Betreff an das Prüfpostfach. versand_pruefen (EPA-04): Liegt der Entwurf einer offenen Freigabe schon in \"Gesendete Elemente\" (direkt in Outlook gesendet)? Teams des Kunden (eigenes Teams-Credential in dieser Kopie): teams_kanal (Meldung in den Kanal team_id/channel_id), teams_chat (Freigabe-Link im 1:1-Chat an empfaenger); verbindung_pruefen prüft Postfach und Teams. Die ID dieser Kopie gehört in epa_config_allgemein.postfach_workflow_id.\n**Hinweis:** Der Trigger liefert nur die Message-ID; Header (In-Reply-To, References, Auto-Submitted, Authentication-Results) holt \"Mail laden\", weil der Trigger sie nicht ausgibt.",
+    "width": 900,
+    "height": 380,
+    "color": 7
+   }
+  },
+  {
+   "id": "d5cc5431-09d0-4bf0-a8eb-6a1b0bfff3f6",
+   "name": "Neue Mail im Posteingang",
+   "type": "n8n-nodes-base.microsoftOutlookTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {
+    "pollTimes": {
+     "item": [
+      {
+       "mode": "everyMinute"
+      }
+     ]
+    },
+    "authentication": "microsoftOutlookOAuth2Api",
+    "event": "messageReceived",
+    "output": "fields",
+    "fields": [
+     "receivedDateTime"
+    ],
+    "filters": {
+     "foldersToInclude": [
+      "inbox"
+     ],
+     "readStatus": "both"
+    },
+    "options": {}
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "c65f77d8-4cec-4ef9-a1c0-75f76b48c80d",
+   "name": "Postfach festlegen",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    220,
+    0
+   ],
+   "parameters": {
+    "jsCode": "\n// ----- Node-Logik -----\n// Adresse des überwachten Postfachs (muss mit epa_config_allgemein.postfach übereinstimmen).\nconst POSTFACH = '<postfach@ihre-domain.de>';\nif (!/^[^@<>\\s]+@[^@<>\\s]+\\.[A-Za-z]{2,}$/.test(POSTFACH)) throw new Error('[EPA:424:KONFIGURATIONSFEHLER:-] Im Node \"Postfach festlegen\" ist keine gültige Postfach-Adresse eingetragen');\nreturn $input.all().filter((i) => i.json.id).map((i) => ({ json: { postfach: POSTFACH.toLowerCase(), graph_id: i.json.id } }));\n"
+   }
+  },
+  {
+   "id": "a51b56d1-4f16-4bd6-aa2f-fa0b33fe4897",
+   "name": "Jede Mail einzeln verarbeiten",
+   "type": "n8n-nodes-base.executeWorkflow",
+   "typeVersion": 1.3,
+   "onError": "continueRegularOutput",
+   "position": [
+    440,
+    0
+   ],
+   "parameters": {
+    "workflowId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "={{ $workflow.id }}"
+    },
+    "workflowInputs": {
+     "mappingMode": "defineBelow",
+     "value": {
+      "aktion": "eingang",
+      "postfach": "={{ $json.postfach }}",
+      "graph_id": "={{ $json.graph_id }}"
+     },
+     "matchingColumns": [],
+     "schema": [
+      {
+       "id": "aktion",
+       "displayName": "aktion",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      },
+      {
+       "id": "postfach",
+       "displayName": "postfach",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      },
+      {
+       "id": "graph_id",
+       "displayName": "graph_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      }
+     ],
+     "attemptToConvertTypes": false,
+     "convertFieldsToString": false
+    },
+    "mode": "each",
+    "options": {
+     "waitForSubWorkflow": true
+    }
+   }
+  },
+  {
+   "id": "bc74c620-01b0-4abb-a7d7-386cbb4a3094",
+   "name": "Bei Einzelaufruf",
+   "type": "n8n-nodes-base.executeWorkflowTrigger",
+   "typeVersion": 1.1,
+   "position": [
+    0,
+    300
+   ],
+   "parameters": {
+    "inputSource": "workflowInputs",
+    "workflowInputs": {
+     "values": [
+      {
+       "name": "aktion",
+       "type": "string"
+      },
+      {
+       "name": "postfach",
+       "type": "string"
+      },
+      {
+       "name": "graph_id",
+       "type": "string"
+      },
+      {
+       "name": "internet_message_id",
+       "type": "string"
+      },
+      {
+       "name": "entwurf_id",
+       "type": "string"
+      },
+      {
+       "name": "freigabe_id",
+       "type": "string"
+      },
+      {
+       "name": "vorgangs_id",
+       "type": "string"
+      },
+      {
+       "name": "html",
+       "type": "string"
+      },
+      {
+       "name": "kategorien",
+       "type": "string"
+      },
+      {
+       "name": "empfaenger",
+       "type": "string"
+      },
+      {
+       "name": "betreff",
+       "type": "string"
+      },
+      {
+       "name": "team_id",
+       "type": "string"
+      },
+      {
+       "name": "channel_id",
+       "type": "string"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "e988a37c-1edc-4b49-a1e9-443e71dbcd0f",
+   "name": "Aktion",
+   "type": "n8n-nodes-base.switch",
+   "typeVersion": 3.4,
+   "position": [
+    220,
+    300
+   ],
+   "parameters": {
+    "mode": "rules",
+    "rules": {
+     "values": [
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 3
+        },
+        "conditions": [
+         {
+          "id": "3390625c-8478-4cf8-a8c5-d9fe5f9bbbc8",
+          "leftValue": "={{ $json.aktion || 'eingang' }}",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          },
+          "rightValue": "eingang"
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "eingang"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 3
+        },
+        "conditions": [
+         {
+          "id": "712b8b8b-7bab-4b65-aedf-8afff2e98d88",
+          "leftValue": "={{ $json.aktion || 'eingang' }}",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          },
+          "rightValue": "entwurf_anlegen"
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "entwurf_anlegen"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 3
+        },
+        "conditions": [
+         {
+          "id": "0f93a61f-c89d-4c5b-ac65-a329f8584521",
+          "leftValue": "={{ $json.aktion || 'eingang' }}",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          },
+          "rightValue": "entwurf_aktualisieren"
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "entwurf_aktualisieren"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 3
+        },
+        "conditions": [
+         {
+          "id": "dbf8595f-2e79-4ba0-af2c-5e855dc5db8a",
+          "leftValue": "={{ $json.aktion || 'eingang' }}",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          },
+          "rightValue": "entwurf_senden"
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "entwurf_senden"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 3
+        },
+        "conditions": [
+         {
+          "id": "e53e2d68-b9af-4c7f-a6d1-18fae1e5d660",
+          "leftValue": "={{ $json.aktion || 'eingang' }}",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          },
+          "rightValue": "verbindung_pruefen"
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "verbindung_pruefen"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 3
+        },
+        "conditions": [
+         {
+          "id": "d3c554ed-6f19-4904-add4-77b223426fa2",
+          "leftValue": "={{ $json.aktion || 'eingang' }}",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          },
+          "rightValue": "entwurf_loeschen"
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "entwurf_loeschen"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 3
+        },
+        "conditions": [
+         {
+          "id": "3ad50c17-aa42-41c1-a4f0-c42985f9bdcb",
+          "leftValue": "={{ $json.aktion || 'eingang' }}",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          },
+          "rightValue": "kategorien_setzen"
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "kategorien_setzen"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 3
+        },
+        "conditions": [
+         {
+          "id": "c47ed04b-bfbe-4e0d-aef2-846768894b13",
+          "leftValue": "={{ $json.aktion || 'eingang' }}",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          },
+          "rightValue": "zustelltest_senden"
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "zustelltest_senden"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 3
+        },
+        "conditions": [
+         {
+          "id": "198298ba-8fa9-41ab-a753-24391665ce15",
+          "leftValue": "={{ $json.aktion || 'eingang' }}",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          },
+          "rightValue": "versand_pruefen"
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "versand_pruefen"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 3
+        },
+        "conditions": [
+         {
+          "id": "9f4e1bdf-c0ad-46ee-ae41-9b6e4b4cf382",
+          "leftValue": "={{ $json.aktion || 'eingang' }}",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          },
+          "rightValue": "teams_kanal"
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "teams_kanal"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 3
+        },
+        "conditions": [
+         {
+          "id": "2992e780-fd60-4ccb-a142-51fb88061a6f",
+          "leftValue": "={{ $json.aktion || 'eingang' }}",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          },
+          "rightValue": "teams_chat"
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "teams_chat"
+      }
+     ]
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "0c04f8f4-7c7e-4a21-afd0-39d1009b82e5",
+   "name": "Mail laden",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    440,
+    300
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.graph_id) }}",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {},
+    "sendQuery": true,
+    "specifyQuery": "keypair",
+    "queryParameters": {
+     "parameters": [
+      {
+       "name": "$select",
+       "value": "id,internetMessageId,conversationId,subject,body,bodyPreview,from,sender,replyTo,toRecipients,ccRecipients,receivedDateTime,hasAttachments,internetMessageHeaders,webLink"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "9ac91098-ebd4-4921-a4fb-a65f087cce10",
+   "name": "Anhänge auflisten",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    660,
+    300
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.graph_id) }}/attachments",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {},
+    "sendQuery": true,
+    "specifyQuery": "keypair",
+    "queryParameters": {
+     "parameters": [
+      {
+       "name": "$select",
+       "value": "id,name,contentType,size,isInline"
+      },
+      {
+       "name": "$top",
+       "value": "100"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "abc740c4-199c-4d4b-a5dc-72bd0d8fa409",
+   "name": "Anhänge prüfen",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    660,
+    300
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst MAX = 26214400;\nconst basis = \"https://graph.microsoft.com/v1.0\" + '/users/' + encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) + '/messages/' + encodeURIComponent($('Bei Einzelaufruf').first().json.graph_id) + '/attachments/';\nconst liste = ($input.first().json.value || []);\nconst alle = [];\nconst laden = [];\nfor (const a of liste) {\n\tconst typ = String(a.contentType || '').toLowerCase();\n\tconst name = String(a.name || 'Anhang');\n\tconst datei = String(a['@odata.type'] || '').endsWith('fileAttachment');\n\tconst art = typ === 'application/pdf' || /\\.pdf$/i.test(name) ? 'pdf' : /^image\\/(jpeg|png|gif|webp)$/.test(typ) ? 'bild' : 'sonst';\n\tconst meta = { name, contentType: art === 'pdf' ? 'application/pdf' : typ, size: Number(a.size) || 0, isInline: a.isInline === true, status: 'ok', hinweis: null };\n\tif (!datei) { meta.status = 'nicht_ausgewertet'; meta.hinweis = 'Eingebettete Mail/Element wird nicht ausgelesen'; }\n\telse if (art === 'sonst') { meta.status = 'nicht_ausgewertet'; meta.hinweis = 'Dateityp wird nicht ausgelesen'; }\n\telse if (meta.size > MAX) { meta.status = 'zu_gross'; meta.hinweis = 'größer als 25 MB'; }\n\talle.push(meta);\n\tif (meta.status === 'ok' && !meta.isInline) laden.push({ index: alle.length - 1, art, url: basis + encodeURIComponent(a.id) + '/$value' });\n}\nreturn laden.length ? laden.map((l) => ({ json: { ...l, alle } })) : [{ json: { index: null, alle } }];\n"
+   }
+  },
+  {
+   "id": "fbb460fe-e086-45ad-a4ee-d1b5dd894033",
+   "name": "Anhang zu laden?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    880,
+    300
+   ],
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 3
+     },
+     "conditions": [
+      {
+       "id": "17d80fa0-c06c-45c1-acd6-bfa4cd3fa658",
+       "leftValue": "={{ $json.index }}",
+       "operator": {
+        "type": "number",
+        "operation": "exists",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {
+     "looseTypeValidation": true
+    }
+   }
+  },
+  {
+   "id": "870f6f5c-ac2e-4c6d-ac70-8dd413dcda1d",
+   "name": "Anhang laden",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "alwaysOutputData": true,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "onError": "continueRegularOutput",
+   "position": [
+    1100,
+    200
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "={{ $json.url }}",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "file",
+       "outputPropertyName": "data"
+      }
+     }
+    }
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "86e29e0f-7154-4bea-a952-c4e3a2aed1c6",
+   "name": "Anhang kodieren",
+   "type": "n8n-nodes-base.extractFromFile",
+   "typeVersion": 1.1,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "position": [
+    1320,
+    200
+   ],
+   "parameters": {
+    "operation": "binaryToPropery",
+    "binaryPropertyName": "data",
+    "destinationKey": "base64",
+    "options": {
+     "keepSource": "both"
+    }
+   }
+  },
+  {
+   "id": "dfe6ef51-3857-4a38-aa94-85570ee60dbd",
+   "name": "PDF lesen",
+   "type": "n8n-nodes-base.extractFromFile",
+   "typeVersion": 1.1,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "position": [
+    1540,
+    200
+   ],
+   "parameters": {
+    "operation": "pdf",
+    "binaryPropertyName": "data",
+    "options": {
+     "joinPages": true,
+     "maxPages": 50
+    }
+   }
+  },
+  {
+   "id": "0f616ebf-4b80-4b90-a642-03708aeed1cc",
+   "name": "Anhänge zusammenstellen",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1760,
+    300
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst MAX_BILD_BASE64 = 14 * 1024 * 1024; // ca. 10 MB Bild\nconst geprueft = $('Anhänge prüfen').all().map((i) => i.json);\nconst alle = (geprueft[0] && geprueft[0].alle ? geprueft[0].alle : []).map((a) => ({ ...a }));\nif ($('PDF lesen').isExecuted) {\n\tconst geladen = $('Anhang laden').all();\n\tconst kodiert = $('Anhang kodieren').all();\n\tconst gelesen = $('PDF lesen').all();\n\tgeprueft.forEach((g, i) => {\n\t\tif (g.index === null || g.index === undefined) return;\n\t\tconst ziel = alle[g.index];\n\t\tif (!geladen[i] || geladen[i].json.error) { ziel.status = 'defekt'; ziel.hinweis = 'Anhang konnte nicht geladen werden'; return; }\n\t\tif (g.art === 'bild') {\n\t\t\tconst b64 = kodiert[i] && kodiert[i].json.base64;\n\t\t\tif (!b64) { ziel.status = 'defekt'; ziel.hinweis = 'Bild nicht lesbar'; }\n\t\t\telse if (b64.length > MAX_BILD_BASE64) { ziel.status = 'zu_gross'; ziel.hinweis = 'Bild zu groß für die KI-Auswertung'; }\n\t\t\telse ziel.bild_data_url = 'data:' + ziel.contentType + ';base64,' + b64;\n\t\t} else {\n\t\t\tconst r = gelesen[i] && gelesen[i].json;\n\t\t\tif (!r || r.error) { ziel.status = 'defekt'; ziel.hinweis = 'PDF nicht lesbar (beschädigt oder verschlüsselt)'; }\n\t\t\telse ziel.text = typeof r.text === 'string' ? r.text : '';\n\t\t}\n\t});\n}\nreturn [{ json: {\n\tpostfach: $('Bei Einzelaufruf').first().json.postfach,\n\tmail: $('Mail laden').first().json,\n\tanhaenge: alle,\n} }];\n"
+   }
+  },
+  {
+   "id": "4c9a739b-710c-4280-aab7-a8fc845ce348",
+   "name": "Eingang verarbeiten",
+   "type": "n8n-nodes-base.executeWorkflow",
+   "typeVersion": 1.3,
+   "position": [
+    1980,
+    300
+   ],
+   "parameters": {
+    "workflowId": {
+     "__rl": true,
+     "mode": "list",
+     "value": "W1j7GzjIxdjtQkVS",
+     "cachedResultName": "EPA-01 Eingang verarbeiten",
+     "cachedResultUrl": "/workflow/W1j7GzjIxdjtQkVS"
+    },
+    "workflowInputs": {
+     "mappingMode": "defineBelow",
+     "value": {
+      "postfach": "={{ $json.postfach }}",
+      "mail": "={{ $json.mail }}",
+      "anhaenge": "={{ $json.anhaenge }}",
+      "aufrufer_execution_id": "={{ String($execution.id) }}"
+     },
+     "matchingColumns": [],
+     "schema": [
+      {
+       "id": "postfach",
+       "displayName": "postfach",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      },
+      {
+       "id": "mail",
+       "displayName": "mail",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "object",
+       "removed": false
+      },
+      {
+       "id": "anhaenge",
+       "displayName": "anhaenge",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "array",
+       "removed": false
+      },
+      {
+       "id": "aufrufer_execution_id",
+       "displayName": "aufrufer_execution_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "canBeUsedToMatch": true,
+       "type": "string",
+       "removed": false
+      }
+     ],
+     "attemptToConvertTypes": false,
+     "convertFieldsToString": false
+    },
+    "mode": "once",
+    "options": {
+     "waitForSubWorkflow": true
+    }
+   }
+  },
+  {
+   "id": "196fe4b5-3710-4827-a9e7-dd0d733db088",
+   "name": "Archivieren?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    2200,
+    300
+   ],
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 3
+     },
+     "conditions": [
+      {
+       "id": "ee06b903-7884-4224-a315-e25f70e9910b",
+       "leftValue": "={{ $json.archivieren }}",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "40f5247f-9bb9-4fb1-ab6e-bec4fd49642c",
+   "name": "Archivordner suchen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    2420,
+    200
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/mailFolders",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {},
+    "sendQuery": true,
+    "specifyQuery": "keypair",
+    "queryParameters": {
+     "parameters": [
+      {
+       "name": "$filter",
+       "value": "=displayName eq '{{ String($json.archivordner).replace(/'/g, \"''\") }}'"
+      },
+      {
+       "name": "$select",
+       "value": "id,displayName"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "744a4cc7-fa9a-4320-ada2-7c01d804b79b",
+   "name": "Ordner-ID ermitteln",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2640,
+    200
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst name = $('Eingang verarbeiten').first().json.archivordner;\nconst treffer = ($input.first().json.value || []).filter((f) => f.displayName === name);\nif (treffer.length !== 1) throw new Error(`[EPA:424:KONFIGURATIONSFEHLER:${$('Eingang verarbeiten').first().json.vorgangs_id || '-'}] Archivordner \"${name}\" ${treffer.length ? 'ist mehrdeutig' : 'fehlt'} im Postfach (Ordner auf oberster Ebene anlegen)`);\nreturn [{ json: { ordner_id: treffer[0].id } }];\n"
+   }
+  },
+  {
+   "id": "d3ecb056-735b-4bc0-a02a-af3d19305272",
+   "name": "In Archiv verschieben",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    2860,
+    200
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.graph_id) }}/move",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {},
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ destinationId: $json.ordner_id }) }}"
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "768a1567-640b-45aa-af17-0fad218b0099",
+   "name": "Ergebnis melden",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    3080,
+    300
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst r = $('Eingang verarbeiten').first().json;\nreturn [{ json: { ...r, verschoben: $('In Archiv verschieben').isExecuted } }];\n"
+   }
+  },
+  {
+   "id": "40e41ea7-38af-4799-ae91-625f380982d4",
+   "name": "Ursprungsmail suchen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    440,
+    700
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {},
+    "sendQuery": true,
+    "specifyQuery": "keypair",
+    "queryParameters": {
+     "parameters": [
+      {
+       "name": "$filter",
+       "value": "=internetMessageId eq '{{ String($('Bei Einzelaufruf').first().json.internet_message_id).replace(/'/g, \"''\") }}'"
+      },
+      {
+       "name": "$select",
+       "value": "id,subject"
+      },
+      {
+       "name": "$top",
+       "value": "2"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "09b9ba3a-4be5-4dfb-ab85-00edecf240d4",
+   "name": "Ursprung prüfen",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    660,
+    700
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Bei Einzelaufruf').first().json;\nconst treffer = $input.first().json.value || [];\nif (!treffer.length) throw new Error(`[EPA:404:NICHT_GEFUNDEN:${e.vorgangs_id || '-'}] Ursprungsmail für den Antwortentwurf nicht im Postfach gefunden`);\nreturn [{ json: { id: treffer[0].id } }];\n"
+   }
+  },
+  {
+   "id": "09441716-f75d-4945-a27d-668ab37b3808",
+   "name": "Antwortentwurf anlegen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    880,
+    700
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($json.id) }}/createReply",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {},
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={}"
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "18d535b5-c099-42be-a3b0-fa10b77567f6",
+   "name": "Entwurf befüllen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    1100,
+    700
+   ],
+   "parameters": {
+    "method": "PATCH",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($json.id) }}",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {},
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ subject: String($json.subject || '').includes('[' + $('Bei Einzelaufruf').first().json.vorgangs_id + ']') ? $json.subject : ($json.subject || '') + ' [' + $('Bei Einzelaufruf').first().json.vorgangs_id + ']', body: { contentType: 'HTML', content: $('Bei Einzelaufruf').first().json.html }, singleValueExtendedProperties: [{ id: \"String {00020329-0000-0000-C000-000000000046} Name EPA-Freigabe-ID\", value: $('Bei Einzelaufruf').first().json.freigabe_id }] }) }}"
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "e7e15a35-0afe-49c7-aa25-e82d05aa307b",
+   "name": "Entwurf melden",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1320,
+    700
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst d = $input.first().json;\nconst an = (d.toRecipients || []).map((r) => r.emailAddress && r.emailAddress.address).filter(Boolean);\nreturn [{ json: { entwurf_id: d.id, betreff: d.subject || '', empfaenger: an.join(', '), internet_message_id: d.internetMessageId || null } }];\n"
+   }
+  },
+  {
+   "id": "db47cf7b-550a-4a61-a268-36de772cceae",
+   "name": "Entwurfstext ersetzen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    440,
+    900
+   ],
+   "parameters": {
+    "method": "PATCH",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.entwurf_id) }}",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {},
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ body: { contentType: 'HTML', content: $('Bei Einzelaufruf').first().json.html } }) }}"
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "08c504b8-03ba-4afc-a9ee-809efad50849",
+   "name": "Aktualisierung melden",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    660,
+    900
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: { aktualisiert: true, entwurf_id: $input.first().json.id } }];\n"
+   }
+  },
+  {
+   "id": "b2de18d1-d757-452b-aec0-628e856ad0b0",
+   "name": "Entwurf abrufen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": false,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    440,
+    1100
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.entwurf_id) }}",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "json"
+      }
+     }
+    },
+    "sendQuery": true,
+    "specifyQuery": "keypair",
+    "queryParameters": {
+     "parameters": [
+      {
+       "name": "$select",
+       "value": "id,isDraft,internetMessageId"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "074b72c5-a6a9-4ff6-a18d-ea9334cddd68",
+   "name": "Versand entscheiden",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    660,
+    1100
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Bei Einzelaufruf').first().json;\nconst r = $input.first().json;\nconst status = Number(r.statusCode);\nif (status === 200 && r.body && r.body.isDraft === true) return [{ json: { weg: 'senden', internet_message_id: r.body.internetMessageId || null } }];\nif (status === 404 || (status === 200 && r.body && r.body.isDraft === false)) return [{ json: { weg: 'suchen', internet_message_id: null } }];\nthrow new Error(`[EPA:${status === 401 ? '401:AUTH_FEHLER' : status === 403 ? '403:KEINE_BERECHTIGUNG' : '502:UPSTREAM_FEHLER'}:${e.vorgangs_id || '-'}] Entwurf nicht abrufbar (HTTP ${status})`);\n"
+   }
+  },
+  {
+   "id": "42a90886-0e68-42e4-adee-4c6b13a6c3f2",
+   "name": "Entwurf vorhanden?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    880,
+    1100
+   ],
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 3
+     },
+     "conditions": [
+      {
+       "id": "3fd7acd2-9117-49e0-a648-b670719c1f63",
+       "leftValue": "={{ $json.weg }}",
+       "operator": {
+        "type": "string",
+        "operation": "equals"
+       },
+       "rightValue": "senden"
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "20b56020-d930-4c9c-a5ef-1fcfb7ab0128",
+   "name": "Entwurf senden",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "alwaysOutputData": true,
+   "retryOnFail": false,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "onError": "continueRegularOutput",
+   "position": [
+    1100,
+    1000
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.entwurf_id) }}/send",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {}
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "a3887010-b0c2-4c20-aba0-8d07e2ac2c7d",
+   "name": "Sendeergebnis",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1320,
+    1000
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst r = $input.first().json || {};\nreturn [{ json: { bestaetigt: !r.error, internet_message_id: $('Versand entscheiden').first().json.internet_message_id } }];\n"
+   }
+  },
+  {
+   "id": "55ebb280-b3ad-46b3-af94-4743b8b9765d",
+   "name": "Versand bestätigt?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    1540,
+    1000
+   ],
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 3
+     },
+     "conditions": [
+      {
+       "id": "51b37c13-46d6-4adc-a172-96a2b929dd78",
+       "leftValue": "={{ $json.bestaetigt }}",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "87a15c45-c56a-4904-aa94-0097ce4d689d",
+   "name": "Gesendet melden",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1760,
+    900
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nreturn [{ json: { gesendet: true, bereits: false, internet_message_id: $input.first().json.internet_message_id } }];\n"
+   }
+  },
+  {
+   "id": "ddd8d022-284f-4ece-a872-4bc5bda8bac0",
+   "name": "In Gesendet suchen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    1760,
+    1180
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/mailFolders/sentitems/messages",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {},
+    "sendQuery": true,
+    "specifyQuery": "keypair",
+    "queryParameters": {
+     "parameters": [
+      {
+       "name": "$filter",
+       "value": "=singleValueExtendedProperties/Any(ep: ep/id eq 'String {00020329-0000-0000-C000-000000000046} Name EPA-Freigabe-ID' and ep/value eq '{{ $('Bei Einzelaufruf').first().json.freigabe_id }}')"
+      },
+      {
+       "name": "$select",
+       "value": "id,internetMessageId"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "53915c5f-6b02-41ab-ae70-52a6c3fbdd11",
+   "name": "Gesendet prüfen",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1980,
+    1180
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Bei Einzelaufruf').first().json;\nconst treffer = $input.first().json.value || [];\n// Grund von Microsoft mitgeben (z. B. Konto gesperrt), damit die Alarmmeldung verständlich ist\nconst s = $('Entwurf senden').isExecuted ? ($('Entwurf senden').first().json || {}) : {};\nconst grund = s.error ? String(s.error.description || s.error.message || '').replace(/\\s+/g, ' ').slice(0, 200) : '';\nif (!treffer.length) throw new Error(`[EPA:502:UPSTREAM_FEHLER:${e.vorgangs_id || '-'}] Rückfrage nicht gesendet: ${grund ? 'Microsoft meldet: ' + grund : 'Entwurf fehlt bzw. Versand fehlgeschlagen'} (nicht in Gesendete Elemente)`);\nreturn [{ json: { gesendet: true, bereits: true, internet_message_id: treffer[0].internetMessageId || null } }];\n"
+   }
+  },
+  {
+   "id": "464b9ed9-a7a0-422e-a54e-0dcdb57f6834",
+   "name": "Posteingang prüfen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": false,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    440,
+    1400
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/mailFolders/inbox",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "json"
+      }
+     }
+    },
+    "sendQuery": true,
+    "specifyQuery": "keypair",
+    "queryParameters": {
+     "parameters": [
+      {
+       "name": "$select",
+       "value": "id"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "89859858-623f-4e46-aeeb-00f7669efcf3",
+   "name": "Teams prüfen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "position": [
+    660,
+    1400
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "https://graph.microsoft.com/v1.0/me?$select=id",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftTeamsOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "json"
+      }
+     },
+     "timeout": 20000
+    }
+   }
+  },
+  {
+   "id": "403021bd-879a-4dd9-aa01-d4f9cd417bcd",
+   "name": "Verbindung melden",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    880,
+    1400
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst st = (r) => Number((r || {}).statusCode) || null;\nconst grund = (r) => (r && r.error) ? String(r.error.message || r.error).slice(0, 120) : (r && r.body && r.body.error ? String(r.body.error.code || r.body.error.message || '').slice(0, 120) : '');\nconst p = $('Posteingang prüfen').first().json || {};\nconst t = $input.first().json || {};\nconst status = st(p);\nconst tStatus = st(t);\nreturn [{ json: { ok: status === 200, status, meldung: status === 200 ? '' : grund(p), teams_ok: tStatus === 200 && !t.error, teams_status: tStatus, teams_meldung: tStatus === 200 ? '' : grund(t) } }];\n"
+   }
+  },
+  {
+   "id": "a3eebf20-d2bc-441b-abc3-717a96444c69",
+   "name": "Kanalmeldung prüfen",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    440,
+    2400
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Bei Einzelaufruf').first().json;\nif (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(e.team_id || ''))) throw new Error('[EPA:424:KONFIGURATIONSFEHLER:' + (e.vorgangs_id || '-') + '] team_id muss eine GUID sein');\nif (!String(e.channel_id || '').trim()) throw new Error('[EPA:424:KONFIGURATIONSFEHLER:' + (e.vorgangs_id || '-') + '] channel_id fehlt');\nif (!String(e.html || '').trim()) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Nachricht fehlt');\nreturn [{ json: { team_id: e.team_id.trim(), channel_id: e.channel_id.trim(), html: e.html } }];\n"
+   }
+  },
+  {
+   "id": "4fe38fa0-e436-480c-a866-830d5144c46a",
+   "name": "Kanalmeldung senden",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "position": [
+    660,
+    2400
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "=https://graph.microsoft.com/v1.0/teams/{{ encodeURIComponent($json.team_id) }}/channels/{{ encodeURIComponent($json.channel_id) }}/messages",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftTeamsOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "json"
+      }
+     },
+     "timeout": 20000
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ body: { contentType: 'html', content: $json.html } }) }}"
+   }
+  },
+  {
+   "id": "750aaf3e-51f7-4396-abdf-12e0b183931d",
+   "name": "Kanalmeldung melden",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    880,
+    2400
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst r = $input.first().json || {};\nconst status = Number(r.statusCode) || null;\nconst ok = status === 201 && !r.error;\nconst meldung = ok ? '' : (r.error ? String(r.error.message || r.error) : String((r.body && r.body.error && (r.body.error.code + ': ' + r.body.error.message)) || 'HTTP ' + status)).slice(0, 200);\nreturn [{ json: { gesendet: ok, status, meldung } }];\n"
+   }
+  },
+  {
+   "id": "7a899f09-e48b-4058-ab43-e9237794d6d8",
+   "name": "Chat-Empfänger prüfen",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    440,
+    2600
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Bei Einzelaufruf').first().json;\nif (!/^[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}$/.test(String(e.empfaenger || ''))) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Freigeber ist keine gültige Adresse');\nif (!String(e.html || '').trim()) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] Nachricht fehlt');\nreturn [{ json: { empfaenger: e.empfaenger.trim().toLowerCase(), html: e.html } }];\n"
+   }
+  },
+  {
+   "id": "3890a444-23a5-4dd9-ac54-cdc1db162396",
+   "name": "Teams-Konto lesen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "position": [
+    660,
+    2600
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "https://graph.microsoft.com/v1.0/me?$select=id",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftTeamsOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "json"
+      }
+     },
+     "timeout": 20000
+    }
+   }
+  },
+  {
+   "id": "802938c4-979a-4130-aece-23b6545d6f81",
+   "name": "Chat öffnen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "position": [
+    880,
+    2600
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "https://graph.microsoft.com/v1.0/chats",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftTeamsOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "json"
+      }
+     },
+     "timeout": 20000
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ chatType: 'oneOnOne', members: [\n  { '@odata.type': '#microsoft.graph.aadUserConversationMember', roles: ['owner'], 'user@odata.bind': \"https://graph.microsoft.com/v1.0\" + \"/users('\" + (($json.body || {}).id || 'unbekannt') + \"')\" },\n  { '@odata.type': '#microsoft.graph.aadUserConversationMember', roles: ['owner'], 'user@odata.bind': \"https://graph.microsoft.com/v1.0\" + \"/users('\" + $('Chat-Empfänger prüfen').first().json.empfaenger.replace(/'/g, \"''\") + \"')\" }\n] }) }}"
+   }
+  },
+  {
+   "id": "4df9a827-c99c-47b2-aea9-16f5a99988cb",
+   "name": "Chat-Nachricht senden",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "position": [
+    1100,
+    2600
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "=https://graph.microsoft.com/v1.0/chats/{{ encodeURIComponent(($json.body || {}).id || 'unbekannt') }}/messages",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftTeamsOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "json"
+      }
+     },
+     "timeout": 20000
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ body: { contentType: 'html', content: $('Chat-Empfänger prüfen').first().json.html } }) }}"
+   }
+  },
+  {
+   "id": "349dfa10-554a-42f8-a485-c97d0af808b3",
+   "name": "Chat melden",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1320,
+    2600
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst schritte = [['Teams-Konto lesen', 200], ['Chat öffnen', 201], ['Chat-Nachricht senden', 201]];\nfor (const [name, soll] of schritte) {\n\tconst r = $(name).first().json || {};\n\tconst status = Number(r.statusCode) || null;\n\t// Ein bestehender 1:1-Chat liefert 200 statt 201\n\tif (r.error || (status !== soll && !(name === 'Chat öffnen' && status === 200))) {\n\t\tconst grund = r.error ? String(r.error.message || r.error) : String((r.body && r.body.error && (r.body.error.code + ': ' + r.body.error.message)) || 'HTTP ' + status);\n\t\treturn [{ json: { gesendet: false, status, meldung: (name + ': ' + grund).slice(0, 200) } }];\n\t}\n}\nreturn [{ json: { gesendet: true, status: 201, meldung: '' } }];\n"
+   }
+  },
+  {
+   "id": "08fe5074-08a8-4398-a730-239a7f4d20a2",
+   "name": "Testmail prüfen",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    440,
+    2000
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "// ===== eingebettet aus src/zustelltest.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst zustelltest = (() => {\nconst module = { exports: {} };\n// Täglicher Zustelltest (EPA-11): Jedes Kundenpostfach schickt eine Kontrollmail an ein externes Prüfpostfach des\n// Betreibers. Kommt sie nicht an, ist der Versand gestört, obwohl Microsoft \"gesendet\" meldet (z. B. Konto nach\n// Sperre eingeschränkt). Dann erreichen Rückfragen keine Kunden; das soll sofort auffallen (Testphase 16.10.2026).\n\nconst PRAEFIX = 'EPA-Zustelltest';\nconst WARTEN_MINUTEN = 10;\nconst SCHLUESSEL = (kundeId) => `zustelltest:${kundeId}`;\n\nfunction istAdresse(s) {\n\treturn /^[^@<>\\s]+@[^@<>\\s]+\\.[A-Za-z]{2,}$/.test(String(s || ''));\n}\n\n/** Eindeutiger Betreff je Kunde und Lauf, z. B. \"EPA-Zustelltest epa-test 202610160740-k3x9\". */\nfunction betreff(kundeId, jetzt, zufall) {\n\tconst stempel = String(jetzt).slice(0, 16).replace(/[-:T]/g, '');\n\treturn `${PRAEFIX} ${kundeId} ${stempel}-${zufall}`;\n}\n\n/**\n * Ein Auftrag je aktivem Kunden mit Postfach-Workflow.\n * @param {object[]} configs geprüfte Configs\n */\nfunction auftraege(configs, { jetzt, zufall, pruefadresse }) {\n\tif (!istAdresse(pruefadresse)) throw new Error('Prüfadresse fehlt oder ist ungültig');\n\treturn (configs || [])\n\t\t.filter((c) => c && c.postfach && c.postfach_workflow_id)\n\t\t.map((c) => ({\n\t\t\tkunde_id: c.kunde_id,\n\t\t\tpostfach: c.postfach,\n\t\t\tpostfach_workflow_id: c.postfach_workflow_id,\n\t\t\tempfaenger: pruefadresse,\n\t\t\tbetreff: betreff(c.kunde_id, jetzt, zufall),\n\t\t\tkanal: c.benachrichtigung || {},\n\t\t}));\n}\n\n/** Darf EPA-00 diese Testmail senden? Nur an eine Adresse, nur mit Zustelltest-Betreff (kein freier Versand). */\nfunction sendenErlaubt({ empfaenger, betreff: b }) {\n\tif (!istAdresse(empfaenger)) return { ok: false, grund: 'Empfänger ungültig' };\n\tif (!String(b || '').startsWith(PRAEFIX + ' ') || String(b).length > 120) return { ok: false, grund: 'Betreff ist kein Zustelltest' };\n\treturn { ok: true };\n}\n\n/**\n * Ergebnis je Auftrag.\n * @param {object[]} liste Aufträge (Reihenfolge wie gesendet)\n * @param {object[]} sendungen Antworten von EPA-00 (gleiche Reihenfolge): { gesendet, status, meldung } oder { error }\n * @param {string[]} gefunden Betreffzeilen, die im Prüfpostfach angekommen sind\n */\nfunction auswerten(liste, sendungen, gefunden) {\n\tconst da = new Set((gefunden || []).map((s) => String(s || '').trim()));\n\treturn (liste || []).map((a, i) => {\n\t\tconst s = (sendungen || [])[i] || {};\n\t\tif (s.error || s.gesendet !== true) {\n\t\t\tconst grund = String((s.error && (s.error.message || s.error)) || s.meldung || `HTTP ${s.status || '?'}`).replace(/\\s+/g, ' ').slice(0, 200);\n\t\t\treturn { ...a, ok: false, art: 'versand_abgelehnt', grund: `Microsoft hat den Versand abgelehnt: ${grund}` };\n\t\t}\n\t\tif (!da.has(a.betreff)) return { ...a, ok: false, art: 'nicht_angekommen', grund: `Microsoft meldet \"gesendet\", die Testmail ist nach ${WARTEN_MINUTEN} Minuten aber nicht im Prüfpostfach angekommen` };\n\t\treturn { ...a, ok: true, art: 'ok', grund: '' };\n\t});\n}\n\nfunction esc(s) {\n\treturn String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' })[c]);\n}\n\n/** Warnung an den Kanal des Kunden, wenn die Testmail nicht ankommt. */\nfunction meldung(e) {\n\treturn [\n\t\t'<b>🚫 Systemwarnung: Postfach versendet keine Mails</b>',\n\t\t`Postfach: ${esc(e.postfach)}`,\n\t\t`Grund: ${esc(e.grund)}`,\n\t\t'Folge: Rückfragen und Erinnerungen erreichen die Kunden vermutlich nicht, obwohl sie als gesendet gelten.',\n\t\t'Was tun: Im Postfach anmelden und auf Sperr- oder Bestätigungshinweise des Anbieters achten (z. B. account.microsoft.com → Sicherheit). Bis zur Klärung wichtige Rückfragen telefonisch stellen.',\n\t\t`Test: ${esc(e.betreff)}`,\n\t].join('<br>');\n}\n\n/** Zeile für epa_system_status (nur Zähler und Kennung, keine Inhalte). */\nfunction stand(e, jetzt) {\n\treturn { schluessel: SCHLUESSEL(e.kunde_id), letzter_lauf: jetzt, letztes_ergebnis: JSON.stringify({ ok: e.ok, art: e.art }) };\n}\n\nmodule.exports = { PRAEFIX, WARTEN_MINUTEN, SCHLUESSEL, istAdresse, betreff, auftraege, sendenErlaubt, auswerten, meldung, stand };\nreturn module.exports;\n})();\n// ===== Ende src/zustelltest.js =====\n\n// ----- Node-Logik -----\nconst e = $('Bei Einzelaufruf').first().json;\nconst r = zustelltest.sendenErlaubt({ empfaenger: e.empfaenger, betreff: e.betreff });\nif (!r.ok) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:-] Zustelltest abgelehnt: ' + r.grund);\nreturn [{ json: { empfaenger: e.empfaenger, betreff: e.betreff } }];\n"
+   }
+  },
+  {
+   "id": "cac3b02a-f4aa-4816-a584-35a880661814",
+   "name": "Testmail senden",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": false,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    660,
+    2000
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/sendMail",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "text"
+      }
+     }
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ message: { subject: $json.betreff, body: { contentType: 'Text', content: 'Automatischer Zustelltest des Email Process Agent. Bitte nicht beantworten.' }, toRecipients: [{ emailAddress: { address: $json.empfaenger } }] }, saveToSentItems: false }) }}"
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "2c1eb4cf-e07b-406f-aa45-bf2bfdb73bcb",
+   "name": "Testmail melden",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    880,
+    2000
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst r = $input.first().json || {};\nconst status = Number(r.statusCode) || null;\nlet meldung = '';\nif (status !== 202) { try { const b = JSON.parse(r.body || '{}'); meldung = String((b.error && (b.error.code + ': ' + b.error.message)) || '').slice(0, 200); } catch (err) { meldung = String(r.body || '').slice(0, 200); } }\nreturn [{ json: { gesendet: status === 202, status, meldung } }];\n"
+   }
+  },
+  {
+   "id": "f44b58c0-a1db-4f95-af2f-12dd8a60f949",
+   "name": "Gesendete Elemente durchsuchen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": false,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    440,
+    2200
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/mailFolders/sentitems/messages",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "json"
+      }
+     }
+    },
+    "sendQuery": true,
+    "specifyQuery": "keypair",
+    "queryParameters": {
+     "parameters": [
+      {
+       "name": "$filter",
+       "value": "=singleValueExtendedProperties/Any(ep: ep/id eq 'String {00020329-0000-0000-C000-000000000046} Name EPA-Freigabe-ID' and ep/value eq '{{ $('Bei Einzelaufruf').first().json.freigabe_id }}')"
+      },
+      {
+       "name": "$select",
+       "value": "id,internetMessageId,sentDateTime"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "0fbf916d-336f-46d8-a211-48fdcf3f72b3",
+   "name": "Versandprüfung melden",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    660,
+    2200
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Bei Einzelaufruf').first().json;\nif (!/^F-[0-9a-f-]{8,}$/i.test(String(e.freigabe_id || ''))) throw new Error('[EPA:400:UNGUELTIGES_FORMAT:' + (e.vorgangs_id || '-') + '] versand_pruefen braucht eine Freigabe-ID');\nconst r = $input.first().json || {};\nconst status = Number(r.statusCode) || null;\nif (status !== 200) return [{ json: { ok: false, gesendet: false, status, meldung: String((r.body && r.body.error && (r.body.error.code || r.body.error.message)) || '').slice(0, 120) } }];\nconst t = (r.body && r.body.value) || [];\nreturn [{ json: { ok: true, gesendet: t.length > 0, internet_message_id: t.length ? t[0].internetMessageId || null : null, gesendet_am: t.length ? t[0].sentDateTime || null : null } }];\n"
+   }
+  },
+  {
+   "id": "4c04f001-1488-4b4b-a629-115f2e9d2332",
+   "name": "Entwurf zum Löschen abrufen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": false,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    440,
+    1600
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.entwurf_id) }}",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "json"
+      }
+     }
+    },
+    "sendQuery": true,
+    "specifyQuery": "keypair",
+    "queryParameters": {
+     "parameters": [
+      {
+       "name": "$select",
+       "value": "id,isDraft"
+      },
+      {
+       "name": "$expand",
+       "value": "singleValueExtendedProperties($filter=id eq 'String {00020329-0000-0000-C000-000000000046} Name EPA-Freigabe-ID')"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "5d5cd067-6dd0-4ca3-a07e-969abbee2ae6",
+   "name": "Löschen prüfen",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    660,
+    1600
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "// ===== eingebettet aus src/loeschen.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst loeschen = (() => {\nconst module = { exports: {} };\n// Lösch- und Aufräumjob (Masterprompt 7, Bauplan Datenschutz): Daten nur so lange wie nötig.\n// - Vorgänge in einem Endstatus (\"Abgeschlossen\", \"Ignoriert\") nach aufbewahrung_tage seit der letzten Änderung,\n//   samt Audit, Freigaben und Freigabe-Links. Offene oder eskalierte Vorgänge werden nie automatisch gelöscht.\n// - Dedupe-Einträge (epa_verarbeitete_mails) nach aufbewahrung_tage.\n// - Fehlerlog nach 90 Tagen (enthält nur IDs und technische Meldungen).\n// - Ersetzte Rückfrage-Entwürfe im Postfach (nie gesendet, nie mehr gültig). Gelöscht wird nur, was nachweislich\n//   ein Entwurf ist und die passende Freigabe-Kennung trägt. Outlook verschiebt ihn in \"Gelöschte Elemente\".\n\nconst ENDSTATUS = Object.freeze(['Abgeschlossen', 'Ignoriert']);\nconst FEHLERLOG_TAGE = 90;\nconst MAX_VORGAENGE = 200;\nconst MAX_ENTWUERFE = 50;\nconst TAG = 86400000;\n\nfunction ms(t) {\n\tif (t === null || t === undefined || t === '') return NaN;\n\tconst x = new Date(t).getTime();\n\treturn Number.isFinite(x) ? x : NaN;\n}\n\n/**\n * @param {object} p\n * @param {string} p.jetzt\n * @param {object[]} p.vorgaenge  Zeilen aus epa_vorgaenge (mit updatedAt)\n * @param {object[]} p.freigaben  Zeilen aus epa_freigaben\n * @param {object} p.configs      kunde_id -> { aufbewahrung_tage, postfach, postfach_workflow_id } (auch inaktive Kunden)\n */\nfunction planen({ jetzt, vorgaenge, freigaben, configs, maxVorgaenge = MAX_VORGAENGE, maxEntwuerfe = MAX_ENTWUERFE }) {\n\tconst t = ms(jetzt);\n\tif (!Number.isFinite(t)) throw new Error(`Ungültiger Zeitpunkt \"${jetzt}\"`);\n\tconst ohneConfig = new Set();\n\tconst tage = (kunde) => {\n\t\tconst c = configs[kunde];\n\t\tconst n = c ? Number(c.aufbewahrung_tage) : NaN;\n\t\tif (!(n > 0)) {\n\t\t\tohneConfig.add(kunde);\n\t\t\treturn null;\n\t\t}\n\t\treturn n;\n\t};\n\n\t// Ersetzte Entwürfe, die noch im Postfach liegen\n\tconst offeneEntwuerfe = (freigaben || []).filter((f) => f && f.status === 'ersetzt' && f.entwurf_id && !f.entwurf_entfernt_am);\n\tconst entwuerfe = [];\n\tfor (const f of offeneEntwuerfe) {\n\t\tconst c = configs[f.kunde_id];\n\t\tif (!c || !c.postfach_workflow_id || !c.postfach) continue;\n\t\tif (entwuerfe.length >= maxEntwuerfe) break;\n\t\tentwuerfe.push({ kunde_id: f.kunde_id, vorgangs_id: f.vorgangs_id, freigabe_id: f.freigabe_id, entwurf_id: f.entwurf_id, postfach: c.postfach, postfach_workflow_id: c.postfach_workflow_id });\n\t}\n\tconst entwurfOffen = new Set(offeneEntwuerfe.map((f) => `${f.kunde_id}|${f.vorgangs_id}`));\n\n\t// Vorgänge nach Ablauf der Aufbewahrung\n\tconst zuLoeschen = [];\n\tlet zurueckgestellt = 0;\n\tfor (const v of vorgaenge || []) {\n\t\tif (!v || !ENDSTATUS.includes(v.status)) continue;\n\t\tconst n = tage(v.kunde_id);\n\t\tif (n === null) continue;\n\t\tconst stand = ms(v.updatedAt);\n\t\tif (!Number.isFinite(stand) || stand + n * TAG > t) continue;\n\t\t// Erst den alten Entwurf aus dem Postfach entfernen, dann die Freigabe (sonst ginge die Zuordnung verloren).\n\t\tif (entwurfOffen.has(`${v.kunde_id}|${v.vorgangs_id}`)) {\n\t\t\tzurueckgestellt += 1;\n\t\t\tcontinue;\n\t\t}\n\t\tzuLoeschen.push({ kunde_id: v.kunde_id, vorgangs_id: v.vorgangs_id });\n\t}\n\tconst vorgaengeListe = zuLoeschen.slice(0, maxVorgaenge);\n\tconst schluessel = new Set(vorgaengeListe.map((v) => `${v.kunde_id}|${v.vorgangs_id}`));\n\tconst freigabeIds = (freigaben || []).filter((f) => f && schluessel.has(`${f.kunde_id}|${f.vorgangs_id}`)).map((f) => ({ kunde_id: f.kunde_id, vorgangs_id: f.vorgangs_id, freigabe_id: f.freigabe_id }));\n\n\tconst mailGrenzen = Object.keys(configs).map((k) => ({ kunde_id: k, n: tage(k) })).filter((x) => x.n !== null)\n\t\t.map((x) => ({ kunde_id: x.kunde_id, grenze: new Date(t - x.n * TAG).toISOString() }));\n\n\treturn {\n\t\tvorgaenge: vorgaengeListe,\n\t\tfreigaben: freigabeIds,\n\t\tentwuerfe,\n\t\tmail_grenzen: mailGrenzen,\n\t\tfehler_grenze: new Date(t - FEHLERLOG_TAGE * TAG).toISOString(),\n\t\tzurueckgestellt,\n\t\tverschoben: Math.max(0, zuLoeschen.length - maxVorgaenge) + Math.max(0, offeneEntwuerfe.length - entwuerfe.length),\n\t\tohne_config: [...ohneConfig].sort(),\n\t};\n}\n\n/**\n * Darf der Entwurf gelöscht werden? Antwort von GET /messages/{id} mit fullResponse.\n * @returns {{ loeschen: boolean, erledigt: boolean, grund: string }}\n */\nfunction entwurfPruefen(antwort, freigabeId, eigenschaftId) {\n\tconst status = Number(antwort && antwort.statusCode);\n\tif (status === 404) return { loeschen: false, erledigt: true, grund: 'nicht_mehr_vorhanden' };\n\tif (status !== 200) return { loeschen: false, erledigt: false, grund: `http_${status || 'unbekannt'}` };\n\tconst b = (antwort && antwort.body) || {};\n\tif (b.isDraft !== true) return { loeschen: false, erledigt: true, grund: 'kein_entwurf' };\n\tconst prop = (b.singleValueExtendedProperties || []).find((p) => String(p.id).toLowerCase() === String(eigenschaftId).toLowerCase());\n\tif (!prop || prop.value !== freigabeId) return { loeschen: false, erledigt: true, grund: 'kennung_passt_nicht' };\n\treturn { loeschen: true, erledigt: true, grund: 'entwurf_geloescht' };\n}\n\nfunction zusammenfassung(plan) {\n\treturn {\n\t\tvorgaenge: plan.vorgaenge.length,\n\t\tfreigaben: plan.freigaben.length,\n\t\tentwuerfe: plan.entwuerfe.length,\n\t\tzurueckgestellt: plan.zurueckgestellt,\n\t\tverschoben: plan.verschoben,\n\t\tohne_config: plan.ohne_config,\n\t\tfehler_grenze: plan.fehler_grenze,\n\t};\n}\n\nmodule.exports = { ENDSTATUS, FEHLERLOG_TAGE, MAX_VORGAENGE, MAX_ENTWUERFE, planen, entwurfPruefen, zusammenfassung };\nreturn module.exports;\n})();\n// ===== Ende src/loeschen.js =====\n\n// ----- Node-Logik -----\nconst e = $('Bei Einzelaufruf').first().json;\nreturn [{ json: loeschen.entwurfPruefen($input.first().json, e.freigabe_id, \"String {00020329-0000-0000-C000-000000000046} Name EPA-Freigabe-ID\") }];\n"
+   }
+  },
+  {
+   "id": "0768053a-e530-4163-a095-9f4825cd4456",
+   "name": "Entwurf löschen?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    880,
+    1600
+   ],
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 3
+     },
+     "conditions": [
+      {
+       "id": "0935ade7-feaf-418d-a699-b60ae3197c98",
+       "leftValue": "={{ $json.loeschen }}",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "b1646642-23c0-47fc-a3d0-724ae676db18",
+   "name": "Entwurf löschen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    1100,
+    1540
+   ],
+   "parameters": {
+    "method": "DELETE",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.entwurf_id) }}",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {}
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "f628696b-542f-4e62-a08d-b49253e976af",
+   "name": "Löschung melden",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1320,
+    1600
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst p = $('Löschen prüfen').first().json;\nreturn [{ json: { geloescht: p.loeschen, erledigt: p.erledigt, grund: p.grund } }];\n"
+   }
+  },
+  {
+   "id": "0dad3216-62be-48b1-abe9-921a8006d151",
+   "name": "Kategorie-Auftrag lesen",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    440,
+    1800
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Bei Einzelaufruf').first().json;\nlet a = {};\ntry { a = JSON.parse(e.kategorien || '{}'); } catch (err) { a = {}; }\nconst plan = a.plan || {};\nconst ids = Array.isArray(a.ids) ? a.ids.filter((x) => typeof x === 'string' && x).slice(0, 50) : [];\nreturn [{ json: { plan, ids, anlegen: plan.aktion === 'setzen' && Boolean(plan.farbe) } }];\n"
+   }
+  },
+  {
+   "id": "9f34dc79-924a-4f2a-ab31-357f4bac61e0",
+   "name": "Kategorien des Postfachs lesen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": false,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    660,
+    1800
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/outlook/masterCategories",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "json"
+      }
+     }
+    }
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "76bf98df-1bd9-4a2d-add8-eb0dd1a0018c",
+   "name": "Kategorie anlegen?",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    880,
+    1800
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst a = $('Kategorie-Auftrag lesen').first().json;\nconst r = $input.first().json || {};\nconst vorhanden = Number(r.statusCode) === 200 && r.body && Array.isArray(r.body.value) ? r.body.value.map((c) => c.displayName) : null;\n// Nur anlegen, wenn die Liste lesbar war und die Kategorie fehlt (sonst bleibt die vorhandene Farbe des Kunden).\nconst anlegen = a.anlegen && vorhanden !== null && !vorhanden.includes(a.plan.name);\nreturn [{ json: { anlegen, lesbar: vorhanden !== null } }];\n"
+   }
+  },
+  {
+   "id": "a79b9c5e-00d3-472f-aa7c-26e89dc9260c",
+   "name": "Kategorie fehlt?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    1100,
+    1800
+   ],
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 3
+     },
+     "conditions": [
+      {
+       "id": "16235b08-2f35-4694-ac9f-aed5de91ab83",
+       "leftValue": "={{ $json.anlegen }}",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "da3ca93d-c04c-49bc-a611-fb8493dcf22f",
+   "name": "Kategorie anlegen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": false,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    1320,
+    1740
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/outlook/masterCategories",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "json"
+      }
+     }
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ displayName: $('Kategorie-Auftrag lesen').first().json.plan.name, color: $('Kategorie-Auftrag lesen').first().json.plan.farbe }) }}"
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "fe9ea948-0b4c-4cdc-ab36-19450f47b929",
+   "name": "Mails des Vorgangs",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1540,
+    1800
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst a = $('Kategorie-Auftrag lesen').first().json;\nreturn a.ids.map((id) => ({ json: { internet_message_id: id } }));\n"
+   }
+  },
+  {
+   "id": "cb9dd797-accf-4c0a-a352-a770f854e67e",
+   "name": "Mail für Kategorie suchen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": false,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    1760,
+    1800
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "json"
+      }
+     }
+    },
+    "sendQuery": true,
+    "specifyQuery": "keypair",
+    "queryParameters": {
+     "parameters": [
+      {
+       "name": "$filter",
+       "value": "=internetMessageId eq '{{ String($json.internet_message_id).replace(/'/g, \"''\") }}'"
+      },
+      {
+       "name": "$select",
+       "value": "id,categories,from"
+      },
+      {
+       "name": "$top",
+       "value": "5"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "44189533-44dd-4a64-a05d-1594cb5468b9",
+   "name": "Kategorien berechnen",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1980,
+    1800
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "// ===== eingebettet aus src/kategorien.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst kategorien = (() => {\nconst module = { exports: {} };\n// Outlook-Kategorien (farbige Markierungen) an den Kundenmails eines Vorgangs, passend zum Status.\n// Config (epa_config_allgemein.outlook_kategorien), optional: { \"<Status>\": { \"name\": \"AI Geprüft\", \"farbe\": \"preset4\" } }\n// Farben sind die Outlook-Voreinstellungen preset0 … preset24 (preset0 = Rot, preset4 = Grün).\n// Status ohne Eintrag ändern nichts (z. B. Zwischenstände wie \"In Prüfung\"); in ENTFERNEN_BEI werden die\n// Markierungen des Systems entfernt. Fremde Kategorien des Postfachs bleiben immer unangetastet.\n\nconst ENTFERNEN_BEI = Object.freeze(['Abgeschlossen', 'Ignoriert', 'Eskaliert / Manuell']);\nconst FARBE = /^preset([0-9]|1[0-9]|2[0-4])$/;\n\n/** Prüft die Config. Liefert die bereinigte Zuordnung Status -> { name, farbe }. */\nfunction configPruefen(roh, fehler, bekannteStatus) {\n\tif (roh === undefined || roh === null || roh === '') return {};\n\tlet k = roh;\n\tif (typeof k === 'string') {\n\t\ttry { k = JSON.parse(k); } catch { fehler.push('outlook_kategorien: kein gültiges JSON'); return {}; }\n\t}\n\tif (!k || typeof k !== 'object' || Array.isArray(k)) { fehler.push('outlook_kategorien: muss ein Objekt { \"<Status>\": { name, farbe } } sein'); return {}; }\n\tconst out = {};\n\tfor (const [status, e] of Object.entries(k)) {\n\t\tconst p = `outlook_kategorien.${status}`;\n\t\tif (bekannteStatus && !bekannteStatus.includes(status)) { fehler.push(`${p}: Status ist unbekannt`); continue; }\n\t\tif (!e || typeof e !== 'object') { fehler.push(`${p}: muss { name, farbe } sein`); continue; }\n\t\tconst name = typeof e.name === 'string' ? e.name.trim() : '';\n\t\tif (!name || name.length > 60 || /[,;]/.test(name)) { fehler.push(`${p}.name: 1–60 Zeichen, ohne Komma/Semikolon`); continue; }\n\t\tif (e.farbe !== undefined && !FARBE.test(String(e.farbe))) { fehler.push(`${p}.farbe: preset0 bis preset24`); continue; }\n\t\tout[status] = { name, farbe: e.farbe ? String(e.farbe) : null };\n\t}\n\treturn out;\n}\n\n/** Alle Kategorienamen, die das System verwaltet. */\nfunction systemNamen(kategorien) {\n\treturn [...new Set(Object.values(kategorien || {}).map((k) => k.name))];\n}\n\n/**\n * Was beim Statuswechsel zu tun ist.\n * @returns {{ aktion: 'setzen'|'entfernen'|null, name: string|null, farbe: string|null, system_namen: string[] }}\n */\nfunction plan(kategorien, neuerStatus) {\n\tconst namen = systemNamen(kategorien);\n\tif (!namen.length) return { aktion: null, name: null, farbe: null, system_namen: [] };\n\tconst k = kategorien[neuerStatus];\n\tif (k) return { aktion: 'setzen', name: k.name, farbe: k.farbe, system_namen: namen };\n\tif (ENTFERNEN_BEI.includes(neuerStatus)) return { aktion: 'entfernen', name: null, farbe: null, system_namen: namen };\n\treturn { aktion: null, name: null, farbe: null, system_namen: namen };\n}\n\n/** Neue Kategorienliste einer Mail: fremde bleiben, eigene werden ersetzt bzw. entfernt. null = keine Änderung nötig. */\nfunction neueKategorien(vorhanden, p) {\n\tconst alt = Array.isArray(vorhanden) ? vorhanden : [];\n\tconst fremde = alt.filter((c) => !p.system_namen.includes(c));\n\tconst neu = p.aktion === 'setzen' ? [...fremde, p.name] : fremde;\n\tconst gleich = neu.length === alt.length && neu.every((c) => alt.includes(c));\n\treturn gleich ? null : neu;\n}\n\n/** Internet-Message-IDs der Mails eines Vorgangs (erste Mail und alle bekannten), ohne Duplikate. */\nfunction messageIds(vorgang) {\n\tconst v = vorgang || {};\n\tlet bekannt = v.bekannte_message_ids;\n\tif (typeof bekannt === 'string') { try { bekannt = JSON.parse(bekannt); } catch { bekannt = []; } }\n\treturn [...new Set([v.erste_message_id, ...(Array.isArray(bekannt) ? bekannt : [])].filter((x) => typeof x === 'string' && x))].slice(0, 50);\n}\n\nmodule.exports = { ENTFERNEN_BEI, configPruefen, systemNamen, plan, neueKategorien, messageIds };\nreturn module.exports;\n})();\n// ===== Ende src/kategorien.js =====\n\n// ----- Node-Logik -----\nconst a = $('Kategorie-Auftrag lesen').first().json;\nconst postfach = String($('Bei Einzelaufruf').first().json.postfach || '').toLowerCase();\nconst out = [];\nfor (const it of $input.all()) {\n\tconst r = it.json || {};\n\tif (Number(r.statusCode) !== 200 || !r.body) continue;\n\tfor (const m of r.body.value || []) {\n\t\tconst von = String((m.from && m.from.emailAddress && m.from.emailAddress.address) || '').toLowerCase();\n\t\tif (von === postfach) continue; // eigene Rückfragen nicht markieren\n\t\tconst neu = kategorien.neueKategorien(m.categories, a.plan);\n\t\tif (neu) out.push({ json: { graph_id: m.id, categories: neu } });\n\t}\n}\nreturn out;\n"
+   }
+  },
+  {
+   "id": "3b2c0352-e59c-4659-a62e-3093720c103d",
+   "name": "Kategorien schreiben",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": false,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    2200,
+    1800
+   ],
+   "parameters": {
+    "method": "PATCH",
+    "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($('Bei Einzelaufruf').first().json.postfach) }}/messages/{{ encodeURIComponent($json.graph_id) }}",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftOutlookOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "json"
+      }
+     }
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ categories: $json.categories }) }}"
+   },
+   "credentials": {
+    "microsoftOutlookOAuth2Api": {
+     "id": "BzNJjI0fP1QhjRV0",
+     "name": "Microsoft Outlook account"
+    }
+   }
+  },
+  {
+   "id": "b014b5c8-2676-4988-a749-640e13f1b75b",
+   "name": "Kategorien melden",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2420,
+    1800
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst r = $input.all().map((i) => Number(i.json.statusCode));\nreturn [{ json: { geaendert: r.filter((s) => s === 200).length, fehler: r.filter((s) => s !== 200).length, kategorie_lesbar: $('Kategorie anlegen?').first().json.lesbar } }];\n"
+   }
+  }
+ ],
+ "connections": {
+  "Neue Mail im Posteingang": {
+   "main": [
+    [
+     {
+      "node": "Postfach festlegen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Postfach festlegen": {
+   "main": [
+    [
+     {
+      "node": "Jede Mail einzeln verarbeiten",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Aktion": {
+   "main": [
+    [
+     {
+      "node": "Mail laden",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Ursprungsmail suchen",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Entwurfstext ersetzen",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Entwurf abrufen",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Posteingang prüfen",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Entwurf zum Löschen abrufen",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Kategorie-Auftrag lesen",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Testmail prüfen",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Gesendete Elemente durchsuchen",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Kanalmeldung prüfen",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Chat-Empfänger prüfen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Kategorie-Auftrag lesen": {
+   "main": [
+    [
+     {
+      "node": "Kategorien des Postfachs lesen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Kategorien des Postfachs lesen": {
+   "main": [
+    [
+     {
+      "node": "Kategorie anlegen?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Kategorie anlegen?": {
+   "main": [
+    [
+     {
+      "node": "Kategorie fehlt?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Kategorie fehlt?": {
+   "main": [
+    [
+     {
+      "node": "Kategorie anlegen",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Mails des Vorgangs",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Kategorie anlegen": {
+   "main": [
+    [
+     {
+      "node": "Mails des Vorgangs",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Mails des Vorgangs": {
+   "main": [
+    [
+     {
+      "node": "Mail für Kategorie suchen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Mail für Kategorie suchen": {
+   "main": [
+    [
+     {
+      "node": "Kategorien berechnen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Kategorien berechnen": {
+   "main": [
+    [
+     {
+      "node": "Kategorien schreiben",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Kategorien schreiben": {
+   "main": [
+    [
+     {
+      "node": "Kategorien melden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Bei Einzelaufruf": {
+   "main": [
+    [
+     {
+      "node": "Aktion",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Posteingang prüfen": {
+   "main": [
+    [
+     {
+      "node": "Teams prüfen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Teams prüfen": {
+   "main": [
+    [
+     {
+      "node": "Verbindung melden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Kanalmeldung prüfen": {
+   "main": [
+    [
+     {
+      "node": "Kanalmeldung senden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Kanalmeldung senden": {
+   "main": [
+    [
+     {
+      "node": "Kanalmeldung melden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Chat-Empfänger prüfen": {
+   "main": [
+    [
+     {
+      "node": "Teams-Konto lesen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Teams-Konto lesen": {
+   "main": [
+    [
+     {
+      "node": "Chat öffnen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Chat öffnen": {
+   "main": [
+    [
+     {
+      "node": "Chat-Nachricht senden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Chat-Nachricht senden": {
+   "main": [
+    [
+     {
+      "node": "Chat melden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Testmail prüfen": {
+   "main": [
+    [
+     {
+      "node": "Testmail senden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Testmail senden": {
+   "main": [
+    [
+     {
+      "node": "Testmail melden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Gesendete Elemente durchsuchen": {
+   "main": [
+    [
+     {
+      "node": "Versandprüfung melden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Entwurf zum Löschen abrufen": {
+   "main": [
+    [
+     {
+      "node": "Löschen prüfen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Löschen prüfen": {
+   "main": [
+    [
+     {
+      "node": "Entwurf löschen?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Entwurf löschen?": {
+   "main": [
+    [
+     {
+      "node": "Entwurf löschen",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Löschung melden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Entwurf löschen": {
+   "main": [
+    [
+     {
+      "node": "Löschung melden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Ursprungsmail suchen": {
+   "main": [
+    [
+     {
+      "node": "Ursprung prüfen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Ursprung prüfen": {
+   "main": [
+    [
+     {
+      "node": "Antwortentwurf anlegen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Antwortentwurf anlegen": {
+   "main": [
+    [
+     {
+      "node": "Entwurf befüllen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Entwurf befüllen": {
+   "main": [
+    [
+     {
+      "node": "Entwurf melden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Entwurfstext ersetzen": {
+   "main": [
+    [
+     {
+      "node": "Aktualisierung melden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Entwurf abrufen": {
+   "main": [
+    [
+     {
+      "node": "Versand entscheiden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Versand entscheiden": {
+   "main": [
+    [
+     {
+      "node": "Entwurf vorhanden?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Entwurf vorhanden?": {
+   "main": [
+    [
+     {
+      "node": "Entwurf senden",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "In Gesendet suchen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Entwurf senden": {
+   "main": [
+    [
+     {
+      "node": "Sendeergebnis",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Sendeergebnis": {
+   "main": [
+    [
+     {
+      "node": "Versand bestätigt?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Versand bestätigt?": {
+   "main": [
+    [
+     {
+      "node": "Gesendet melden",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "In Gesendet suchen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "In Gesendet suchen": {
+   "main": [
+    [
+     {
+      "node": "Gesendet prüfen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Mail laden": {
+   "main": [
+    [
+     {
+      "node": "Anhänge auflisten",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Anhänge auflisten": {
+   "main": [
+    [
+     {
+      "node": "Anhänge prüfen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Anhänge prüfen": {
+   "main": [
+    [
+     {
+      "node": "Anhang zu laden?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Anhang zu laden?": {
+   "main": [
+    [
+     {
+      "node": "Anhang laden",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Anhänge zusammenstellen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Anhang laden": {
+   "main": [
+    [
+     {
+      "node": "Anhang kodieren",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Anhang kodieren": {
+   "main": [
+    [
+     {
+      "node": "PDF lesen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "PDF lesen": {
+   "main": [
+    [
+     {
+      "node": "Anhänge zusammenstellen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Anhänge zusammenstellen": {
+   "main": [
+    [
+     {
+      "node": "Eingang verarbeiten",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Eingang verarbeiten": {
+   "main": [
+    [
+     {
+      "node": "Archivieren?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Archivieren?": {
+   "main": [
+    [
+     {
+      "node": "Archivordner suchen",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Ergebnis melden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Archivordner suchen": {
+   "main": [
+    [
+     {
+      "node": "Ordner-ID ermitteln",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Ordner-ID ermitteln": {
+   "main": [
+    [
+     {
+      "node": "In Archiv verschieben",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "In Archiv verschieben": {
+   "main": [
+    [
+     {
+      "node": "Ergebnis melden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "saveManualExecutions": true,
+  "callerPolicy": "workflowsFromSameOwner",
+  "binaryMode": "separate"
+ }
+}

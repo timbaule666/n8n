@@ -1,0 +1,492 @@
+{
+ "id": "Rz5KWotXu8YPJi4H",
+ "name": "EPA SW Teams einrichten",
+ "active": false,
+ "updatedAt": "2026-11-10T18:53:37.810Z",
+ "versionId": "2225d543-bf68-4fd0-97e9-713625731220",
+ "activeVersionId": null,
+ "nodes": [
+  {
+   "id": "a3f079f7-f54a-4fe5-a77c-22bca5b99c56",
+   "name": "Notiz Zweck",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    1056,
+    192
+   ],
+   "parameters": {
+    "content": "## EPA SW Teams einrichten\n**Zweck:** legt im Teams-Team des Kunden die sechs Kanäle an (1 Vollständige Anfragen, 2 Rückfragen, 3 Warten auf Kunde, 4 Bitte ansehen, 5 Systemmeldungen, 6 Logs) und trägt die IDs in epa_config_allgemein ein (kanaele, log_channel_id, benachrichtigung.channel_id = Systemmeldungen). Welche Meldung wohin geht, steht in src/kanaele.js. Sobald \"2 Rückfragen\" eingetragen ist, kommen die Freigaben als Karte in diesen Kanal statt in den 1:1-Chat.\n**Einrichten pro Kunde:** im Knoten \"Kunde eintragen\" kunde_id setzen, team_name nur, wenn das Team umbenannt werden soll (leer = Name bleibt), dann ausführen. Mehrfaches Ausführen ist unschädlich: vorhandene Kanäle (gleicher Name ohne Nummer) werden wiederverwendet und auf die neue Nummer umbenannt (z. B. \"4 Systemmeldungen\" → \"5 Systemmeldungen\").\n**Rechte:** Das Teams-Credential muss im Tenant des Kunden Kanäle anlegen dürfen. Team und Kanal umbenennen sind optional (Fehler wird ignoriert).",
+    "width": 520,
+    "height": 300,
+    "color": 7
+   }
+  },
+  {
+   "id": "b6c2ec08-a1c8-402e-a287-aa656072638c",
+   "name": "Start",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {}
+  },
+  {
+   "id": "b6cfe133-5b0f-4c7e-a818-d98e9ed00e8c",
+   "name": "Kunde eintragen",
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    224,
+    0
+   ],
+   "parameters": {
+    "mode": "manual",
+    "assignments": {
+     "assignments": [
+      {
+       "id": "a1",
+       "name": "kunde_id",
+       "value": "epa-m365",
+       "type": "string"
+      },
+      {
+       "id": "a2",
+       "name": "team_name",
+       "value": "",
+       "type": "string"
+      }
+     ]
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "6c80ddc9-44cf-45da-a3f4-c892da00fe5c",
+   "name": "Kunde lesen",
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    448,
+    0
+   ],
+   "parameters": {
+    "resource": "row",
+    "operation": "get",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "name",
+     "value": "epa_config_allgemein"
+    },
+    "matchType": "allConditions",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "kunde_id",
+       "condition": "eq",
+       "keyValue": "={{ $json.kunde_id }}"
+      }
+     ]
+    },
+    "limit": 1
+   }
+  },
+  {
+   "id": "4b7143ea-7a1d-44b8-a2b9-82f0c3c914b8",
+   "name": "Kanäle lesen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    672,
+    0
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "={{ \"https://graph.microsoft.com/v1.0/teams/\" + JSON.parse($json.benachrichtigung).team_id + \"/channels\" }}",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftTeamsOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "json"
+      }
+     },
+     "timeout": 20000
+    }
+   },
+   "credentials": {
+    "microsoftTeamsOAuth2Api": {
+     "id": "lSRi3VbAUwbPKsVl",
+     "name": "Microsoft Teams account 2"
+    }
+   }
+  },
+  {
+   "id": "44756348-ed26-4f46-a984-5273ee884979",
+   "name": "Kanäle planen",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    896,
+    0
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "// ===== eingebettet aus src/kanaele.js – nicht hier bearbeiten, sondern im Repo (npm run build) =====\nconst kanaele = (() => {\nconst module = { exports: {} };\n// Teams-Kanäle je Kunde (gleich bei jedem Kunden). Jede Meldung trägt einen \"anlass\"; diese Tabelle legt fest,\n// in welchen Kanal sie gehört. Neue Meldungsarten MÜSSEN hier eingetragen werden (test/kanaele.test.js prüft das).\n\nconst KANAELE = Object.freeze([\n\t{ art: 'anfragen', name: '1 Vollständige Anfragen', text: 'Anfragen, Bestellungen, Termine und Reklamationen mit allen Pflichtangaben – bereit zur Bearbeitung' },\n\t{ art: 'rueckfragen', name: '2 Rückfragen', text: 'Offene Rückfragen an Kunden freigeben, bearbeiten oder ablehnen; Antworten mit weiter fehlenden Angaben' },\n\t{ art: 'warten', name: '3 Warten auf Kunde', text: 'Rückfrage ist verschickt, die Antwort des Kunden steht aus. Die Karte verschwindet, sobald der Kunde antwortet.' },\n\t{ art: 'ansehen', name: '4 Bitte ansehen', text: 'Keine normale Anfrage, aber ein Mitarbeiter muss entscheiden: Stornierung, Reklamation, Rückruf, Manipulationsverdacht, Kunde reagiert nicht, Unklares' },\n\t{ art: 'system', name: '5 Systemmeldungen', text: 'Technik und Betrieb: Zustellfehler, Zustelltest, Regel-Abgleich, Tagesübersicht' },\n\t{ art: 'logs', name: '6 Logs', text: 'Protokoll: eine Abschlusskarte pro Vorgang' },\n]);\nconst ARTEN = KANAELE.map((k) => k.art);\n\n/** anlass -> Kanal. Feste Einträge zuerst, danach Präfixe. */\nconst ZUORDNUNG = Object.freeze({\n\t// Vollständig\n\tbereit: 'anfragen',\n\tantwort_bereit: 'anfragen',\n\tkalender_frei: 'anfragen',\n\tkalender_belegt: 'anfragen',\n\tkalender_keine_freie_zeit: 'anfragen',\n\t// Rückfrage verschickt, Antwort steht aus (Karte wird beim Eingang der Antwort entfernt)\n\trueckfrage_verschickt: 'warten',\n\t// Wartet auf Freigabe\n\tfreigabe: 'rueckfragen',\n\tluecken: 'rueckfragen',\n\tantwort_luecken: 'rueckfragen',\n\tantwort_keine_daten: 'rueckfragen',\n\t// Ein Mensch muss entscheiden\n\tantwort_gemeldet: 'ansehen',\n\tantwort_storno: 'ansehen',\n\tantwort_zusatzinfo: 'ansehen',\n\tantwort_manipulation: 'ansehen',\n\tmanipulation: 'ansehen',\n\tsystemwarnung_manipulation: 'ansehen',\n\tzuordnung_unklar: 'ansehen',\n\tklassifizierung_unklar: 'ansehen',\n\textraktion_fehlgeschlagen: 'ansehen',\n\tmax_runden: 'ansehen',\n\tkeine_reaktion: 'ansehen',\n\tnicht_zugestellt: 'ansehen',\n\t// Technik und Betrieb\n\tfreigabe_nicht_zugestellt: 'system',\n\tzustelltest_fehlgeschlagen: 'system',\n\tregeln_google_sheet: 'system',\n\ttagesuebersicht: 'system',\n\t// Betreiber-Info: Entwurf wurde direkt in Outlook gesendet (die Warten-Karte kommt trotzdem)\n\tmanuell_gesendet: 'system',\n\tkalender_kalender_fehler: 'system',\n\t// Protokoll\n\tlog_karte: 'logs',\n});\nconst PRAEFIXE = Object.freeze([\n\t['keine_anfrage_', 'ansehen'],\n]);\n\n/** Kanal-Art für einen Anlass. Unbekannt -> system (fällt auf, landet nicht bei den Sachbearbeitern). */\nfunction kanalArt(anlass) {\n\tconst a = String(anlass || '').trim();\n\tif (Object.prototype.hasOwnProperty.call(ZUORDNUNG, a)) return ZUORDNUNG[a];\n\tfor (const [p, art] of PRAEFIXE) if (a.startsWith(p)) return art;\n\treturn 'system';\n}\n\nfunction istBekannt(anlass) {\n\tconst a = String(anlass || '');\n\treturn Object.prototype.hasOwnProperty.call(ZUORDNUNG, a) || PRAEFIXE.some(([p]) => a.startsWith(p));\n}\n\n/** Config-Wert kanaele (JSON-Text oder Objekt) lesen. */\nfunction lesen(kanaele) {\n\tif (!kanaele) return {};\n\tif (typeof kanaele === 'object') return kanaele;\n\ttry { const o = JSON.parse(kanaele); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; }\n}\n\n/**\n * Channel-ID für einen Anlass. Ältere Configs ohne \"ansehen\"/\"warten\": dann der Systemkanal; ohne kanaele: '' (der Aufrufer\n * nimmt dann benachrichtigung.channel_id).\n */\nfunction kanalId(kanaele, anlass) {\n\tconst k = lesen(kanaele);\n\tconst art = kanalArt(anlass);\n\t// Ältere Configs: ohne \"ansehen\" bzw. \"warten\" der Systemkanal.\n\treturn String(k[art] || (art === 'ansehen' || art === 'warten' ? k.system : '') || '');\n}\n\n/** Freigaben laufen über den Kanal \"Rückfragen\", sobald er eingerichtet ist; sonst wie bisher im 1:1-Chat. */\nfunction freigabeImKanal(kanaele) {\n\treturn Boolean(lesen(kanaele).rueckfragen);\n}\n\nmodule.exports = { KANAELE, ARTEN, ZUORDNUNG, PRAEFIXE, kanalArt, istBekannt, lesen, kanalId, freigabeImKanal };\nreturn module.exports;\n})();\n// ===== Ende src/kanaele.js =====\n\n// ----- Node-Logik -----\nconst k = $('Kunde lesen').first().json;\nif (!k || !k.kunde_id) throw new Error('Kunde nicht in epa_config_allgemein gefunden');\nlet b = {};\ntry { b = JSON.parse(k.benachrichtigung); } catch (e) { b = {}; }\nif (!b.team_id) throw new Error('team_id fehlt in benachrichtigung');\nconst res = $input.first().json;\nif (res.statusCode !== 200) throw new Error('Kanäle konnten nicht gelesen werden: ' + JSON.stringify(res.body).slice(0, 200));\nconst vorh = (res.body && res.body.value) || [];\n// Fünf Kanäle, bei jedem Kunden gleich (Namen und Zuordnung: src/kanaele.js).\nconst soll = kanaele.KANAELE.map(function (k) { return { art: k.art, name: k.name, text: k.text }; });\nfunction rein(s) { return String(s).replace(/^\\d+\\s+/, '').toLowerCase(); }\nreturn soll.map(function (s) {\n  const f = vorh.find(function (x) { return rein(x.displayName) === rein(s.name); });\n  return { json: { team_id: b.team_id, art: s.art, name: s.name, beschreibung: s.text, kanal_id: f ? f.id : '', alt_name: f ? f.displayName : s.name } };\n});\n"
+   }
+  },
+  {
+   "id": "62c5dc93-241d-4405-a234-0438056246fb",
+   "name": "Kanal anlegen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1120,
+    0
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ \"https://graph.microsoft.com/v1.0/teams/\" + $json.team_id + \"/channels\" }}",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftTeamsOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "json"
+      }
+     },
+     "timeout": 20000
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ displayName: $json.kanal_id ? $json.alt_name : $json.name, description: $json.beschreibung, membershipType: \"standard\" }) }}"
+   },
+   "credentials": {
+    "microsoftTeamsOAuth2Api": {
+     "id": "lSRi3VbAUwbPKsVl",
+     "name": "Microsoft Teams account 2"
+    }
+   }
+  },
+  {
+   "id": "ceca6470-0ccd-4384-a96e-39cdc1fe63ad",
+   "name": "Ergebnis sammeln",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1344,
+    0
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst plan = $('Kanäle planen').all().map(function (i) { return i.json; });\nconst antw = $input.all().map(function (i) { return i.json; });\nconst k = $('Kunde lesen').first().json;\nlet b = {};\ntry { b = JSON.parse(k.benachrichtigung); } catch (e) { b = {}; }\nconst ids = {};\nconst fehler = [];\nplan.forEach(function (p, i) {\n  const a = antw[i] || {};\n  const id = p.kanal_id || (a.body && a.body.id ? a.body.id : '');\n  if (id) ids[p.art] = id;\n  else fehler.push(p.name + ': ' + (a.body && a.body.error ? a.body.error.code + ' ' + a.body.error.message : 'keine Antwort'));\n});\nif (fehler.length) throw new Error('Kanäle nicht angelegt: ' + fehler.join(' | '));\nconst nb = Object.assign({}, b, { channel_id: ids.system });\nconst kunde = $('Kunde eintragen').first().json;\nreturn [{ json: {\n  kunde_id: k.kunde_id,\n  team_id: b.team_id,\n  team_name: kunde.team_name || '',\n  kanaele: JSON.stringify(ids),\n  log_channel_id: ids.logs,\n  benachrichtigung: JSON.stringify(nb),\n  kanal_ids: ids,\n} }];\n"
+   }
+  },
+  {
+   "id": "8d211b77-fd04-42df-a790-9d8a7616bf81",
+   "name": "Config speichern",
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    1568,
+    0
+   ],
+   "parameters": {
+    "resource": "row",
+    "operation": "update",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "name",
+     "value": "epa_config_allgemein"
+    },
+    "matchType": "allConditions",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "kunde_id",
+       "condition": "eq",
+       "keyValue": "={{ $json.kunde_id }}"
+      }
+     ]
+    },
+    "columns": {
+     "mappingMode": "defineBelow",
+     "value": {
+      "kanaele": "={{ $json.kanaele }}",
+      "log_channel_id": "={{ $json.log_channel_id }}",
+      "benachrichtigung": "={{ $json.benachrichtigung }}"
+     },
+     "matchingColumns": [],
+     "schema": []
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "57e8d29a-f4e6-49d4-a99e-9f4bf1305a25",
+   "name": "Team umbenennen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "onError": "continueRegularOutput",
+   "position": [
+    1792,
+    0
+   ],
+   "parameters": {
+    "method": "PATCH",
+    "url": "={{ \"https://graph.microsoft.com/v1.0/teams/\" + $(\"Ergebnis sammeln\").first().json.team_id }}",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftTeamsOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "json"
+      }
+     },
+     "timeout": 20000
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify(String($(\"Ergebnis sammeln\").first().json.team_name || \"\").trim() ? { displayName: String($(\"Ergebnis sammeln\").first().json.team_name).trim() } : {}) }}"
+   },
+   "credentials": {
+    "microsoftTeamsOAuth2Api": {
+     "id": "lSRi3VbAUwbPKsVl",
+     "name": "Microsoft Teams account 2"
+    }
+   }
+  },
+  {
+   "id": "fdaa3c0e-3dcd-45b4-a7ae-cce6a8edfc2f",
+   "name": "Namen vorbereiten",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1700,
+    300
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "\n// ----- Node-Logik -----\nconst e = $('Ergebnis sammeln').first().json;\nconst plan = $('Kanäle planen').all().map(function (i) { return i.json; });\nreturn plan.map(function (p) {\n  return { json: { url: 'https://graph.microsoft.com/v1.0/teams/' + e.team_id + '/channels/' + e.kanal_ids[p.art], name: p.name } };\n});\n"
+   }
+  },
+  {
+   "id": "fb5b2dc3-93ab-4ab4-a980-0d150adef5a4",
+   "name": "Kanäle umbenennen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1920,
+    300
+   ],
+   "parameters": {
+    "method": "PATCH",
+    "url": "={{ $json.url }}",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "microsoftTeamsOAuth2Api",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true,
+       "responseFormat": "json"
+      }
+     },
+     "timeout": 20000
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ displayName: $json.name }) }}"
+   },
+   "credentials": {
+    "microsoftTeamsOAuth2Api": {
+     "id": "lSRi3VbAUwbPKsVl",
+     "name": "Microsoft Teams account 2"
+    }
+   }
+  },
+  {
+   "id": "bd49d317-f734-417e-a6cd-a3c915648652",
+   "name": "Zusammenfassung",
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    2240,
+    0
+   ],
+   "parameters": {
+    "mode": "manual",
+    "assignments": {
+     "assignments": [
+      {
+       "id": "z1",
+       "name": "kunde_id",
+       "value": "={{ $(\"Ergebnis sammeln\").first().json.kunde_id }}",
+       "type": "string"
+      },
+      {
+       "id": "z2",
+       "name": "kanaele",
+       "value": "={{ $(\"Ergebnis sammeln\").first().json.kanaele }}",
+       "type": "string"
+      },
+      {
+       "id": "z3",
+       "name": "team_umbenannt",
+       "value": "={{ $(\"Team umbenennen\").first().json.statusCode }}",
+       "type": "string"
+      },
+      {
+       "id": "z4",
+       "name": "kanaele_umbenannt",
+       "type": "string",
+       "value": "={{ $('Kanäle umbenennen').all().map(function (i) { return i.json.statusCode; }).join(',') }}"
+      }
+     ]
+    },
+    "options": {}
+   }
+  }
+ ],
+ "connections": {
+  "Start": {
+   "main": [
+    [
+     {
+      "node": "Kunde eintragen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Kunde eintragen": {
+   "main": [
+    [
+     {
+      "node": "Kunde lesen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Kunde lesen": {
+   "main": [
+    [
+     {
+      "node": "Kanäle lesen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Kanäle lesen": {
+   "main": [
+    [
+     {
+      "node": "Kanäle planen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Kanäle planen": {
+   "main": [
+    [
+     {
+      "node": "Kanal anlegen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Kanal anlegen": {
+   "main": [
+    [
+     {
+      "node": "Ergebnis sammeln",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Ergebnis sammeln": {
+   "main": [
+    [
+     {
+      "node": "Config speichern",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config speichern": {
+   "main": [
+    [
+     {
+      "node": "Team umbenennen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Team umbenennen": {
+   "main": [
+    [
+     {
+      "node": "Namen vorbereiten",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Namen vorbereiten": {
+   "main": [
+    [
+     {
+      "node": "Kanäle umbenennen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Kanäle umbenennen": {
+   "main": [
+    [
+     {
+      "node": "Zusammenfassung",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true
+ }
+}

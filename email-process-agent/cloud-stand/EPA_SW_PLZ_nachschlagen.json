@@ -1,0 +1,143 @@
+{
+ "id": "HSxVgZLcOd7mV6bt",
+ "name": "EPA SW PLZ nachschlagen",
+ "active": true,
+ "updatedAt": "2026-11-08T19:51:31.561Z",
+ "versionId": "d9ce1692-b5f4-426c-a050-116cb9de7dd1",
+ "activeVersionId": "d9ce1692-b5f4-426c-a050-116cb9de7dd1",
+ "nodes": [
+  {
+   "id": "16c61e0a-595f-463c-9a47-271516a24dc3",
+   "name": "Start",
+   "type": "n8n-nodes-base.executeWorkflowTrigger",
+   "typeVersion": 1.3,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {
+    "inputSource": "workflowInputs",
+    "workflowInputs": {
+     "values": [
+      {
+       "name": "plz_liste",
+       "type": "array"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "64baea2d-9fdd-48a4-bcd8-7ee50bc51bfb",
+   "name": "PLZ normalisieren",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    224,
+    0
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "const roh = $input.first().json.plz_liste;\nconst liste = Array.isArray(roh) ? roh : [];\nconst sauber = [];\nfor (const x of liste) {\n  const s = String(x === null || x === undefined ? '' : x).trim();\n  if (/^[0-9]{5}$/.test(s) && !sauber.includes(s)) sauber.push(s);\n}\nconst l = sauber.slice(0, 3);\nreturn [{ json: { liste: l, p1: l[0] || '00000x', p2: l[1] || '00000x', p3: l[2] || '00000x' } }];"
+   }
+  },
+  {
+   "id": "c4e07587-8090-4319-b67e-b406f2323111",
+   "name": "PLZ nachschlagen",
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    448,
+    0
+   ],
+   "parameters": {
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "Q9ZOojovR37qYlOE"
+    },
+    "filters": {
+     "conditions": [
+      {
+       "condition": "eq",
+       "keyName": "plz",
+       "keyValue": "={{ $json.p1 }}"
+      },
+      {
+       "condition": "eq",
+       "keyName": "plz",
+       "keyValue": "={{ $json.p2 }}"
+      },
+      {
+       "condition": "eq",
+       "keyName": "plz",
+       "keyValue": "={{ $json.p3 }}"
+      }
+     ]
+    },
+    "matchType": "anyCondition",
+    "operation": "get",
+    "resource": "row",
+    "returnAll": true
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "a74b7de8-5d50-4bc3-9cf9-c50fed9a1302",
+   "name": "Ergebnis bauen",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    672,
+    0
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "language": "javaScript",
+    "jsCode": "const angefragt = $('PLZ normalisieren').first().json.liste;\nconst info = {};\nfor (const p of angefragt) info[p] = { gefunden: false };\nlet fehler = false;\nfor (const i of $input.all()) {\n  const j = i.json || {};\n  if (j.error) { fehler = true; continue; }\n  if (j.plz && info[j.plz]) info[j.plz] = { gefunden: true, ort: j.ort || '', bundesland: j.bundesland || '' };\n}\nreturn [{ json: { ok: !fehler, plz_info: fehler ? {} : info } }];"
+   },
+   "executeOnce": false
+  }
+ ],
+ "connections": {
+  "Start": {
+   "main": [
+    [
+     {
+      "node": "PLZ normalisieren",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "PLZ normalisieren": {
+   "main": [
+    [
+     {
+      "node": "PLZ nachschlagen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "PLZ nachschlagen": {
+   "main": [
+    [
+     {
+      "node": "Ergebnis bauen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true
+ }
+}
