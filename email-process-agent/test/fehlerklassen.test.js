@@ -133,11 +133,39 @@ test('ausErrorTrigger: Fehler aus "Status setzen" werden nicht erneut gesichert 
 test('Alarm verständlich: Titel, Klartext, Grund und Handlungsempfehlung (gesperrtes Postfach)', () => {
 	const h = f.alarmHtml({ statuscode: 502, fehlercode: 'UPSTREAM_FEHLER', klasse: 'Upstream', workflow_name: 'EPA-00 Postfach', node: 'Gesendet prüfen', vorgangs_id: 'V-2026-0100',
 		meldung: 'Rückfrage nicht gesendet: Microsoft meldet: Account suspended. Follow the instructions in your Inbox to verify your account.', retrybar: true, execution_url: 'https://n8n.example/e/5', execution_id: '5' });
-	assert.match(h, /^🚨 <b>Systemfehler: Rückfrage nicht gesendet<\/b>/);
+	assert.match(h, /^🚨 <b>E-201 Anmeldung am Postfach abgelaufen<\/b><br>Rückfrage nicht gesendet<br>/);
 	assert.match(h, /Vorgang: <b>V-2026-0100<\/b>/);
 	assert.match(h, /Grund: Rückfrage nicht gesendet: Microsoft meldet: Account suspended/);
 	assert.match(h, /Was tun: Das Postfach-Konto wurde vom Anbieter gesperrt/);
 	assert.match(h, /Technik: EPA-00 Postfach · Gesendet prüfen · EPA-Fehler 502 UPSTREAM_FEHLER/);
 	assert.match(f.alarmEmpfehlung({ klasse: 'Konfiguration', meldung: 'x' }), /Regel-Sheet/);
 	assert.match(f.alarmEmpfehlung({ klasse: 'Upstream', retrybar: true, meldung: 'timeout' }), /vorübergehend/);
+});
+
+test('Fehlernummern: jede Fehlerart bekommt eine eigene E-Nummer', () => {
+	const n = (fehlercode, workflow_name, node, meldung, statuscode) => f.fehlernummer({ fehlercode, workflow_name, node, meldung, statuscode });
+	assert.equal(n('ZEITUEBERSCHREITUNG', 'EPA SW LLM aufrufen', 'OpenAI aufrufen', 'timeout', 504), 'E-101');
+	assert.equal(n('RATE_LIMIT', 'EPA SW LLM aufrufen', 'OpenAI aufrufen', '429 Too Many Requests', 429), 'E-102');
+	assert.equal(n('AUTH_FEHLER', 'EPA SW LLM aufrufen', 'OpenAI aufrufen', 'invalid_api_key', 401), 'E-103');
+	assert.equal(n('UPSTREAM_FEHLER', 'EPA SW LLM aufrufen', 'OpenAI aufrufen', 'insufficient_quota', 502), 'E-103');
+	assert.equal(n('EXTRAKTION_UNGUELTIG', 'EPA SW LLM aufrufen', 'Antwort prüfen', 'KI-Antwort passt nicht zum Schema', 422), 'E-104');
+	assert.equal(n('KONFIGURATIONSFEHLER', 'EPA SW LLM aufrufen', 'Prompt laden', 'Prompt klassifizierung v5 fehlt', 424), 'E-105');
+	assert.equal(n('AUTH_FEHLER', 'EPA-00 Postfach', 'Outlook lesen', 'token abgelaufen', 401), 'E-201');
+	assert.equal(n('NICHT_ERREICHBAR', 'EPA-00 Postfach', 'Outlook lesen', 'ECONNRESET', 503), 'E-202');
+	assert.equal(n('UPSTREAM_FEHLER', 'EPA-00 Postfach', 'Senden', 'Senden fehlgeschlagen: 550', 502), 'E-203');
+	assert.equal(n('UPSTREAM_FEHLER', 'EPA-11 Zustelltest', 'Prüfen', 'Zustelltest: keine Mail', 502), 'E-204');
+	assert.equal(n('UPSTREAM_FEHLER', 'EPA-00 Postfach', 'Entwurf senden', 'Entwurf nicht gefunden (404)', 404), 'E-206');
+	assert.equal(n('UPSTREAM_FEHLER', 'EPA-00 Postfach', 'Kategorie setzen', 'x', 502), 'E-207');
+	assert.equal(n('AUTH_FEHLER', 'EPA SW Benachrichtigen', 'Teams-Nachricht senden', 'unauthorized', 401), 'E-301');
+	assert.equal(n('UPSTREAM_FEHLER', 'EPA SW Benachrichtigen', 'Teams-Nachricht senden', 'Teams-Karte nicht zugestellt', 502), 'E-302');
+	assert.equal(n('RATE_LIMIT', 'EPA SW Benachrichtigen', 'Teams-Nachricht senden', '429', 429), 'E-304');
+	assert.equal(n('KONFIGURATIONSFEHLER', 'EPA SW Config laden', 'Prüfen', 'Feld freigeber fehlt', 424), 'E-401');
+	assert.equal(n('KONFIG_NICHT_GEFUNDEN', 'EPA SW Config laden', 'Prüfen', 'keine Config', 404), 'E-402');
+	assert.equal(n('VORGANG_NICHT_GEFUNDEN', 'EPA SW Status setzen', 'x', 'x', 404), 'E-403');
+	assert.equal(n('UNZULAESSIGER_STATUSWECHSEL', 'EPA SW Status setzen', 'x', 'x', 409), 'E-404');
+	assert.equal(n('GESPERRT', 'EPA SW Status setzen', 'x', 'x', 409), 'E-405');
+	assert.equal(n('KONFIGURATIONSFEHLER', 'EPA SW Regeln abgleichen', 'Sheet lesen', 'Regel ungültig', 424), 'E-406');
+	assert.equal(n('UNGUELTIGES_FORMAT', 'EPA SW Status setzen', 'x', 'kunde_id fehlt', 400), 'E-407');
+	assert.equal(n('UNBEKANNT', 'EPA-09 Irgendwas', 'x', 'x', 500), 'E-999');
+	for (const nr of ['E-101', 'E-201', 'E-301', 'E-401', 'E-999']) assert.ok(f.FEHLERNUMMERN[nr], nr);
 });

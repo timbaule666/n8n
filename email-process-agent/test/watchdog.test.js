@@ -77,6 +77,10 @@ test('Verbindungen und Fehler ohne Alarm', () => {
 	const html = w.nachricht(r, 'x');
 	assert.match(html, /Handlungsbedarf/);
 	assert.equal((html.match(/→/g) || []).length, 4);
+	assert.match(html, /<li><b>E-508<\/b> <b>Alarm:<\/b> Microsoft Teams/);
+	assert.match(html, /<b>E-506<\/b>/);
+	assert.match(html, /<b>E-507<\/b>/);
+	assert.match(html, /<b>E-505<\/b>/);
 	// Teams je Kunde (eigenes Credential in der Postfach-Kopie)
 	const k = pruefe({ verbindungen: [{ art: 'teams', kunde_id: 'epa-m365', ok: false, status: 401 }] });
 	assert.match(k.befunde[0].text, /^Microsoft Teams von epa-m365 nicht erreichbar \(HTTP 401\)/);

@@ -148,6 +148,12 @@ function esc(s) {
 }
 
 /** Teams-Nachricht an den Entwickler-/Betriebskanal. */
+// Fehlernummern der Befunde (Dokument "Fehlercodes Email Process Agent", Bereich E-5xx).
+const BEFUND_NUMMER = Object.freeze({
+	STILLE: 'E-501', FREIGABE_OFFEN: 'E-502', VORGANG_HAENGT: 'E-503', CRON_AUS: 'E-504', CRON_NIE: 'E-504',
+	FEHLER_OHNE_ALARM: 'E-505', VERBINDUNG_LLM: 'E-506', VERBINDUNG_POSTFACH: 'E-507', VERBINDUNG_TEAMS: 'E-508',
+});
+
 function nachricht(ergebnis, zeitText) {
 	const kopf = { ok: '✅ EPA Watchdog: Alles in Ordnung', warnung: '⚠️ EPA Watchdog: Hinweise', alarm: '🚨 EPA Watchdog: Handlungsbedarf' }[ergebnis.gesamt];
 	const z = ergebnis.zaehler;
@@ -158,9 +164,10 @@ function nachricht(ergebnis, zeitText) {
 	const li = reihen.map((b) => {
 		const e = b.empfehlung && !empfohlen.has(b.code) ? `<br><i>→ ${esc(b.empfehlung)}</i>` : '';
 		empfohlen.add(b.code);
-		return `<li>${b.schwere === 'alarm' ? '<b>Alarm:</b> ' : b.schwere === 'warnung' ? 'Warnung: ' : 'Info: '}${esc(b.text)}${e}</li>`;
+		const nr = BEFUND_NUMMER[b.code] ? `<b>${BEFUND_NUMMER[b.code]}</b> ` : '';
+		return `<li>${nr}${b.schwere === 'alarm' ? '<b>Alarm:</b> ' : b.schwere === 'warnung' ? 'Warnung: ' : 'Info: '}${esc(b.text)}${e}</li>`;
 	}).join('');
 	return `<b>${kopf}</b><ul>${li}</ul>${fuss}`;
 }
 
-module.exports = { SCHLUESSEL, GRENZEN, UEBERGANG, ARBEITSLISTE, EMPFEHLUNG, pruefen, meldenNoetig, nachricht };
+module.exports = { SCHLUESSEL, GRENZEN, UEBERGANG, ARBEITSLISTE, EMPFEHLUNG, BEFUND_NUMMER, pruefen, meldenNoetig, nachricht };

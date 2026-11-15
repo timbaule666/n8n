@@ -195,6 +195,92 @@ function alarmEmpfehlung(e) {
 	return 'Bitte die Ausführung öffnen und prüfen.';
 }
 
+// ---------------------------------------------------------------- Fehlernummern (E-xxx) für Alarme
+// Eindeutige Nummer je Fehlerart, nachzuschlagen im Dokument "Fehlercodes Email Process Agent" (docs/Fehlercodes.md).
+// 1xx KI (OpenAI) · 2xx Postfach (Outlook) · 3xx Teams · 4xx Daten/Config · 5xx Betrieb (Watchdog, src/watchdog.js) · 999 unbekannt.
+const FEHLERNUMMERN = Object.freeze({
+	'E-101': 'OpenAI nicht erreichbar',
+	'E-102': 'OpenAI überlastet (Limit)',
+	'E-103': 'OpenAI lehnt ab: Schlüssel oder Guthaben',
+	'E-104': 'KI-Antwort unbrauchbar',
+	'E-105': 'Prompt fehlt oder inaktiv',
+	'E-201': 'Anmeldung am Postfach abgelaufen',
+	'E-202': 'Postfach nicht erreichbar',
+	'E-203': 'Senden fehlgeschlagen',
+	'E-204': 'Zustelltest fehlgeschlagen',
+	'E-205': 'Rückfrage unzustellbar',
+	'E-206': 'Entwurf nicht gefunden',
+	'E-207': 'Outlook-Kategorie nicht gesetzt',
+	'E-301': 'Anmeldung an Teams abgelaufen',
+	'E-302': 'Teams-Karte nicht zugestellt',
+	'E-303': 'Freigabe-Link niemandem zugestellt',
+	'E-304': 'Teams überlastet (Limit)',
+	'E-305': 'Teams-Karte nicht änderbar',
+	'E-401': 'Kunden-Config ungültig',
+	'E-402': 'Kunden-Config fehlt',
+	'E-403': 'Vorgang nicht gefunden',
+	'E-404': 'Unzulässiger Statuswechsel',
+	'E-405': 'Vorgang gerade in Bearbeitung',
+	'E-406': 'Regeln aus Google Sheets fehlerhaft',
+	'E-407': 'Ungültige Eingabe an einen Baustein',
+	'E-999': 'Unbekannter Fehler',
+});
+
+/** Bereich des Fehlers aus Workflow, Knoten und Meldung: ki | postfach | teams | null. */
+function fehlerBereich(e) {
+	const ort = `${e.workflow_name || ''} ${e.node || ''}`.toLowerCase();
+	const m = String(e.meldung || '').toLowerCase();
+	if (/llm|openai|klassifizier|extrahier|entwurf formulieren|\bki\b/.test(ort) || /openai|llm-|prompt|ki-antwort/.test(m)) return 'ki';
+	if (/teams|kanal|karte|chat|freigeber benachrichtigen|mitarbeiter informieren|alarm/.test(ort) || /teams|kanal|channel|karte/.test(m)) return 'teams';
+	if (/postfach|outlook|entwurf|mail|zustelltest|kategorie|epa-00/.test(ort) || /postfach|outlook|mailbox|entwurf|zustell/.test(m)) return 'postfach';
+	return null;
+}
+
+/** Eindeutige Fehlernummer (E-xxx) für einen Fehlerlog-Eintrag bzw. Alarm. */
+function fehlernummer(e) {
+	const code = String(e.fehlercode || '');
+	const status = Number(e.statuscode);
+	const m = String(e.meldung || '').toLowerCase();
+	const ort = `${e.workflow_name || ''} ${e.node || ''}`.toLowerCase();
+	const bereich = fehlerBereich(e);
+	const auth = code === 'AUTH_FEHLER' || code === 'KEINE_BERECHTIGUNG' || status === 401 || status === 403 || /\b401\b|unauthori|invalid_api_key|token (ist )?abgelaufen|anmeld/.test(m);
+	const limit = code === 'RATE_LIMIT' || status === 429 || /\b429\b|rate.?limit|too many requests/.test(m);
+	const weg = ['UPSTREAM_FEHLER', 'NICHT_ERREICHBAR', 'ZEITUEBERSCHREITUNG'].includes(code) || [502, 503, 504].includes(status);
+	if (bereich === 'ki') {
+		if (/prompt/.test(m) && code === 'KONFIGURATIONSFEHLER') return 'E-105';
+		if (auth || /quota|guthaben|insufficient/.test(m)) return 'E-103';
+		if (limit) return 'E-102';
+		if (code === 'EXTRAKTION_UNGUELTIG' || /ungültig|schema/.test(m)) return 'E-104';
+		if (weg) return 'E-101';
+	}
+	if (bereich === 'postfach') {
+		if (/zustelltest/.test(ort) || /zustelltest/.test(m)) return 'E-204';
+		if (/unzustellbar|nicht zugestellt beim kunden|ndr/.test(m)) return 'E-205';
+		if (auth || /suspended|gesperrt|verify your account/.test(m)) return 'E-201';
+		if (/kategorie/.test(ort)) return 'E-207';
+		if (/entwurf/.test(m) && /nicht gefunden|existiert nicht|not ?found|404/.test(m)) return 'E-206';
+		if (/550|senden|gesendet|send/.test(m)) return 'E-203';
+		if (weg || limit) return 'E-202';
+	}
+	if (bereich === 'teams') {
+		if (auth) return 'E-301';
+		if (limit) return 'E-304';
+		if (/freigabe-link|freigeber/.test(m) || /freigeber benachrichtigen/.test(ort)) return 'E-303';
+		if (/ändern|aendern|löschen|loeschen|entfernen/.test(m)) return 'E-305';
+		if (weg || /nicht zugestellt|zugestellt/.test(m)) return 'E-302';
+	}
+	if (code === 'KONFIG_NICHT_GEFUNDEN') return 'E-402';
+	if (code === 'KONFIGURATIONSFEHLER' || code === 'KONFIG_MEHRDEUTIG') return /sheet|regel/.test(ort + ' ' + m) ? 'E-406' : 'E-401';
+	if (code === 'VORGANG_NICHT_GEFUNDEN' || code === 'NICHT_GEFUNDEN') return 'E-403';
+	if (code === 'UNZULAESSIGER_STATUSWECHSEL' || code === 'UNZULAESSIGER_AUSLOESER') return 'E-404';
+	if (code === 'VERSIONSKONFLIKT' || code === 'GESPERRT') return 'E-405';
+	if (['UNGUELTIGES_FORMAT', 'UNGUELTIGER_AUSLOESER', 'UNBEKANNTER_STATUS'].includes(code)) return 'E-407';
+	if (bereich === 'ki') return 'E-101';
+	if (bereich === 'postfach') return 'E-202';
+	if (bereich === 'teams') return 'E-302';
+	return 'E-999';
+}
+
 function alarmHtml(eintrag) {
 	const e = eintrag;
 	const meldung = String(e.meldung || '');
@@ -202,7 +288,8 @@ function alarmHtml(eintrag) {
 	const kopf = meldung.split(/[:.]/)[0].trim();
 	const titel = kopf && kopf.length <= 70 ? kopf : (KLASSE_TEXT[e.klasse] || 'Systemfehler');
 	const zeilen = [
-		`🚨 <b>Systemfehler: ${escapeHtml(titel)}</b>`,
+		`🚨 <b>${fehlernummer(e)} ${escapeHtml(FEHLERNUMMERN[fehlernummer(e)] || 'Systemfehler')}</b>`,
+		escapeHtml(titel),
 		escapeHtml(KLASSE_TEXT[e.klasse] || KLASSE_TEXT.Unbekannt),
 	];
 	if (e.vorgangs_id) zeilen.push(`Vorgang: <b>${escapeHtml(e.vorgangs_id)}</b>`);
@@ -226,5 +313,8 @@ module.exports = {
 	ausErrorTrigger,
 	alarmHtml,
 	alarmEmpfehlung,
+	FEHLERNUMMERN,
+	fehlerBereich,
+	fehlernummer,
 	escapeHtml,
 };
