@@ -29,4 +29,4 @@ Verglichen wurden alle Knoten, ihr Code und ihre Parameter.
 | Nur im Repo | nie in die Cloud übertragen | EPA-T1 KI-Qualität prüfen |
 
 **Wichtig für den nächsten Kunden:** Die Postfach-Kopie nicht aus der veralteten Cloud-Vorlage duplizieren, sondern
-aus `workflows/EPA-00_Postfach.json` (oder die Vorlage in der Cloud vorher aus dem Repo aktualisieren).
+aus `workflows/EPA-00_Postfach_Vorlage.json` (oder die Vorlage in der Cloud vorher aus dem Repo aktualisieren).
