@@ -21,6 +21,48 @@ const EMAIL = /^[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}
 const TELEGRAM_CHAT = /^(-?\d{3,20}|@[A-Za-z0-9_]{5,32})$/;
 const FELDNAME = /^[A-Za-z][A-Za-z0-9_]{0,62}$/;
 
+// ---------------------------------------------------------------- Gebuchte Bereiche (Baukasten)
+// Je Bereich eine Ja/Nein-Spalte in epa_config_allgemein (nur IPS schaltet, nicht der Kunde im Sheet).
+// Regeln eines Bereichs auf "Nein" dürfen schon ausgefüllt sein; sie werden erst beim Einschalten streng geprüft.
+// Steht ein Bereich auf "Nein", kennt die Erkennung ihn nicht (neue Mails dazu = kein Vorgang). Laufende Vorgänge
+// dieses Bereichs laufen mit seinen (gültigen) Regeln zu Ende. Fehlen alle vier Spalten (ältere Config), gilt alles als
+// eingeschaltet. Vorgangstypen, die keinem Bereich zugeordnet sind, sind immer eingeschaltet.
+const BEREICHE = Object.freeze([
+	{ schluessel: 'angebot', spalte: 'bereich_angebot', name: 'Angebotsanfragen', typen: ['angebot', 'angebotsanfrage', 'transport'] },
+	{ schluessel: 'bestellung', spalte: 'bereich_bestellung', name: 'Bestellungen', typen: ['bestellung'] },
+	{ schluessel: 'termin', spalte: 'bereich_termin', name: 'Terminanfragen', typen: ['termin', 'terminanfrage'] },
+	{ schluessel: 'reklamation', spalte: 'bereich_reklamation', name: 'Reklamationen', typen: ['reklamation'] },
+]);
+
+/** Bereich eines Vorgangstyps oder null (nicht im Baukasten). */
+function bereichVonTyp(typ) {
+	const t = String(typ || '').trim().toLowerCase();
+	return BEREICHE.find((b) => b.typen.includes(t)) || null;
+}
+
+/** Schalterstellung aus der Config-Zeile: { gesteuert, an: { angebot: true|false, … } }. */
+function bereicheLesen(a) {
+	const zeile = a || {};
+	const gesteuert = BEREICHE.some((b) => Object.prototype.hasOwnProperty.call(zeile, b.spalte));
+	const an = {};
+	for (const b of BEREICHE) {
+		const v = zeile[b.spalte];
+		an[b.schluessel] = !gesteuert || v === true || ['true', 'ja', '1'].includes(String(v ?? '').trim().toLowerCase());
+	}
+	return { gesteuert, an };
+}
+
+function typAn(typ, br) {
+	const b = bereichVonTyp(typ);
+	return !b || br.an[b.schluessel] === true;
+}
+
+/** Übersicht für Sheet-Status und Meldungen: [{ schluessel, name, aktiv }]. */
+function bereicheUebersicht(a) {
+	const br = bereicheLesen(a);
+	return BEREICHE.map((b) => ({ schluessel: b.schluessel, name: b.name, aktiv: br.an[b.schluessel] }));
+}
+
 function parseJson(wert, name, fehler) {
 	if (wert === null || wert === undefined || wert === '') return null;
 	if (typeof wert === 'object') return wert;
@@ -195,6 +237,11 @@ function validiereConfig(allgemein, pflichtfelder, optionen = {}) {
 	const a = allgemein || {};
 	if (!allgemein) return { gueltig: false, fehler: ['config_allgemein: keine Zeile gefunden'], config: null };
 	if (a.aktiv === false) fehler.push('config_allgemein.aktiv: Kunde ist deaktiviert');
+	const hinweise = [];
+	const bereiche = bereicheLesen(a);
+	const typVon = (z) => (typeof z.vorgangstyp === 'string' ? z.vorgangstyp.trim() : '');
+	const zeilenAn = (pflichtfelder || []).filter((z) => typAn(typVon(z), bereiche));
+	const zeilenAus = (pflichtfelder || []).filter((z) => !typAn(typVon(z), bereiche));
 
 	const kundeId = text(a.kunde_id, 'kunde_id', fehler);
 	const postfach = text(a.postfach, 'postfach', fehler);
@@ -294,13 +341,36 @@ function validiereConfig(allgemein, pflichtfelder, optionen = {}) {
 		freigabe_ablauf_stunden: zahl(a.freigabe_ablauf_stunden, 'freigabe_ablauf_stunden', fehler, { min: 1, max: 2000 }),
 		// Watchdog (M6): Hinweis, wenn so viele Geschäftsstunden keine Mail kam; leer oder 0 = aus.
 		stille_alarm_stunden: zahl(a.stille_alarm_stunden ?? 0, 'stille_alarm_stunden', fehler, { min: 0, max: 2000 }),
-		vorgangstypen: pruefePflichtfelder(pflichtfelder, fehler),
+		vorgangstypen: pruefePflichtfelder(zeilenAn, fehler),
 	};
+	// Bereiche: eingeschaltet, aber ohne aktive Felder -> Fehler; ausgeschaltet -> nur Hinweise, gültige Regeln bleiben für
+	// laufende Vorgänge erhalten (nicht für die Erkennung neuer Mails).
+	const aktiveTypen = Object.keys(config.vorgangstypen || {});
+	if (bereiche.gesteuert) {
+		for (const b of BEREICHE) {
+			if (bereiche.an[b.schluessel] && !aktiveTypen.some((t) => bereichVonTyp(t) === b)) fehler.push(`Bereich "${b.name}" ist eingeschaltet, hat aber keine aktiven Pflichtfelder`);
+		}
+	}
+	const ruhend = {};
+	const typenAus = [...new Set(zeilenAus.map(typVon).filter(Boolean))];
+	for (const t of typenAus) {
+		const f = [];
+		const r = pruefePflichtfelder(zeilenAus.filter((z) => typVon(z) === t), f);
+		const name = (bereichVonTyp(t) || {}).name || t;
+		if (f.length) hinweise.push(...f.map((m) => `Bereich "${name}" ist ausgeschaltet, Regeln vor dem Einschalten korrigieren: ${m}`));
+		else if (r[t]) ruhend[t] = r[t];
+	}
+	config.aktive_vorgangstypen = aktiveTypen;
+	config.vorgangstypen = { ...config.vorgangstypen, ...ruhend };
+	config.bereiche = BEREICHE.map((b) => ({ schluessel: b.schluessel, name: b.name, aktiv: bereiche.an[b.schluessel] }));
 	if (config.config_sheet && !/^[A-Za-z0-9_-]{20,100}$/.test(config.config_sheet)) fehler.push('config_sheet: keine gültige Google-Sheet-ID (der Teil der URL zwischen /d/ und /edit)');
-	config.vorgangsarten = pruefeVorgangsarten(a.vorgangsarten, config.vorgangstypen, fehler);
-	config.uebersetzungen = pruefeUebersetzungen(a.uebersetzungen, config, fehler);
+	config.vorgangsarten = pruefeVorgangsarten(a.vorgangsarten, config.vorgangstypen, fehler, typenAus);
+	config.uebersetzungen = pruefeUebersetzungen(a.uebersetzungen, config, fehler, zeilenAus.map((z) => (typeof z.feldname === 'string' ? z.feldname.trim() : '')));
 	config.outlook_kategorien = pruefeKategorien(a.outlook_kategorien, fehler);
-	config.kalender = pruefeKalender(a.kalender, config.vorgangstypen, fehler);
+	// Kalender nur, wenn sein Bereich eingeschaltet ist (sonst ohne Fehler aus).
+	const kalRoh = parseJson(a.kalender, 'kalender', []);
+	const kalAus = kalRoh && typeof kalRoh === 'object' && !Array.isArray(kalRoh) && kalRoh.aktiv === true && !typAn(String(kalRoh.vorgangstyp || ''), bereiche);
+	config.kalender = kalAus ? null : pruefeKalender(a.kalender, Object.fromEntries(aktiveTypen.map((t) => [t, config.vorgangstypen[t]])), fehler);
 	// Teams-Kanäle je Meldungsart (SW Teams einrichten). Ungültige Einträge werden ignoriert, nie ein Stopp.
 	config.kanaele = kanaeleLesen(a.kanaele);
 	for (const liste of ['absender_allowlist', 'absender_blocklist']) {
@@ -309,7 +379,7 @@ function validiereConfig(allgemein, pflichtfelder, optionen = {}) {
 	if (config.freigabe_ablauf_stunden !== null && config.freigabe_erinnerung_stunden !== null && config.freigabe_erinnerung_stunden >= config.freigabe_ablauf_stunden) {
 		fehler.push('freigabe_erinnerung_stunden: muss kleiner als freigabe_ablauf_stunden sein');
 	}
-	return fehler.length ? { gueltig: false, fehler, config: null } : { gueltig: true, fehler: [], config };
+	return fehler.length ? { gueltig: false, fehler, hinweise, config: null } : { gueltig: true, fehler: [], hinweise, config };
 }
 
 /**
@@ -340,7 +410,7 @@ function pruefeKategorien(roh, fehler) {
  * Die Beschreibung bekommt die KI bei der Erkennung, der Name steht in den Meldungen. Fehlt ein Eintrag, gilt der
  * Schlüssel als Name. Jede Vorgangsart aus den Pflichtfeldern bekommt immer einen Eintrag.
  */
-function pruefeVorgangsarten(roh, vorgangstypen, fehler) {
+function pruefeVorgangsarten(roh, vorgangstypen, fehler, ausgeschaltet = []) {
 	const typen = Object.keys(vorgangstypen || {});
 	const leer = roh === undefined || roh === null || roh === '';
 	const v = leer ? {} : parseJson(roh, 'vorgangsarten', fehler);
@@ -348,7 +418,7 @@ function pruefeVorgangsarten(roh, vorgangstypen, fehler) {
 		if (v !== null) fehler.push('vorgangsarten: muss ein Objekt { "<vorgangstyp>": { name, beschreibung } } sein');
 		return Object.fromEntries(typen.map((t) => [t, { name: standardName(t), beschreibung: '' }]));
 	}
-	for (const t of Object.keys(v || {})) if (!typen.includes(t)) fehler.push(`vorgangsarten.${t}: Vorgangsart hat keine Pflichtfelder`);
+	for (const t of Object.keys(v || {})) if (!typen.includes(t) && !ausgeschaltet.includes(t)) fehler.push(`vorgangsarten.${t}: Vorgangsart hat keine Pflichtfelder`);
 	const out = {};
 	for (const t of typen) {
 		const e = (v || {})[t] || {};
@@ -422,14 +492,16 @@ function standardName(typ) {
  * { "en": { "signatur": "...", "ki_hinweistext": "...", "textbausteine": { "<Feldname>": "..." } } }
  * Jede Sprache braucht Signatur, KI-Hinweis und einen Textbaustein für jedes aktive Feld, sonst gilt die Config als fehlerhaft.
  */
-function pruefeUebersetzungen(roh, config, fehler) {
+function pruefeUebersetzungen(roh, config, fehler, felderAus = []) {
 	if (roh === undefined || roh === null || roh === '') return {};
 	const u = parseJson(roh, 'uebersetzungen', fehler);
 	if (!u || typeof u !== 'object' || Array.isArray(u)) {
 		if (u !== null) fehler.push('uebersetzungen: muss ein Objekt { "<sprache>": {...} } sein');
 		return {};
 	}
-	const feldnamen = new Set(Object.values(config.vorgangstypen || {}).flat().map((f) => f.feldname));
+	// Pflicht nur für eingeschaltete Bereiche; Texte für ausgeschaltete Bereiche dürfen schon da sein.
+	const feldnamen = new Set((config.aktive_vorgangstypen || Object.keys(config.vorgangstypen || {})).flatMap((t) => (config.vorgangstypen[t] || []).map((f) => f.feldname)));
+	const erlaubt = new Set([...Object.values(config.vorgangstypen || {}).flat().map((f) => f.feldname), ...felderAus]);
 	const out = {};
 	for (const [sprache, e] of Object.entries(u)) {
 		const p = `uebersetzungen.${sprache}`;
@@ -441,10 +513,10 @@ function pruefeUebersetzungen(roh, config, fehler) {
 		const tb = e.textbausteine && typeof e.textbausteine === 'object' && !Array.isArray(e.textbausteine) ? e.textbausteine : null;
 		if (!tb) { fehler.push(`${p}.textbausteine: fehlt`); continue; }
 		for (const f of feldnamen) if (typeof tb[f] !== 'string' || !tb[f].trim()) fehler.push(`${p}.textbausteine.${f}: fehlt`);
-		for (const f of Object.keys(tb)) if (!feldnamen.has(f)) fehler.push(`${p}.textbausteine.${f}: Feld ist unbekannt`);
+		for (const f of Object.keys(tb)) if (!erlaubt.has(f)) fehler.push(`${p}.textbausteine.${f}: Feld ist unbekannt`);
 		out[sprache] = { signatur: sig, ki_hinweistext: ki, textbausteine: tb };
 	}
 	return out;
 }
 
-module.exports = { FELDTYPEN, REGEL_SCHLUESSEL, LLM_AUFGABEN, validiereConfig };
+module.exports = { FELDTYPEN, REGEL_SCHLUESSEL, LLM_AUFGABEN, BEREICHE, bereichVonTyp, bereicheLesen, bereicheUebersicht, validiereConfig };

@@ -175,6 +175,8 @@ Vorgangsarten werden je Kunde in der Config festgelegt, mit Name und Beschreibun
 | **Terminanfrage** | Anlass, Wunschtermin, Uhrzeit (optional), Ort (optional), Ansprechpartner, Telefon; Kalenderprüfung |
 | **Reklamation** (neu) | Problem/Grund, betroffene Ware und Menge, Datum der Lieferung (muss in der Vergangenheit liegen, max. 1 Jahr), Lieferschein-/Bestellnummer (optional), Ansprechpartner, Telefon. Rückfragen versprechen nie Ersatz, Gutschrift oder Erstattung. Eine Stornierung ist keine Reklamation. |
 
+**Gebuchte Bereiche (Baukasten):** Je Kunde ein Ja/Nein-Schalter für Angebotsanfragen, Bestellungen, Terminanfragen und Reklamationen in `epa_config_allgemein` (`bereich_*`, nur IPS schaltet). Nur eingeschaltete Bereiche werden erkannt; Regeln ausgeschalteter Bereiche dürfen schon gepflegt sein und werden erst beim Einschalten streng geprüft. Laufende Vorgänge eines abgeschalteten Bereichs laufen zu Ende. Der Reiter „Status“ im Regel-Sheet zeigt die gebuchten Bereiche zur Info.
+
 **Statusmodell** (Statusmatrix im Code, nur erlaubte Übergänge):
 - Neu
 - In Prüfung

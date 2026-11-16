@@ -335,7 +335,7 @@ return [{ json: {
 		['aufgabe', 'string', 'klassifizierung'],
 		['prompt_version', 'string', `={{ ${C}.prompt_versionen.klassifizierung }}`],
 		['profil', 'object', `={{ ${C}.llm_profil.klassifizierung }}`],
-		['kontext', 'object', `={{ { mail: ${M}, vorgangstypen: Object.keys(${C}.vorgangstypen), vorgangsarten: ${C}.vorgangsarten, hinweise: ${N}.hinweise_klassifizierung } }}`],
+		['kontext', 'object', `={{ { mail: ${M}, vorgangstypen: ${C}.aktive_vorgangstypen || Object.keys(${C}.vorgangstypen), vorgangsarten: ${C}.vorgangsarten, hinweise: ${N}.hinweise_klassifizierung } }}`],
 		['fehler_als_ergebnis', 'boolean', '={{ false }}'],
 	]);
 	const klasse = wf.code('Klasse auswerten', [3080, 240], ['eingang'], `

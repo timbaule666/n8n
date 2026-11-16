@@ -89,7 +89,7 @@ return [{ json: {
 	allgemein_update: r.allgemein_update,
 	pflicht_ops: r.pflicht_ops,
 	aenderungen: r.aenderungen,
-	status_werte: configSheet.statusZeilen({ zeit, ergebnis, meldungen }),
+	status_werte: configSheet.statusZeilen({ zeit, ergebnis, meldungen, bereiche: configValidator.bereicheUebersicht(allg) }),
 	melden,
 	nachricht_html,
 	kennung,

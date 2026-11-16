@@ -167,3 +167,12 @@ test('Markierungen: gelb für "wartet", älteres Sheet ohne Zeile bleibt wie bis
 	r = lauf((i) => setze(i, 'Outlook-Markierung "wartet"', ''));
 	assert.ok(!('Warten auf Kunde' in JSON.parse(r.allgemein_update.outlook_kategorien)), 'leer = keine eigene Markierung');
 });
+
+test('Status-Reiter zeigt gebuchte Bereiche nur zur Info', () => {
+	const cs = require('../src/configSheet');
+	const z = cs.statusZeilen({ zeit: 'x', ergebnis: 'Keine Änderung', meldungen: ['m1'], bereiche: [{ name: 'Angebotsanfragen', aktiv: true }, { name: 'Terminanfragen', aktiv: false }] });
+	assert.equal(z.length, 30);
+	assert.deepEqual(z[4], ['Angebotsanfragen', 'Ja']);
+	assert.deepEqual(z[5], ['Terminanfragen', 'Nein']);
+	assert.ok(z.some((r) => r[1] === 'm1'));
+});

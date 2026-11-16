@@ -393,6 +393,7 @@ function abgleichen({ allgemein, pflichtfelder, reiterAllgemein, reiterPflicht, 
 	}
 	const pruefung = validieren({ ...alt, ...allgemeinUpdate }, [...pflichtNeu.values()].filter((z) => z.aktiv !== false));
 	if (!pruefung.gueltig) return { ...leer, fehler: pruefung.fehler.map(lesbar) };
+	for (const h of pruefung.hinweise || []) hinweise.push(lesbar(h));
 	return { fehler, hinweise, allgemein_update: allgemeinUpdate, pflicht_ops: ops, aenderungen };
 }
 
@@ -408,9 +409,16 @@ function lesbar(meldung) {
 }
 
 /** Zeilen für den Reiter "Status" (feste Länge, damit alte Meldungen überschrieben werden). */
-function statusZeilen({ zeit = '', ergebnis, meldungen = [] }) {
-	const z = [['Letzte Prüfung', zeit], ['Ergebnis', ergebnis], ['', ''], ['Meldungen', '']];
-	for (const m of meldungen.slice(0, 25)) z.push(['', m]);
+function statusZeilen({ zeit = '', ergebnis, meldungen = [], bereiche = [] }) {
+	const z = [['Letzte Prüfung', zeit], ['Ergebnis', ergebnis], ['', '']];
+	// Gebuchte Bereiche nur zur Info: geschaltet wird von IPS in der Config, nicht im Sheet.
+	if (bereiche.length) {
+		z.push(['Gebuchte Bereiche (nur Info, Änderung über IPS)', '']);
+		for (const b of bereiche) z.push([b.name, b.aktiv ? 'Ja' : 'Nein']);
+		z.push(['', '']);
+	}
+	z.push(['Meldungen', '']);
+	for (const m of meldungen.slice(0, 30 - z.length)) z.push(['', m]);
 	while (z.length < 30) z.push(['', '']);
 	return z;
 }

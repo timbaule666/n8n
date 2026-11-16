@@ -44,7 +44,11 @@
    "kalender": "",
    "log_channel_id": "",
    "kanaele": "",
-   "config_sheet": ""
+   "config_sheet": "",
+   "bereich_angebot": false,
+   "bereich_bestellung": false,
+   "bereich_termin": false,
+   "bereich_reklamation": false
   }
  ],
  "epa_config_pflichtfelder": [

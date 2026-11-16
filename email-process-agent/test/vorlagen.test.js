@@ -12,6 +12,10 @@ test('Leere Vorlage: wird mit Platzhaltern abgelehnt, ausgefüllt ist sie gülti
 		feiertage_region: 'BY', benachrichtigung: JSON.stringify({ kanal: 'teams', team_id: '61165b04-e4cc-4026-b43f-926b4e2a7182', channel_id: '19:abc@thread.tacv2' }),
 		freigeber: '["chef@mueller.example"]', postfach_workflow_id: 'AbCdEf123456',
 	};
+	const f0 = { ...PFLICHTFELD, kunde_id: 'mueller-logistik', vorgangstyp: 'transport', feldname: 'Start_PLZ', anzeigename: 'PLZ Abholort', typ: 'plz', resolution_textbaustein: 'Bitte nennen Sie uns die Postleitzahl des Abholorts.', extraktions_hinweis: 'PLZ des Abholorts' };
+	// Ohne gebuchten Bereich erkennt der Agent nichts (alle Schalter stehen in der Vorlage auf Nein).
+	assert.match(validiereConfig(a, [f0]).fehler.join('\n'), /keine aktiven Felder/);
+	a.bereich_angebot = true;
 	const f = { ...PFLICHTFELD, kunde_id: 'mueller-logistik', vorgangstyp: 'transport', feldname: 'Start_PLZ', anzeigename: 'PLZ Abholort', typ: 'plz', resolution_textbaustein: 'Bitte nennen Sie uns die Postleitzahl des Abholorts.', extraktions_hinweis: 'PLZ des Abholorts' };
 	const r = validiereConfig(a, [f]);
 	assert.deepEqual(r.fehler, []);

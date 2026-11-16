@@ -53,7 +53,7 @@ function extraktionsHinweise(mail) {
  * @returns {{ weg: 'pruefen'|'ignoriert'|'unklar', status: string, ausloeser: string, vorgangstyp: string|null, grund: string, details: object }}
  */
 function klasseAuswerten(llm, config, mail) {
-	const typen = Object.keys(config.vorgangstypen || {});
+	const typen = config.aktive_vorgangstypen || Object.keys(config.vorgangstypen || {});
 	const schwelle = config.konfidenz_schwelle;
 	const unklar = (grund, details = {}) => ({ weg: 'unklar', status: 'Klassifizierung unklar', ausloeser: 'KI', vorgangstyp: null, grund, details });
 	if (!llm || llm.ok !== true) {
@@ -82,7 +82,7 @@ function klasseAuswerten(llm, config, mail) {
 
 /** Weitere Anliegen der Mail (aus der Klassifizierung) als [{ typ, name }], ohne die Vorgangsart des Vorgangs. */
 function weitereAnliegen(auswertung, config) {
-	const typen = Object.keys((config && config.vorgangstypen) || {});
+	const typen = (config && config.aktive_vorgangstypen) || Object.keys((config && config.vorgangstypen) || {});
 	const haupt = auswertung && auswertung.vorgangstyp;
 	const liste = (auswertung && auswertung.details && auswertung.details.weitere_vorgangstypen) || [];
 	return [...new Set(Array.isArray(liste) ? liste : [])]

@@ -238,3 +238,59 @@ test('kanaele: gültige Kanal-IDs übernehmen, Unsinn ignorieren (nie ein Stopp)
 	assert.equal(leer.gueltig, true);
 	assert.deepEqual(leer.config.kanaele, {});
 });
+
+// ---------------------------------------------------------------- Gebuchte Bereiche (Ja/Nein-Schalter)
+const vier = () => [
+	feld(),
+	feld({ vorgangstyp: 'bestellung', feldname: 'Menge', typ: 'zahl', validierungsregel: { min: 1 } }),
+	feld({ vorgangstyp: 'termin', feldname: 'Wunschtermin', typ: 'datum', validierungsregel: {} }),
+	feld({ vorgangstyp: 'reklamation', feldname: 'Grund', typ: 'text', validierungsregel: {} }),
+];
+const schalter = (angebot, bestellung, termin, reklamation) => ({ bereich_angebot: angebot, bereich_bestellung: bestellung, bereich_termin: termin, bereich_reklamation: reklamation });
+const KAL = { aktiv: true, vorgangstyp: 'termin', datum_feld: 'Wunschtermin' };
+
+test('Bereiche: ohne Schalter-Spalten (ältere Config) ist alles eingeschaltet', () => {
+	const r = validiereConfig(allgemein({ kalender: KAL }), vier());
+	assert.equal(r.gueltig, true, fehlerText(r));
+	assert.deepEqual(r.config.aktive_vorgangstypen.sort(), ['bestellung', 'reklamation', 'termin', 'transport']);
+	assert.equal(r.config.kalender.vorgangstyp, 'termin');
+	assert.ok(r.config.bereiche.every((b) => b.aktiv));
+});
+
+test('Bereiche: nur "Ja" zählt; "Nein" und leer sind aus, Regeln bleiben für laufende Vorgänge', () => {
+	const r = validiereConfig(allgemein({ ...schalter(true, null, false, 'ja'), kalender: KAL, vorgangsarten: { termin: { name: 'Terminanfrage' } } }), vier());
+	assert.equal(r.gueltig, true, fehlerText(r));
+	assert.deepEqual(r.config.aktive_vorgangstypen.sort(), ['reklamation', 'transport']);
+	assert.ok(r.config.vorgangstypen.termin, 'Regeln ausgeschalteter Bereiche bleiben für laufende Vorgänge');
+	assert.equal(r.config.kalender, null, 'Kalender aus, wenn Terminanfragen aus');
+	assert.deepEqual(r.config.bereiche.map((b) => [b.schluessel, b.aktiv]), [['angebot', true], ['bestellung', false], ['termin', false], ['reklamation', true]]);
+});
+
+test('Bereiche: fehlerhafte Regeln eines ausgeschalteten Bereichs sind nur ein Hinweis', () => {
+	const felder = [...vier(), feld({ vorgangstyp: 'termin', feldname: 'Uhrzeit', resolution_textbaustein: '' })];
+	const aus = validiereConfig(allgemein(schalter(true, true, false, true)), felder);
+	assert.equal(aus.gueltig, true, fehlerText(aus));
+	assert.match(aus.hinweise.join('\n'), /Bereich "Terminanfragen" ist ausgeschaltet.*resolution_textbaustein: fehlt/);
+	assert.equal(aus.config.vorgangstypen.termin, undefined, 'fehlerhafte Regeln werden nicht verwendet');
+	const an = validiereConfig(allgemein(schalter(true, true, true, true)), felder);
+	assert.equal(an.gueltig, false);
+	assert.match(fehlerText(an), /resolution_textbaustein: fehlt/);
+});
+
+test('Bereiche: eingeschaltet ohne Felder ist ein Fehler; alles aus ist ein Fehler', () => {
+	const r = validiereConfig(allgemein(schalter(true, true, true, true)), [feld(), feld({ vorgangstyp: 'bestellung', feldname: 'Menge', typ: 'zahl', validierungsregel: {} })]);
+	assert.equal(r.gueltig, false);
+	assert.match(fehlerText(r), /Bereich "Terminanfragen" ist eingeschaltet, hat aber keine aktiven Pflichtfelder/);
+	assert.match(fehlerText(r), /Bereich "Reklamationen" ist eingeschaltet/);
+	const alleAus = validiereConfig(allgemein(schalter(false, false, false, false)), vier());
+	assert.equal(alleAus.gueltig, false);
+	assert.match(fehlerText(alleAus), /keine aktiven Felder/);
+});
+
+test('Bereiche: Übersetzungen nur für eingeschaltete Bereiche Pflicht', () => {
+	const ue = { en: { signatur: 'Regards', ki_hinweistext: 'AI', textbausteine: { Start_PLZ: 'Postcode?', Grund: 'Reason?' } } };
+	const r = validiereConfig(allgemein({ ...schalter(true, false, false, true), uebersetzungen: ue }), vier());
+	assert.equal(r.gueltig, true, fehlerText(r));
+	const mitText = validiereConfig(allgemein({ ...schalter(true, false, false, true), uebersetzungen: { en: { ...ue.en, textbausteine: { ...ue.en.textbausteine, Menge: 'Qty?' } } } }), vier());
+	assert.equal(mitText.gueltig, true, 'Texte ausgeschalteter Bereiche dürfen schon da sein');
+});

@@ -57,6 +57,11 @@ const ALLGEMEIN = {
 	log_channel_id: '',
 	kanaele: '',
 	config_sheet: '',
+	// Gebuchte Bereiche: nur was auf true steht, wird erkannt (Schalter setzt IPS, nicht der Kunde).
+	bereich_angebot: false,
+	bereich_bestellung: false,
+	bereich_termin: false,
+	bereich_reklamation: false,
 };
 
 const PFLICHTFELD = {

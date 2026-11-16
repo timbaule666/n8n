@@ -43,7 +43,11 @@
    "vorgangsarten": "{\"transport\": {\"name\": \"Angebotsanfrage\", \"beschreibung\": \"Kunde möchte einen Preis oder ein Angebot für einen Transport (Abholung, Ziel, Ware, Termin).\"}, \"bestellung\": {\"name\": \"Bestellung\", \"beschreibung\": \"Kunde bestellt oder beauftragt verbindlich Ware oder eine Leistung, z. B. mit Menge, Liefertermin, Lieferadresse oder Bestellnummer.\"}, \"termin\": {\"name\": \"Terminanfrage\", \"beschreibung\": \"Kunde möchte einen Termin vereinbaren, verschieben oder anfragen, z. B. Besichtigung, Beratung, Anlieferung oder Abholung zu einer bestimmten Zeit.\"}, \"reklamation\": {\"name\": \"Reklamation\", \"beschreibung\": \"Kunde bemängelt eine bereits erhaltene Lieferung oder Leistung: Ware beschädigt, defekt, falsch, unvollständig oder verspätet. Keine Stornierung und keine neue Bestellung.\"}}",
    "kalender": "{\"aktiv\": true, \"vorgangstyp\": \"termin\", \"datum_feld\": \"Wunschtermin\", \"uhrzeit_feld\": \"Uhrzeit\", \"titel_feld\": \"Terminanlass\", \"ort_feld\": \"Terminort\", \"dauer_minuten\": 60, \"gueltig_stunden\": 72}",
    "log_channel_id": "",
-   "kanaele": ""
+   "kanaele": "",
+   "bereich_angebot": true,
+   "bereich_bestellung": true,
+   "bereich_termin": true,
+   "bereich_reklamation": true
   }
  ],
  "epa_config_pflichtfelder": [

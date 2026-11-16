@@ -44,7 +44,11 @@
       "kalender": "string",
       "log_channel_id": "string",
       "kanaele": "string",
-      "config_sheet": "string"
+      "config_sheet": "string",
+      "bereich_angebot": "boolean",
+      "bereich_bestellung": "boolean",
+      "bereich_termin": "boolean",
+      "bereich_reklamation": "boolean"
     },
     "epa_config_pflichtfelder": {
       "kunde_id": "string",
