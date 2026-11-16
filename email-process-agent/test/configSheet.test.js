@@ -176,3 +176,15 @@ test('Status-Reiter zeigt gebuchte Bereiche nur zur Info', () => {
 	assert.deepEqual(z[5], ['Terminanfragen', 'Nein']);
 	assert.ok(z.some((r) => r[1] === 'm1'));
 });
+
+test('Ältere Sheets ohne Zeile "Vorgangsnummer im Betreff": kein Fehler, bisheriger Wert bleibt', () => {
+	const cs = require('../src/configSheet');
+	const { validiereConfig } = require('../src/configValidator');
+	const bsp = require('../config/datatables/beispiel-transport.json');
+	const alt = { ...bsp.epa_config_allgemein[0], vorgangsnummer_im_betreff: true };
+	const inhalt = cs.sheetInhalt(alt, bsp.epa_config_pflichtfelder);
+	const ohne = inhalt.Allgemein.filter((z) => z[0] !== 'Vorgangsnummer im Betreff');
+	const r = cs.abgleichen({ allgemein: alt, pflichtfelder: bsp.epa_config_pflichtfelder, reiterAllgemein: ohne, reiterPflicht: inhalt.Pflichtfelder, validieren: (a, p) => validiereConfig({ ...a, aktiv: true }, p) });
+	assert.ok(!r.fehler.some((f) => /Vorgangsnummer/.test(f)), r.fehler.join('\n'));
+	assert.equal('vorgangsnummer_im_betreff' in r.allgemein_update, false);
+});

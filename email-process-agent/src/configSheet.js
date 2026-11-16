@@ -61,7 +61,7 @@ const STATUS_BEREIT = ['Bereit zur Bearbeitung'];
 const STATUS_RUECKFRAGE = ['Freigabe ausstehend'];
 const STATUS_WARTET = ['Warten auf Kunde'];
 // Zeilen, die in älteren Sheets fehlen dürfen (ohne sie gilt das bisherige Verhalten).
-const OPTIONAL = ['markierung_wartet'];
+const OPTIONAL = ['markierung_wartet', 'vorgangsnummer_im_betreff'];
 
 const zelle = (v) => (v === null || v === undefined ? '' : String(v)).trim();
 
