@@ -46,8 +46,12 @@ module.exports = function () {
 
 	const config = wf.tabelle('Config-Zeile lesen', [220, 0], 'get', 'epa_config_allgemein', { bedingungen: [['kunde_id', 'eq', `={{ ${E}.kunde_id }}`]] }, { alwaysOutputData: true });
 	const felder = wf.tabelle('Pflichtfelder lesen', [440, 0], 'get', 'epa_config_pflichtfelder', { bedingungen: [['kunde_id', 'eq', `={{ ${E}.kunde_id }}`]], alle: true }, { alwaysOutputData: true, executeOnce: true });
+	// Reiter ermitteln (alter Aufbau "Pflichtfelder" oder ein Reiter je Bereich), dann alle Regel-Reiter auf einmal lesen.
+	const reiter = sheets(wf, 'Reiter lesen', [550, 160], 'GET',
+		`=${SHEETS}/{{ encodeURIComponent(${E}.sheet_id) }}?fields=sheets.properties.title`,
+		null, { executeOnce: true, onError: 'continueRegularOutput', alwaysOutputData: true });
 	const lesen = sheets(wf, 'Sheet lesen', [660, 0], 'GET',
-		`=${SHEETS}/{{ encodeURIComponent(${E}.sheet_id) }}/values:batchGet?ranges=Allgemein!A1:C300&ranges=Pflichtfelder!A1:Z500&valueRenderOption=FORMATTED_VALUE`,
+		`=${SHEETS}/{{ encodeURIComponent(${E}.sheet_id) }}/values:batchGet?{{ (($('Reiter lesen').first().json.sheets) || [{ properties: { title: 'Allgemein' } }, { properties: { title: 'Pflichtfelder' } }]).map((s) => s.properties.title).filter((t) => t !== 'Status' && t !== 'Anleitung').map((t) => 'ranges=' + encodeURIComponent("'" + t.replace(/'/g, "''") + "'!A1:Z500")).join('&') }}&valueRenderOption=FORMATTED_VALUE`,
 		null, { executeOnce: true, onError: 'continueRegularOutput', alwaysOutputData: true });
 	const stand = wf.tabelle('Letzten Stand lesen', [880, 0], 'get', 'epa_system_status', { bedingungen: [['schluessel', 'eq', `=config_sheet:{{ ${E}.kunde_id }}`]] }, { alwaysOutputData: true, executeOnce: true });
 
@@ -59,15 +63,22 @@ const pf = $('Pflichtfelder lesen').all().map((i) => i.json).filter((z) => z && 
 const sheet = $('Sheet lesen').first().json || {};
 const stand = $('Letzten Stand lesen').first().json || {};
 let r;
-if (sheet.error || !Array.isArray(sheet.valueRanges) || sheet.valueRanges.length < 2) {
-	const grund = sheet.error ? String(sheet.error.message || sheet.error).slice(0, 200) : 'Antwort ohne Reiter';
-	r = { fehler: ['Sheet nicht lesbar (Freigabe für das Google-Konto und Reiter "Allgemein"/"Pflichtfelder" prüfen): ' + grund], hinweise: [], allgemein_update: {}, pflicht_ops: [], aenderungen: [], lesefehler: true };
+const tabs = {};
+for (const v of Array.isArray(sheet.valueRanges) ? sheet.valueRanges : []) {
+	const titel = String(v.range || '').replace(/!.*$/, '').replace(/^'(.*)'$/, '$1').replace(/''/g, "'");
+	tabs[titel] = v.values || [];
+}
+const bereichsReiter = configSheet.BEREICH_REITER.some((b) => tabs[b.name]);
+if (sheet.error || !tabs.Allgemein || (!tabs.Pflichtfelder && !bereichsReiter)) {
+	const grund = sheet.error ? String(sheet.error.message || sheet.error).slice(0, 200) : 'Reiter fehlen';
+	r = { fehler: ['Sheet nicht lesbar (Freigabe für das Google-Konto und die Reiter "Allgemein" und je Bereich prüfen): ' + grund], hinweise: [], allgemein_update: {}, pflicht_ops: [], aenderungen: [], lesefehler: true };
 } else {
 	r = configSheet.abgleichen({
 		allgemein: allg,
 		pflichtfelder: pf,
-		reiterAllgemein: sheet.valueRanges[0].values || [],
-		reiterPflicht: sheet.valueRanges[1].values || [],
+		reiterAllgemein: tabs.Allgemein,
+		reiterPflicht: tabs.Pflichtfelder,
+		reiterBereiche: bereichsReiter ? tabs : null,
 		// Auch Kunden, die noch nicht aktiv sind (Einrichtung), sollen ihre Regeln pflegen können.
 		validieren: (a, p) => configValidator.validiereConfig({ ...a, aktiv: true }, p),
 	});
@@ -173,7 +184,7 @@ const a = $('Abgleichen').first().json;
 return [{ json: { kunde_id: a.kunde_id, ergebnis: a.ergebnis, aenderungen: a.anzahl_aenderungen, gemeldet: a.melden } }];
 `);
 
-	wf.kette(trigger, config, felder, lesen, stand, abgleichen);
+	wf.kette(trigger, config, felder, reiter, lesen, stand, abgleichen);
 	wf.verbinde(abgleichen, uebernehmen);
 	wf.verbinde(uebernehmen, allgVorb, 0);
 	wf.verbinde(uebernehmen, felderVorb, 0);

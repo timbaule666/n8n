@@ -147,6 +147,195 @@ function anlegenBody(titel, inhalt) {
 	};
 }
 
+// ---------------------------------------------------------------- Aufbau mit einem Reiter je Bereich
+// Bereiche wie in src/configValidator.js BEREICHE (Module laden sich in n8n nicht gegenseitig; Gleichheit prüft
+// test/configSheet.test.js). Ein Reiter je Bereich mit dessen Feldern; Vorgangstyp ergibt sich aus dem Reiter.
+const BEREICH_REITER = Object.freeze([
+	{ schluessel: 'angebot', spalte: 'bereich_angebot', name: 'Angebotsanfragen', typen: ['angebot', 'angebotsanfrage', 'transport'] },
+	{ schluessel: 'bestellung', spalte: 'bereich_bestellung', name: 'Bestellungen', typen: ['bestellung'] },
+	{ schluessel: 'termin', spalte: 'bereich_termin', name: 'Terminanfragen', typen: ['termin', 'terminanfrage'] },
+	{ schluessel: 'reklamation', spalte: 'bereich_reklamation', name: 'Reklamationen', typen: ['reklamation'] },
+]);
+const WEITERE = 'Weitere Vorgangsarten';
+const ABSCHNITT = '▸';
+const FELDTYPEN = ['text', 'plz', 'datum', 'zahl', 'email', 'telefon', 'enum']; // wie configValidator.FELDTYPEN
+const BEREICH_SPALTEN = PFLICHT_SPALTEN.filter(([s]) => s !== 'vorgangstyp');
+const GRUPPEN = Object.freeze([
+	['Texte und Anrede', ['anrede_stil', 'sprache', 'signatur', 'ki_hinweistext']],
+	['Rückfragen an Ihre Kunden', ['frist_stunden', 'frist_nur_geschaeftszeit', 'vorgangsnummer_im_betreff', 'max_runden', 'erinnerung_intervall_stunden', 'anzahl_erinnerungen']],
+	['Freigabe durch Ihre Mitarbeiter', ['freigabe_erinnerung_stunden', 'freigabe_ablauf_stunden']],
+	['Geschäftszeiten', ['arbeitstage', 'geschaeftszeit_von', 'geschaeftszeit_bis', 'feiertage_region', 'zusaetzliche_feiertage']],
+	['Absender', ['absender_allowlist', 'absender_blocklist']],
+	['Outlook', ['markierung_bereit', 'markierung_rueckfrage', 'markierung_wartet', 'archivordner']],
+	['Daten', ['aufbewahrung_tage']],
+]);
+
+function bereichVon(typ) {
+	const t = String(typ || '').trim().toLowerCase();
+	return BEREICH_REITER.find((b) => b.typen.includes(t)) || null;
+}
+
+/** Gebucht-Status je Bereich aus der Config-Zeile (wie configValidator.bereicheLesen). */
+function bereicheGebucht(a) {
+	const z = a || {};
+	const gesteuert = BEREICH_REITER.some((b) => Object.prototype.hasOwnProperty.call(z, b.spalte));
+	return BEREICH_REITER.map((b) => ({ ...b, aktiv: !gesteuert || z[b.spalte] === true || ['true', 'ja', '1'].includes(String(z[b.spalte] ?? '').trim().toLowerCase()) }));
+}
+
+/** Vorgangstyp, unter dem die Felder eines Bereichs-Reiters gespeichert werden (bestehender Typ des Kunden, sonst Standard). */
+function typVonBereich(b, alt) {
+	const vorhanden = (alt || []).map((z) => z.vorgangstyp).find((t) => b.typen.includes(String(t || '').toLowerCase()));
+	return vorhanden || b.schluessel;
+}
+
+/** Führt die Bereichs-Reiter zu einer Tabelle im Aufbau des Reiters "Pflichtfelder" zusammen. */
+function bereicheZusammenfuehren(reiter, alt, fehler) {
+	const sprachen = new Set();
+	const tabellen = [];
+	for (const b of BEREICH_REITER) {
+		const z = reiter[b.name];
+		if (!z) { fehler.push(`Reiter "${b.name}" fehlt (bitte Reiter nicht löschen oder umbenennen)`); continue; }
+		tabellen.push({ name: b.name, zeilen: z, typ: typVonBereich(b, alt) });
+	}
+	if (reiter[WEITERE]) tabellen.push({ name: WEITERE, zeilen: reiter[WEITERE], typ: null });
+	for (const t of tabellen) {
+		const kopf = (t.zeilen[0] || []).map((k) => zelle(k).toLowerCase());
+		t.index = {};
+		const spalten = t.typ ? BEREICH_SPALTEN : PFLICHT_SPALTEN;
+		for (const [s, k] of spalten) {
+			const i = kopf.indexOf(k.toLowerCase());
+			if (i < 0 && s !== 'werte') fehler.push(`${t.name}: Spalte "${k}" fehlt in der Kopfzeile`);
+			t.index[s] = i;
+		}
+		t.sprachen = [];
+		kopf.forEach((k, i) => { const m = /^rückfrage-text \(([a-z]{2})\)$/.exec(k); if (m) { t.sprachen.push([m[1], i]); sprachen.add(m[1]); } });
+	}
+	const liste = [...sprachen];
+	const kopf = [...PFLICHT_SPALTEN.map(([, k]) => k), ...liste.map((l) => `Rückfrage-Text (${l})`)];
+	const zeilen = [kopf];
+	const orte = [];
+	for (const t of tabellen) {
+		(t.zeilen || []).slice(1).forEach((z, i) => {
+			const w = (s) => (t.index[s] >= 0 ? z[t.index[s]] : '');
+			const zeile = PFLICHT_SPALTEN.map(([s]) => (s === 'vorgangstyp' && t.typ ? (PFLICHT_SPALTEN.slice(1).some(([x]) => zelle(w(x))) ? t.typ : '') : w(s)));
+			const sp = Object.fromEntries(t.sprachen);
+			zeilen.push([...zeile, ...liste.map((l) => (sp[l] !== undefined ? z[sp[l]] : ''))]);
+			orte.push(`${t.name}, Zeile ${i + 2}`);
+		});
+	}
+	return { zeilen, ort: (nr) => orte[nr - 2] || `Zeile ${nr}` };
+}
+
+/**
+ * Inhalt des Regel-Sheets mit einem Reiter je Bereich:
+ * [{ titel, zeilen, art: 'info'|'allgemein'|'bereich'|'weitere'|'status', gebucht? }]
+ */
+function sheetInhaltBereiche(allgemein, pflichtfelder) {
+	const a = allgemein || {};
+	const w = einstellungsWerte(a);
+	const ue = jsonOder(a.uebersetzungen, {}) || {};
+	const sprachen = Object.keys(ue);
+	const gebucht = bereicheGebucht(a);
+	const nachSpalte = Object.fromEntries(EINSTELLUNGEN.map((e) => [e[0], e]));
+	const allg = [['Einstellung', 'Wert', 'Erklärung']];
+	for (const [titel, spalten] of GRUPPEN) {
+		allg.push([`${ABSCHNITT} ${titel}`, '', '']);
+		for (const s of spalten) { const [, label, , erkl] = nachSpalte[s]; allg.push([label, w[s] ?? '', erkl]); }
+		if (titel === 'Texte und Anrede') {
+			for (const l of sprachen) {
+				allg.push([`Signatur (${l})`, ue[l].signatur || '', `Signatur für Rückfragen auf Mails in der Sprache "${l}"`]);
+				allg.push([`KI-Hinweis (${l})`, ue[l].ki_hinweistext || '', `KI-Hinweis für Rückfragen in der Sprache "${l}"`]);
+			}
+		}
+	}
+	const felder = (pflichtfelder || []).slice().sort((x, y) => (x.reihenfolge || 0) - (y.reihenfolge || 0));
+	const zeileVon = (z, spalten) => {
+		const regel = jsonOder(z.validierungsregel, {}) || {};
+		const v = { ...z, pflicht: z.pflicht ? 'ja' : 'nein', aktiv: z.aktiv === false ? 'nein' : 'ja', werte: Array.isArray(regel.werte) ? regel.werte.join(', ') : '' };
+		const basis = spalten.map(([s]) => (v[s] === null || v[s] === undefined ? '' : String(v[s])));
+		const i = spalten.findIndex(([s]) => s === 'resolution_textbaustein') + 1;
+		const texte = sprachen.map((l) => ((ue[l].textbausteine || {})[z.feldname] || ''));
+		return [...basis.slice(0, i), ...texte, ...basis.slice(i)];
+	};
+	const kopfVon = (spalten) => { const k = spalten.map(([, x]) => x); const i = spalten.findIndex(([s]) => s === 'resolution_textbaustein') + 1; return [...k.slice(0, i), ...sprachen.map((l) => `Rückfrage-Text (${l})`), ...k.slice(i)]; };
+	const reiter = [{ titel: 'Anleitung', art: 'info', zeilen: anleitung(gebucht) }, { titel: 'Allgemein', art: 'allgemein', zeilen: allg }];
+	for (const b of gebucht) {
+		reiter.push({ titel: b.name, art: 'bereich', gebucht: b.aktiv, zeilen: [kopfVon(BEREICH_SPALTEN), ...felder.filter((z) => bereichVon(z.vorgangstyp) && bereichVon(z.vorgangstyp).schluessel === b.schluessel).map((z) => zeileVon(z, BEREICH_SPALTEN))] });
+	}
+	const rest = felder.filter((z) => !bereichVon(z.vorgangstyp));
+	if (rest.length) reiter.push({ titel: WEITERE, art: 'weitere', zeilen: [kopfVon(PFLICHT_SPALTEN), ...rest.map((z) => zeileVon(z, PFLICHT_SPALTEN))] });
+	reiter.push({ titel: 'Status', art: 'status', zeilen: statusZeilen({ ergebnis: 'Angelegt', meldungen: [], bereiche: gebucht }) });
+	return reiter;
+}
+
+function anleitung(gebucht) {
+	return [
+		['Ihre Regeln für den E-Mail-Agenten', ''],
+		['', ''],
+		['So funktioniert es', 'Sie pflegen hier selbst, wie der Agent arbeitet: Texte, Fristen, Geschäftszeiten und je Bereich die Angaben, die er bei Ihren Kunden prüft und nachfragt. Änderungen werden täglich um 06:20 Uhr geprüft und übernommen.'],
+		['Ergebnis', 'Steht im Reiter „Status“. Ist etwas falsch eingetragen, wird nichts übernommen und es gelten die bisherigen Regeln, bis der Fehler behoben ist. Sie bekommen dazu eine Meldung in Teams.'],
+		['', ''],
+		['Gebuchte Bereiche', 'Der Agent bearbeitet nur gebuchte Bereiche. Nicht gebuchte Bereiche können Sie schon vorbereiten; sie werden genutzt, sobald IPS sie freischaltet.'],
+		...gebucht.map((b) => [`   ${b.name}`, b.aktiv ? 'gebucht' : 'nicht gebucht']),
+		['', ''],
+		['Reiter „Allgemein“', 'Anrede, Signatur, Fristen, Erinnerungen, Freigaben, Geschäftszeiten, Absender und Outlook-Markierungen.'],
+		['Reiter je Bereich', 'Eine Zeile je Angabe, die der Agent aus der Mail ausliest und prüft.'],
+		['   Pflicht', '„ja“: Fehlt die Angabe, bereitet der Agent eine Rückfrage vor. „nein“: wird ausgelesen, aber nicht nachgefragt.'],
+		['   Rückfrage-Text', 'Dieser Satz geht wortgleich an Ihren Kunden, wenn die Angabe fehlt (nach Freigabe durch Ihre Mitarbeiter). Bitte keine Zusagen zu Preisen, Terminen oder Gutschriften.'],
+		['   Hinweis für die KI', 'Beschreibt, wonach der Agent in der Mail suchen soll.'],
+		['   Typ', 'text, plz, datum, zahl, email, telefon oder enum (nur Werte aus „Erlaubte Werte“).'],
+		['   Reihenfolge', 'Reihenfolge der Angaben in Meldungen und Rückfragen.'],
+		['   Aktiv', '„nein“: Angabe wird nicht mehr verwendet (bleibt aber gespeichert).'],
+		['', ''],
+		['Bitte nicht', 'Reiter umbenennen oder löschen, die Kopfzeilen ändern oder Feldnamen ändern. Für eine neue Angabe eine neue Zeile anlegen. Gelöschte Zeilen werden nur deaktiviert, nie gelöscht.'],
+		['Nicht hier', 'Postfach, Freigeber, Teams und gebuchte Bereiche ändert IPS für Sie.'],
+	];
+}
+
+/** Body für POST /v4/spreadsheets und Formatierung (batchUpdate) für das Regel-Sheet mit Bereichs-Reitern. */
+function anlegenBodyBereiche(titel, reiter) {
+	const GRAU = { red: 0.45, green: 0.47, blue: 0.52 }, BLAU = { red: 0.16, green: 0.45, blue: 0.85 }, GRUEN = { red: 0.2, green: 0.62, blue: 0.35 }, HELL = { red: 0.91, green: 0.94, blue: 0.99 };
+	const farbe = (r) => (r.art === 'bereich' ? (r.gebucht ? GRUEN : GRAU) : r.art === 'allgemein' || r.art === 'weitere' ? BLAU : GRAU);
+	const zeile = (werte) => ({ values: werte.map((v) => ({ userEnteredValue: { stringValue: String(v ?? '') } })) });
+	const body = {
+		properties: { title: titel, locale: 'de_DE' },
+		sheets: reiter.map((r, i) => ({ properties: { sheetId: i, index: i, title: r.titel, tabColor: farbe(r), gridProperties: { frozenRowCount: r.art === 'info' || r.art === 'status' ? 0 : 1 } }, data: [{ startRow: 0, startColumn: 0, rowData: r.zeilen.map(zeile) }] })),
+	};
+	const req = [];
+	const bereich = (id, r0, r1, c0, c1) => ({ sheetId: id, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 });
+	const auswahl = (id, r0, r1, c, werte) => ({ setDataValidation: { range: bereich(id, r0, r1, c, c + 1), rule: { condition: { type: 'ONE_OF_LIST', values: werte.map((x) => ({ userEnteredValue: x })) }, strict: true, showCustomUi: true } } });
+	const breite = (id, i, px) => ({ updateDimensionProperties: { range: { sheetId: id, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: px }, fields: 'pixelSize' } });
+	reiter.forEach((r, id) => {
+		const n = Math.max(...r.zeilen.map((z) => z.length));
+		const m = r.zeilen.length;
+		req.push({ repeatCell: { range: bereich(id, 0, m, 0, n), cell: { userEnteredFormat: { wrapStrategy: 'WRAP', verticalAlignment: 'TOP' } }, fields: 'userEnteredFormat(wrapStrategy,verticalAlignment)' } });
+		if (r.art === 'info') {
+			req.push({ repeatCell: { range: bereich(id, 0, 1, 0, 2), cell: { userEnteredFormat: { textFormat: { bold: true, fontSize: 14 } } }, fields: 'userEnteredFormat.textFormat' } });
+			req.push({ repeatCell: { range: bereich(id, 1, m, 0, 1), cell: { userEnteredFormat: { textFormat: { bold: true } } }, fields: 'userEnteredFormat.textFormat.bold' } });
+			req.push(breite(id, 0, 220), breite(id, 1, 820));
+			return;
+		}
+		if (r.art === 'status') { req.push(breite(id, 0, 320), breite(id, 1, 620)); return; }
+		req.push({ repeatCell: { range: bereich(id, 0, 1, 0, n), cell: { userEnteredFormat: { backgroundColor: farbe(r), textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } } } }, fields: 'userEnteredFormat(backgroundColor,textFormat)' } });
+		if (r.art === 'allgemein') {
+			req.push(breite(id, 0, 300), breite(id, 1, 360), breite(id, 2, 560));
+			r.zeilen.forEach((z, i) => {
+				if (String(z[0]).startsWith(ABSCHNITT)) req.push({ repeatCell: { range: bereich(id, i, i + 1, 0, 3), cell: { userEnteredFormat: { backgroundColor: HELL, textFormat: { bold: true } } }, fields: 'userEnteredFormat(backgroundColor,textFormat)' } });
+				const e = EINSTELLUNGEN.find((x) => x[1] === z[0]);
+				if (e && e[2] === 'janein') req.push(auswahl(id, i, i + 1, 1, ['ja', 'nein']));
+			});
+			return;
+		}
+		const kopf = r.zeilen[0];
+		const zeilenBis = Math.max(m + 30, 60); // Platz für neue Angaben
+		const spalte = (k) => kopf.indexOf(k);
+		const breiten = { Vorgangstyp: 120, Feldname: 150, Anzeigename: 200, Typ: 90, Pflicht: 70, 'Rückfrage-Text': 380, 'Hinweis für die KI': 360, 'Erlaubte Werte': 180, Reihenfolge: 90, Aktiv: 70 };
+		kopf.forEach((k, i) => req.push(breite(id, i, breiten[k] || 320)));
+		req.push(auswahl(id, 1, zeilenBis, spalte('Typ'), FELDTYPEN), auswahl(id, 1, zeilenBis, spalte('Pflicht'), ['ja', 'nein']), auswahl(id, 1, zeilenBis, spalte('Aktiv'), ['ja', 'nein']));
+	});
+	return { body, format: { requests: req } };
+}
+
 // ---------------------------------------------------------------- Sheet -> Config
 
 function tageAus(text, fehler) {
@@ -187,7 +376,7 @@ function allgemeinLesen(zeilen, fehler, hinweise) {
 	const werte = {};
 	(zeilen || []).slice(1).forEach((z, i) => {
 		const label = zelle(z && z[0]);
-		if (!label) return;
+		if (!label || label.startsWith(ABSCHNITT)) return; // leer oder Abschnittsüberschrift
 		const sp = /^(Signatur|KI-Hinweis) \(([a-z]{2})\)$/i.exec(label);
 		if (sp) {
 			const l = sp[2].toLowerCase();
@@ -255,7 +444,7 @@ function allgemeinUmsetzen(werte, alt, fehler) {
 }
 
 /** Liest den Reiter "Pflichtfelder" (Kopfzeile + Zeilen) und baut die neuen Tabellenzeilen. */
-function pflichtUmsetzen(zeilen, alt, kundeId, fehler) {
+function pflichtUmsetzen(zeilen, alt, kundeId, fehler, ort = (nr) => `Pflichtfelder, Zeile ${nr}`) {
 	const kopf = (zeilen && zeilen[0] ? zeilen[0] : []).map((k) => zelle(k).toLowerCase());
 	const index = {};
 	for (const [s, k] of PFLICHT_SPALTEN) {
@@ -276,17 +465,17 @@ function pflichtUmsetzen(zeilen, alt, kundeId, fehler) {
 		const vorgangstyp = wert('vorgangstyp');
 		const feldname = wert('feldname');
 		const schluessel = `${vorgangstyp}.${feldname}`;
-		if (gesehen.has(schluessel)) { fehler.push(`Pflichtfelder, Zeile ${nr}: Feld "${feldname}" steht doppelt`); return; }
+		if (gesehen.has(schluessel)) { fehler.push(`${ort(nr)}: Feld "${feldname}" steht doppelt`); return; }
 		gesehen.add(schluessel);
 		const vorher = altNach.get(schluessel);
 		const pflicht = janein(wert('pflicht'));
-		if (pflicht === null) fehler.push(`Pflichtfelder, Zeile ${nr}: Pflicht bitte "ja" oder "nein"`);
+		if (pflicht === null) fehler.push(`${ort(nr)}: Pflicht bitte "ja" oder "nein"`);
 		const aktivRoh = wert('aktiv');
 		const aktiv = aktivRoh === '' ? true : janein(aktivRoh);
-		if (aktiv === null) fehler.push(`Pflichtfelder, Zeile ${nr}: Aktiv bitte "ja" oder "nein"`);
+		if (aktiv === null) fehler.push(`${ort(nr)}: Aktiv bitte "ja" oder "nein"`);
 		const reihenfolgeRoh = wert('reihenfolge');
 		const reihenfolge = reihenfolgeRoh === '' ? (vorher ? vorher.reihenfolge : (out.length + 1) * 10) : zahlAus(reihenfolgeRoh);
-		if (reihenfolge === null) fehler.push(`Pflichtfelder, Zeile ${nr}: Reihenfolge ist keine Zahl`);
+		if (reihenfolge === null) fehler.push(`${ort(nr)}: Reihenfolge ist keine Zahl`);
 		const regel = { ...(jsonOder(vorher && vorher.validierungsregel, {}) || {}) };
 		const typ = wert('typ').toLowerCase();
 		if (typ === 'enum') {
@@ -332,13 +521,19 @@ const SPALTEN_PFLICHT = ['vorgangstyp', 'feldname', 'anzeigename', 'typ', 'pflic
  * @param {function} p.validieren    (allgemein, aktivePflichtfelder) => { gueltig, fehler }
  * @returns {{ fehler: string[], hinweise: string[], allgemein_update: object, pflicht_ops: object[], aenderungen: string[] }}
  */
-function abgleichen({ allgemein, pflichtfelder, reiterAllgemein, reiterPflicht, validieren }) {
+function abgleichen({ allgemein, pflichtfelder, reiterAllgemein, reiterPflicht, reiterBereiche, validieren }) {
 	const fehler = [];
 	const hinweise = [];
 	const alt = allgemein || {};
 	const werte = allgemeinLesen(reiterAllgemein, fehler, hinweise);
 	const neu = allgemeinUmsetzen(werte, alt, fehler);
-	const pflicht = pflichtUmsetzen(reiterPflicht, pflichtfelder, alt.kunde_id, fehler);
+	const bereichsReiter = reiterBereiche && BEREICH_REITER.some((b) => reiterBereiche[b.name]);
+	let pflicht;
+	if (bereichsReiter) {
+		if (reiterPflicht) hinweise.push('Reiter "Pflichtfelder" wird ignoriert, es gelten die Reiter je Bereich');
+		const z = bereicheZusammenfuehren(reiterBereiche, pflichtfelder, fehler);
+		pflicht = fehler.length ? [] : pflichtUmsetzen(z.zeilen, pflichtfelder, alt.kunde_id, fehler, z.ort);
+	} else pflicht = pflichtUmsetzen(reiterPflicht, pflichtfelder, alt.kunde_id, fehler);
 	const leer = { fehler, hinweise, allgemein_update: {}, pflicht_ops: [], aenderungen: [] };
 	if (fehler.length) return leer;
 
@@ -437,4 +632,4 @@ function fingerabdruck(text) {
 	return h.toString(16).padStart(8, '0');
 }
 
-module.exports = { EINSTELLUNGEN, PFLICHT_SPALTEN, sheetInhalt, anlegenBody, abgleichen, statusZeilen, fingerabdruck, lesbar };
+module.exports = { EINSTELLUNGEN, PFLICHT_SPALTEN, BEREICH_REITER, GRUPPEN, FELDTYPEN, WEITERE, sheetInhalt, sheetInhaltBereiche, anlegenBody, anlegenBodyBereiche, abgleichen, statusZeilen, fingerabdruck, lesbar };

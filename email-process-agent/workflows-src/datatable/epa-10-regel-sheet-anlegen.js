@@ -8,7 +8,7 @@ module.exports = function () {
 
 	wf.notiz('Notiz Zweck', [-80, -420], [
 		'## EPA-10 Regel-Sheet anlegen',
-		'**Zweck:** Legt für einen Kunden ein Google Sheet mit seinen aktuellen Regeln an (Reiter "Allgemein", "Pflichtfelder", "Status") und trägt die Sheet-ID in `config_sheet` ein. Danach übernimmt "EPA-09 Regeln aus Google Sheets" Änderungen automatisch.',
+		'**Zweck:** Legt für einen Kunden ein Google Sheet mit seinen aktuellen Regeln an (Reiter "Anleitung", "Allgemein", je Bereich ein Reiter mit dessen Angaben, "Status") und trägt die Sheet-ID in `config_sheet` ein. Danach übernimmt "EPA-09 Regeln aus Google Sheets" Änderungen automatisch.',
 		'**Aufruf:** manuell mit `kunde_id`. Hat der Kunde schon ein Sheet, wird kein zweites angelegt.',
 		'**Danach:** Sheet in Google Drive für den Kunden freigeben (Bearbeiten). Nur die Personen, die Regeln ändern dürfen.',
 		'**Einrichten:** Google-Sheets-Credential in "Sheet anlegen" und "Spaltenbreite anpassen" zuweisen.',
@@ -23,7 +23,9 @@ const allg = $('Config-Zeile lesen').first().json || {};
 if (!allg.kunde_id) throw new Error('Config für ' + ${E}.kunde_id + ' nicht gefunden');
 if (typeof allg.config_sheet === 'string' && allg.config_sheet.trim()) throw new Error('Kunde hat schon ein Regel-Sheet: https://docs.google.com/spreadsheets/d/' + allg.config_sheet.trim());
 const pf = $('Pflichtfelder lesen').all().map((i) => i.json).filter((z) => z && z.feldname);
-return [{ json: { body: configSheet.anlegenBody('EPA Regeln – ' + allg.kunde_id, configSheet.sheetInhalt(allg, pf)) } }];
+// Ein Reiter je Bereich (Angebotsanfragen, Bestellungen, Terminanfragen, Reklamationen), Anleitung, Allgemein, Status.
+const a = configSheet.anlegenBodyBereiche('EPA Regeln – ' + allg.kunde_id, configSheet.sheetInhaltBereiche(allg, pf));
+return [{ json: { body: a.body, format: a.format } }];
 `);
 	const anlegen = wf.node('Sheet anlegen', 'n8n-nodes-base.httpRequest', [880, 0], {
 		method: 'POST', url: SHEETS, authentication: 'predefinedCredentialType', nodeCredentialType: 'googleSheetsOAuth2Api',
@@ -32,7 +34,8 @@ return [{ json: { body: configSheet.anlegenBody('EPA Regeln – ' + allg.kunde_i
 	const breite = wf.node('Spaltenbreite anpassen', 'n8n-nodes-base.httpRequest', [1100, 0], {
 		method: 'POST', url: `=${SHEETS}/{{ $json.spreadsheetId }}:batchUpdate`, authentication: 'predefinedCredentialType', nodeCredentialType: 'googleSheetsOAuth2Api',
 		sendBody: true, specifyBody: 'json',
-		jsonBody: '={{ JSON.stringify({ requests: $json.sheets.map((s) => ({ autoResizeDimensions: { dimensions: { sheetId: s.properties.sheetId, dimension: "COLUMNS", startIndex: 0, endIndex: 14 } } })) }) }}',
+		// Spaltenbreiten, Kopfzeilen, Abschnitte und Auswahlfelder (ja/nein, Typ)
+		jsonBody: "={{ JSON.stringify($('Inhalt bauen').first().json.format) }}",
 		options: {},
 	}, { onError: 'continueRegularOutput' });
 	const vorb = wf.code('Sheet-ID vorbereiten', [1320, 0], [], `

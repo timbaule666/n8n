@@ -16,10 +16,14 @@ Der **Reiter „Allgemein“** hat eine Zeile je Einstellung und die Spalten Ein
 | Outlook-Markierungen | Name der grünen Markierung „bereit“ (alle Angaben da), der roten „Rückfrage“ (Rückfrage wartet auf Freigabe) und der gelben „wartet“ (Rückfrage verschickt, Antwort des Kunden steht aus). Leer heißt: keine Markierung. |
 | Datenschutz | Aufbewahrung der Daten in Tagen |
 
-Im **Reiter „Pflichtfelder“** steht je Feld eine Zeile mit diesen Spalten:
-- Vorgangstyp, Feldname, Anzeigename, Typ (text, plz, datum, zahl, email, telefon, enum), Pflicht (ja/nein)
-- Rückfrage-Text, Hinweis für die KI, Erlaubte Werte (nur bei Typ enum, durch Komma getrennt), Reihenfolge, Aktiv (ja/nein)
-- je Fremdsprache „Rückfrage-Text (en)“
+**Je Bereich ein Reiter** („Angebotsanfragen“, „Bestellungen“, „Terminanfragen“, „Reklamationen“; Stand seit 16.11.2026). Jede Zeile ist eine Angabe, die der Agent ausliest und prüft:
+- Feldname, Anzeigename, Typ (Auswahl: text, plz, datum, zahl, email, telefon, enum), Pflicht (Auswahl ja/nein)
+- Rückfrage-Text, je Fremdsprache „Rückfrage-Text (en)“, Hinweis für die KI, Erlaubte Werte (nur bei Typ enum, durch Komma getrennt), Reihenfolge, Aktiv (Auswahl ja/nein)
+- Der Vorgangstyp ergibt sich aus dem Reiter. Reiter grün = gebucht, grau = nicht gebucht (kann vorbereitet werden, wird erst nach Freischaltung genutzt).
+- Weitere Reiter: „Anleitung“ (für den Kunden, wird nicht gelesen), „Allgemein“ (mit Abschnitten; Zeilen mit „▸“ sind Überschriften), „Status“ (Ergebnis, gebuchte Bereiche).
+- Gibt es Vorgangstypen außerhalb der vier Bereiche, stehen sie im Reiter „Weitere Vorgangsarten“ mit Spalte „Vorgangstyp“.
+
+**Älterer Aufbau** (ein Reiter „Pflichtfelder“ mit Spalte „Vorgangstyp“) wird weiter gelesen.
 
 Neue Zeilen legen ein neues Feld an.
 
@@ -48,12 +52,12 @@ Diese Einstellungen betreffen Sicherheit oder Technik. Wer das Sheet bearbeiten 
 3. Das Sheet in Google Drive für die Personen des Kunden freigeben, die Regeln ändern dürfen (Bearbeiten).
 4. „EPA-09 Regeln aus Google Sheets“ veröffentlichen. Mit `{"kunde_id": "<kürzel>"}` als Aufruf gleicht er sofort ab.
 
-Ein **vorhandenes Sheet** anbinden: Die Sheet-ID (der Teil der URL zwischen `/d/` und `/edit`) in `config_sheet` eintragen. Das Sheet braucht die Reiter „Allgemein“, „Pflichtfelder“ und „Status“ mit dem Aufbau aus EPA-10. Das Google-Konto des Credentials braucht Bearbeitungsrechte, damit der Status geschrieben werden kann.
+Ein **vorhandenes Sheet** anbinden: Die Sheet-ID (der Teil der URL zwischen `/d/` und `/edit`) in `config_sheet` eintragen. Das Sheet braucht den Aufbau aus EPA-10 (Reiter „Allgemein“, je Bereich ein Reiter, „Status“; oder der ältere Aufbau mit „Pflichtfelder“). Das Google-Konto des Credentials braucht Bearbeitungsrechte, damit der Status geschrieben werden kann.
 
 ## Grenzen
 
 - **Übernahme einmal täglich (06:20 Uhr):** Änderungen greifen erst nach dem nächsten Lauf, bei manuellem Aufruf von EPA-09 sofort.
-- **Vorgangsarten** (welche Bereiche ein Kunde hat, z. B. Reklamation) stehen nicht im Sheet; sie schaltet der Betreiber frei. Die Felder eines freigeschalteten Bereichs pflegt der Kunde im Reiter „Pflichtfelder“.
+- **Vorgangsarten** (welche Bereiche ein Kunde hat, z. B. Reklamation) stehen nicht im Sheet; sie schaltet der Betreiber frei. Die Felder eines Bereichs pflegt der Kunde im Reiter dieses Bereichs.
 - **Gleichzeitiges Ändern im Sheet und in der Data Table:** Für die Einstellungen aus dem Sheet gewinnt das Sheet.
 - **Excel:** Eine Excel-Datei in OneDrive oder SharePoint wäre über Microsoft Graph ähnlich möglich, ist aber nicht gebaut.
 - **Postgres:** Nur die Data-Table-Variante gleicht ab. Die Postgres-Variante hat nur die Spalte `config_sheet` (Migration 005).

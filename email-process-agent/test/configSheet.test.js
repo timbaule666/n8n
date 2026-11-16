@@ -188,3 +188,55 @@ test('Ältere Sheets ohne Zeile "Vorgangsnummer im Betreff": kein Fehler, bisher
 	assert.ok(!r.fehler.some((f) => /Vorgangsnummer/.test(f)), r.fehler.join('\n'));
 	assert.equal('vorgangsnummer_im_betreff' in r.allgemein_update, false);
 });
+
+// ---------------------------------------------------------------- Regel-Sheet mit einem Reiter je Bereich
+{
+	const cs = require('../src/configSheet');
+	const cv = require('../src/configValidator');
+	const bsp = require('../config/datatables/beispiel-transport.json');
+	const ALT = { ...bsp.epa_config_allgemein[0], postfach: 'anfragen@beispiel.de', freigeber: '["dispo@beispiel.de"]', benachrichtigung: '{"kanal": "teams", "team_id": "t", "channel_id": "c"}', uebersetzungen: JSON.stringify({ en: { signatur: 'Regards', ki_hinweistext: 'AI', textbausteine: Object.fromEntries(bsp.epa_config_pflichtfelder.map((f) => [f.feldname, 'EN ' + f.feldname])) } }) };
+	const PF = bsp.epa_config_pflichtfelder.map((f, i) => ({ ...f, id: i + 1 }));
+	const val = (a, p) => cv.validiereConfig({ ...a, aktiv: true }, p);
+	const inhalt = () => Object.fromEntries(cs.sheetInhaltBereiche(ALT, PF).map((r) => [r.titel, JSON.parse(JSON.stringify(r.zeilen))]));
+	const lauf = (aendern) => { const i = inhalt(); if (aendern) aendern(i); return cs.abgleichen({ allgemein: ALT, pflichtfelder: PF, reiterAllgemein: i.Allgemein, reiterBereiche: i, validieren: val }); };
+
+	test('Bereichs-Sheet: Reiter, Gleichheit mit der Config-Prüfung, alle Einstellungen gegliedert', () => {
+		assert.deepEqual(cs.sheetInhaltBereiche(ALT, PF).map((r) => r.titel), ['Anleitung', 'Allgemein', 'Angebotsanfragen', 'Bestellungen', 'Terminanfragen', 'Reklamationen', 'Status']);
+		assert.deepEqual(cs.BEREICH_REITER.map(({ schluessel, spalte, name, typen }) => ({ schluessel, spalte, name, typen })), cv.BEREICHE.map(({ schluessel, spalte, name, typen }) => ({ schluessel, spalte, name, typen })));
+		assert.deepEqual(cs.FELDTYPEN, cv.FELDTYPEN);
+		assert.deepEqual(cs.GRUPPEN.flatMap(([, s]) => s).sort(), cs.EINSTELLUNGEN.map((e) => e[0]).sort());
+		const i = inhalt();
+		assert.equal(i.Angebotsanfragen.length - 1, PF.filter((f) => f.vorgangstyp === 'transport').length);
+		assert.ok(i.Allgemein.some((z) => z[0].startsWith('▸')));
+	});
+
+	test('Bereichs-Sheet: frisch angelegt ergibt keine Änderung (Hin und zurück)', () => {
+		const r = lauf();
+		assert.deepEqual(r.fehler, []);
+		assert.deepEqual(r.aenderungen, []);
+		assert.ok(!r.hinweise.some((h) => /unbekannt/.test(h)), r.hinweise.join('|'));
+	});
+
+	test('Bereichs-Sheet: Text ändern, neues Feld im Reiter, Fehler mit Reiter und Zeile', () => {
+		let r = lauf((i) => { i.Bestellungen[1][4] = 'Was möchten Sie bestellen?'; });
+		assert.deepEqual(r.fehler, []);
+		assert.equal(r.pflicht_ops.length, 1);
+		assert.equal(r.pflicht_ops[0].zeile.resolution_textbaustein, 'Was möchten Sie bestellen?');
+		r = lauf((i) => { i.Reklamationen.push(['Fotos', 'Fotos vorhanden', 'text', 'nein', 'Bitte senden Sie uns Fotos.', 'Please send photos.', 'Ob Fotos angehängt sind', '', '50', 'ja']); });
+		assert.deepEqual(r.fehler, []);
+		const neu = r.pflicht_ops.find((o) => o.aktion === 'insert');
+		assert.equal(neu.zeile.vorgangstyp, 'reklamation');
+		assert.equal(neu.zeile.feldname, 'Fotos');
+		r = lauf((i) => { i.Terminanfragen[2][3] = 'vielleicht'; });
+		assert.match(r.fehler.join('|'), /Terminanfragen, Zeile 3: Pflicht bitte "ja" oder "nein"/);
+		r = lauf((i) => { delete i.Terminanfragen; });
+		assert.match(r.fehler.join('|'), /Reiter "Terminanfragen" fehlt/);
+	});
+
+	test('Bereichs-Sheet: Formatierung mit Auswahlfeldern und festen Reiter-IDs', () => {
+		const { body, format } = cs.anlegenBodyBereiche('EPA Regeln – test', cs.sheetInhaltBereiche(ALT, PF));
+		assert.deepEqual(body.sheets.map((s) => s.properties.sheetId), [0, 1, 2, 3, 4, 5, 6]);
+		assert.ok(format.requests.some((q) => q.setDataValidation && q.setDataValidation.rule.condition.values.length === cs.FELDTYPEN.length));
+		assert.ok(format.requests.length > 20);
+	});
+}
