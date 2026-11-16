@@ -32,7 +32,7 @@ module.exports = function () {
 
 	wf.notiz('Notiz Zweck', [-80, -560], [
 		'## EPA SW Regeln abgleichen',
-		'**Zweck:** Übernimmt die Regeln eines Kunden aus seinem Google Sheet (Reiter "Allgemein" und "Pflichtfelder") in epa_config_allgemein und epa_config_pflichtfelder. Regeln und Prüfung: src/configSheet.js und src/configValidator.js.',
+		'**Zweck:** Übernimmt die Regeln eines Kunden aus seinem Google Sheet (Reiter "Einstellungen" und "Bereiche"; älterer Aufbau "Allgemein" und "Pflichtfelder") in epa_config_allgemein und epa_config_pflichtfelder. Regeln und Prüfung: src/configSheet.js und src/configValidator.js.',
 		'**Sicherheit:** Nur fachliche Einstellungen sind im Sheet. Postfach, Kanal, Freigeber, KI-Profil usw. ändert nur der Betreiber. Die komplette neue Config wird vorher geprüft. Bei einem Fehler wird nichts übernommen; der Agent arbeitet mit den bisherigen Regeln weiter.',
 		'**Nie löschen:** Pflichtfelder, die im Sheet fehlen, werden nur deaktiviert.',
 		'**Rückmeldung:** Reiter "Status" im Sheet (letzte Prüfung, Ergebnis, Meldungen). Meldung an den Kanal, wenn Regeln übernommen wurden oder ein neuer Fehler auftritt (gleiche Fehler nur einmal).',
@@ -68,18 +68,19 @@ for (const v of Array.isArray(sheet.valueRanges) ? sheet.valueRanges : []) {
 	const titel = String(v.range || '').replace(/!.*$/, '').replace(/^'(.*)'$/, '$1').replace(/''/g, "'");
 	tabs[titel] = v.values || [];
 }
-const bereichsReiter = configSheet.BEREICH_REITER.some((b) => tabs[b.name]);
-if (sheet.error || !tabs.Allgemein || (!tabs.Pflichtfelder && !bereichsReiter)) {
+// Kunden-Sheet: "Einstellungen" + "Bereiche"; älterer Aufbau: "Allgemein" + "Pflichtfelder".
+const kunde = !!(tabs.Einstellungen && tabs.Bereiche);
+const allgemeinTab = tabs.Einstellungen || tabs.Allgemein;
+if (sheet.error || !allgemeinTab || (!kunde && !tabs.Pflichtfelder)) {
 	const grund = sheet.error ? String(sheet.error.message || sheet.error).slice(0, 200) : 'Reiter fehlen';
-	r = { fehler: ['Sheet nicht lesbar (Freigabe für das Google-Konto und die Reiter "Allgemein" und je Bereich prüfen): ' + grund], hinweise: [], allgemein_update: {}, pflicht_ops: [], aenderungen: [], lesefehler: true };
+	r = { fehler: ['Sheet nicht lesbar (Freigabe für das Google-Konto und die Reiter "Einstellungen" und "Bereiche" prüfen): ' + grund], hinweise: [], allgemein_update: {}, pflicht_ops: [], aenderungen: [], lesefehler: true };
 } else {
 	r = configSheet.abgleichen({
 		allgemein: allg,
 		pflichtfelder: pf,
-		reiterAllgemein: tabs.Allgemein,
+		reiterAllgemein: allgemeinTab,
 		reiterPflicht: tabs.Pflichtfelder,
-		reiterBereiche: bereichsReiter ? tabs : null,
-		// Auch Kunden, die noch nicht aktiv sind (Einrichtung), sollen ihre Regeln pflegen können.
+		reiterBereiche: kunde ? tabs.Bereiche : null,
 		validieren: (a, p) => configValidator.validiereConfig({ ...a, aktiv: true }, p),
 	});
 }

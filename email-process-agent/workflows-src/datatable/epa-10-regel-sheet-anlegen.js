@@ -8,7 +8,7 @@ module.exports = function () {
 
 	wf.notiz('Notiz Zweck', [-80, -420], [
 		'## EPA-10 Regel-Sheet anlegen',
-		'**Zweck:** Legt für einen Kunden ein Google Sheet mit seinen aktuellen Regeln an (Reiter "Anleitung", "Allgemein", je Bereich ein Reiter mit dessen Angaben, "Status") und trägt die Sheet-ID in `config_sheet` ein. Danach übernimmt "EPA-09 Regeln aus Google Sheets" Änderungen automatisch.',
+		'**Zweck:** Legt für einen Kunden ein Google Sheet mit seinen aktuellen Regeln an (Reiter "Einstellungen", "Bereiche" mit je Bereich gebucht Ja/Nein und den Angaben, "Status") und trägt die Sheet-ID in `config_sheet` ein. Danach übernimmt "EPA-09 Regeln aus Google Sheets" Änderungen automatisch.',
 		'**Aufruf:** manuell mit `kunde_id`. Hat der Kunde schon ein Sheet, wird kein zweites angelegt.',
 		'**Danach:** Sheet in Google Drive für den Kunden freigeben (Bearbeiten). Nur die Personen, die Regeln ändern dürfen.',
 		'**Einrichten:** Google-Sheets-Credential in "Sheet anlegen" und "Spaltenbreite anpassen" zuweisen.',
@@ -23,7 +23,7 @@ const allg = $('Config-Zeile lesen').first().json || {};
 if (!allg.kunde_id) throw new Error('Config für ' + ${E}.kunde_id + ' nicht gefunden');
 if (typeof allg.config_sheet === 'string' && allg.config_sheet.trim()) throw new Error('Kunde hat schon ein Regel-Sheet: https://docs.google.com/spreadsheets/d/' + allg.config_sheet.trim());
 const pf = $('Pflichtfelder lesen').all().map((i) => i.json).filter((z) => z && z.feldname);
-// Ein Reiter je Bereich (Angebotsanfragen, Bestellungen, Terminanfragen, Reklamationen), Anleitung, Allgemein, Status.
+// Reiter "Einstellungen", "Bereiche" (je Bereich gebucht Ja/Nein und die Angaben), "Status".
 const a = configSheet.anlegenBodyBereiche('EPA Regeln – ' + allg.kunde_id, configSheet.sheetInhaltBereiche(allg, pf));
 return [{ json: { body: a.body, format: a.format } }];
 `);
